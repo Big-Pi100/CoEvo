@@ -50,13 +50,17 @@ import '../providers/review_list_provider.dart';
 import '../providers/review_session_provider.dart';
 import '../providers/user_db_provider.dart';
 import '../providers/user_word_provider.dart';
+import '../services/highlight_repository.dart';
 import '../services/review_list_query.dart';
+import '../services/review_pause.dart';
 import '../theme/clay.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/theme_builder.dart';
 import '../theme/tokens_ext.dart';
-import '../widgets/header_chip.dart';
+import '../widgets/clay_button.dart';
+import '../widgets/co_dialog.dart';
+import '../widgets/twemoji.dart';
 
 class ReviewScreen extends ConsumerStatefulWidget {
   const ReviewScreen({super.key});
@@ -72,27 +76,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   ///    它和排序一样是「查询参数」，两份状态会出现「界面显示已筛、查询没筛」的错位。
   ReviewListArgs _args = const ReviewListArgs();
 
-  /// 「全部 / 已到期」筛选药丸的**宽度参照文案**（2026-09-28 22:2x 修正）。
-  ///
-  /// 🔴 **为什么需要参照**：label 在「全部」(2 字) / 「已到期」(3 字) 间切换，
-  ///    不定宽则 ① 宽度跳变 ~11.5px（一个字的宽）→ 整条标题栏跟着抖、
-  ///    ② 文字中心横移 ~5.75px。
-  ///
-  /// 🔑 **传「最长的那个 label」本身**（而不是一个像素值）——
-  ///    `HeaderChip` 会用一个**隐形占位**把它量出来，宽度于是**由引擎实测**：
-  ///    · 两态同宽（占位文案不变）
-  ///    · 文字落在药丸正中（`L == R`，推导见 `HeaderChip` 类文档）
-  ///    · 🔴 **永不折行** —— 这正是上一版的失败点。
-  ///
-  /// ## 上一版为什么错（教训）
-  /// 上一版传 `labelMinWidth: 36`，取值来自「3 字 × 11.5px = 34.5，取 36」的**估算**
-  /// （当时的推理链：药丸整宽 = 左内边距 8 + 图标 13 + 间距 6 + 文字 36 + 右 27 = 90）。
-  /// 真机上「已到期」**折成了两行** —— 因为中文字形的 advance **并非恰好 1em**：
-  /// 字体 fallback、`w600` 的合成加粗、系统「文字大小」缩放，都会让它更宽。
-  ///
-  /// 🔑 **判据：凡由「字号 × 字数」反推出来的可用宽度，迟早会在真机上不够。**
-  ///    能用「让引擎实测另一个字符串」解决的，就不要写死像素。
-  static const String _filterChipReserveLabel = '已到期';
+  // 🆕 2026-10-08：筛选 chip 的两态参照文案常量 **已随 chip 一起搬到
+  //    `ReviewTabScreen`**（它现在渲染在容器标题行 —— 见 `reviewDueOnlyProvider`）。
+  //    📌 判据：常量跟着**唯一的消费者**走，别留在原地当「孤儿常量」。
 
   final _searchController = TextEditingController();
 
@@ -157,13 +143,71 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   /// 🔴 失败时**不改界面状态**：不能因为写库失败就把这一行从列表里抹掉 ——
   /// 那会让用户以为「暂停成功了」，下次打开它又回来。
   Future<void> _pause(ReviewListItem item) async {
+    // ① 🆕 2026-10-08：**二次确认**（白哥真机反馈「很容易误点」）。
+    //
+    // 🔑 必须排在本函数的**最前**（先于取 `messenger` / `revision`）：
+    //    那两个引用是「在任何 `await` 之前先拿到」的兜底（见下），
+    //    而确认框**本身就是一次 await** ⇒ 它只能最先做。
+    //    确认之后的 `!mounted` 检查同样必要 —— 弹窗期间页面可能已销毁。
+    //
+    // ⚠️ `t` 要**在这里自己取**：它是 `build` 的局部量，不在本方法作用域内
+    //    （取 token 不涉及 await ⇒ 放在这里安全）。
+    final t = CoEvoTokensExt.of(context);
+    final confirmed = await CoDialog.show<bool>(
+      context,
+      builder: (dialogCtx) => CoDialog(
+        // ⚠️ 标题**不带词**：划线卡（`hl:<uuid>`）没有可读的 `spelling`，
+        //    分两套标题会让「同一件事两处口径」（同 `pauseConfirmBody` 的取舍）。
+        title: '暂停复习？',
+        child: Tw(
+          pauseConfirmBody(wordId: item.wordId, spelling: item.spelling),
+          style: TextStyle(
+            fontFamily: CoFonts.uiSans,
+            fontSize: 14.5,
+            height: 1.7,
+            color: Color(t.ink2.argb32),
+          ),
+        ),
+        actions: [
+          // 🔑 顺序按 iOS 惯例：次要在左、主要（确定）在右。
+          //    「暂停」用 primary 而不是 destructive 色 —— 它**可恢复**
+          //    （同一判据：`highlights_screen` 里「删除」才用弱化色）。
+          ClayButton(
+            label: '取消',
+            variant: ClayButtonVariant.secondary,
+            expanded: true,
+            onTap: () => Navigator.of(dialogCtx).pop(false),
+          ),
+          ClayButton(
+            label: '暂停',
+            expanded: true,
+            onTap: () => Navigator.of(dialogCtx).pop(true),
+          ),
+        ],
+      ),
+    );
+    // 点遮罩 / 返回键关闭 ⇒ `null` ⇒ 与「取消」同义（什么都不做）
+    if (confirmed != true) return;
+    if (!mounted) return;
+
     final messenger = ScaffoldMessenger.of(context);
     // 🔑 **在任何 `await` 之前**取到 notifier 引用（同另外两处写入端）：
     //    `await repo.pause(...)` 期间页面可能被销毁 → `ref` 失效。
     final revision = ref.read(userDbRevisionProvider.notifier);
     try {
-      final repo = await ref.read(userWordProvider.future);
-      final changed = await repo.pause(item.wordId);
+      // 🔴 **两种卡的「暂停」落在两张不同的表上**（详见 `services/review_pause.dart`
+      //    的文件头）：生词 → `user_word.deleted` · 划线（`hl:<uuid>`）→ `highlight.paused`。
+      //    🔴 2026-10-08 之前**只写了生词那一支** ⇒ 划线卡点暂停时
+      //    `UPDATE user_word … WHERE word_id = 'hl:…'` 影响 0 行 ⇒ 仓储返回 false
+      //    ⇒ 下面 `if (!changed) return;` ⇒ **静默、连提示都没有**（白哥真机报的就是它）。
+      //    ⚠️ 分派判据**不在本页** —— 在 `review_pause.dart`（纯 Dart，可被脚本验）。
+      final db = await ref.read(userDbProvider.future);
+      final changed = await pauseReviewCard(
+        wordId: item.wordId,
+        pauseWord: (id) async =>
+            (await ref.read(userWordProvider.future)).pause(id),
+        pauseHighlight: (id) => HighlightRepository(db).pause(id),
+      );
 
       // `false` = 本来就已经是暂停状态（本次无动作）→ 不刷界面、不提示
       if (!changed) return;
@@ -178,7 +222,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
-          content: Text('已暂停「${item.spelling}」，再次查词就会恢复。'),
+          // 🔴 文案**按卡片类型分两套**：划线卡没有「再次查词」这个动作，
+          //    沿用生词那句就是**说谎**（用户会照做然后发现没用）。
+          //    放在 `review_pause.dart` 与分派判据同一处 ⇒ 不会两处漂。
+          content: Text(pausedMessage(
+            wordId: item.wordId,
+            spelling: item.spelling,
+          )),
           duration: const Duration(seconds: 2),
         ));
     } catch (e, st) {
@@ -206,7 +256,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
 
-    final list = ref.watch(reviewListProvider(_args));
+    // 🔑 `dueOnly` 从 provider 取（它的 chip 在**容器标题行**，不在本页 ——
+    //    见 `reviewDueOnlyProvider` 的说明）；其余字段（搜索 / 排序）仍来自本页 `_args`。
+    final dueOnly = ref.watch(reviewDueOnlyProvider);
+    final list = ref.watch(reviewListProvider(_args.copyWith(dueOnly: dueOnly)));
     final dueCount = ref.watch(reviewDueCountProvider).valueOrNull;
 
     return Scaffold(
@@ -228,7 +281,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                 // 读失败 → 给**准确**的话，不冒充「还没有生词」
                 error: (e, st) => const _Unavailable(),
                 data: (rows) => rows.isEmpty
-                    ? _EmptyState(filtered: _isFiltering)
+                    ? _EmptyState(filtered: _isFiltering(dueOnly))
                     : _list(rows),
               ),
             ),
@@ -244,7 +297,11 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   /// · 真的没有词 → 教用户「词从哪来」
   /// · 有词但被筛掉了 → 告诉用户「换个条件」
   /// 混用会让一个搜不到词的用户以为自己的生词没了。
-  bool get _isFiltering => _args.search.isNotEmpty || _args.dueOnly;
+  /// 是否处于「筛选/搜索」态（决定空态文案）。
+  ///
+  /// ⚠️ 是**方法**不是 getter：`dueOnly` 现在来自 provider，
+  ///    而 getter 拿不到 `ref`（调用处把值传进来）。
+  bool _isFiltering(bool dueOnly) => _args.search.isNotEmpty || dueOnly;
 
   // ────────────────────────────────────────────────────────────
   // 标题栏（含搜索的两种状态）
@@ -255,62 +312,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── 收起态：🔍 + 「复习」+ 筛选 ──────────────────────
-          // ── 展开态：搜索框 + 「取消」 ────────────────────────
-          //
-          // 🔑 两态**共用同一行**（而不是「搜索框另起一行」）——
-          //    这样展开/收起时下方内容**不会跳动**
-          //    （另起一行会让列表整体下移，是廉价但明显的抖）。
-          // 标题行**恒定**为「复习 + 筛选」—— 搜索的两态都搬到了下面的排序行，
-          // 所以这一行在展开/收起时**完全不动**（原「两态共用一行防抖动」的延伸）。
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '复习',
-                  style: TextStyle(
-                    fontFamily: CoFonts.uiSans,
-                    fontSize: 23,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 23 * -0.015,
-                    color: Color(t.ink.argb32),
-                  ),
-                ),
-              ),
-              // 🔴 筛选用**公共组件 `HeaderChip`** —— 白哥 2026-09-28：
-              //    「『全部、已到期』按钮应该和阅读页的**收藏按钮的外观保持一致**」。
-              //    🔑 状态靠**文字 + 图标实心/描边**表达，不靠填充色：
-              //       原先「选中 → 强调色填充」会与 `_SortChip` 的选中态撞脸
-              //       （两者都变成实心药丸 → 用户会以为它们是同一组单选）。
-              //
-              // 🔄 2026-09-28 20:1x / 21:0x / 21:3x / 22:2x 白哥真机**四次**修正：
-              //    ① **两态一凹一凸**（`active`）：`dueOnly` 为真 = 筛选生效 → 浮起；
-              //       为假 = 无筛选 → 凹陷。同 `BookmarkButton`「已收藏 = 凸起」的语汇。
-              //    ② **定宽**：label 在「全部」(2 字) / 「已到期」(3 字) 间切换时，
-              //       ① 药丸宽度不跳变、② 文字位置不横移。
-              //    ③ **去掉图标** —— 白哥看过 ② 的实际观感后：
-              //       「右上角按钮更不对了，还不如原来的」。
-              //       🔑 原因是**数学必然**：药丸内容 = [图标 13][间距 6][文字]，
-              //          图标只占左边 → 整块居中时文字必然偏右 (13+6)/2 = **9.5px**；
-              //          要消掉它只能「右侧留等量空白」（＝② 的做法）→ **右侧 27px 全空**，
-              //          观感比偏移更糟。
-              //       → 去掉图标是**唯一**能让文字既不偏、又左右对称的办法。
-              //       📊 五方案对比（带中心线标注）→ `docs/design/filter-chip-options-2026-09-28.html`
-              //    ④ 🔴 **「定宽」不再用像素** —— 白哥 22:2x：
-              //       「**宽度应该按「已到期」三字，现在显示「已到期」时变成两行了**」。
-              //       ② 那版传的是 `labelMinWidth = 36`（「3 字 × 11.5px」的**估算**），
-              //       真机上「已到期」**折成两行**（中文 advance 并非恰好 1em）。
-              //       → 改传**参照文案** `labelReserve`，宽度**由引擎实测**
-              //         → 两态同宽、文字居中、且**与字体/缩放无关地永不折行**。
-              HeaderChip(
-                label: _args.dueOnly ? '已到期' : '全部',
-                active: _args.dueOnly,
-                labelReserve: _filterChipReserveLabel,
-                onTap: () => setState(
-                    () => _args = _args.copyWith(dueOnly: !_args.dueOnly)),
-              ),
-            ],
-          ),
+          // 🆕 2026-10-08：「全部 / 已到期」筛选 chip **已上提到容器标题行**
+          //    （`ReviewTabScreen`）—— 与「复习 ｜ 笔记」两个标题**同一行**。
+          //    🔴 之前的形态是「页面里独占一行」⇒ 视觉上落在容器标题行的**下一行**，
+          //       看起来像标题与筛选分家了（白哥真机反馈）。
+          //    📌 状态在 `reviewDueOnlyProvider`（控件在谁手里，状态就在谁手里）。
+
 
           // 副标题只在**收起态**显示 —— 展开搜索时它让位于输入框（那才是当下焦点）
           if (!_searchExpanded) ...[

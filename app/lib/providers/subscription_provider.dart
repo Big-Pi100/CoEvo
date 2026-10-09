@@ -115,6 +115,35 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     );
   }
 
+  /// 🆕 2026-10-09：**复位到「未检查」** —— 登出时**必须**调。
+  ///
+  /// # 🔴 为什么必须（这是「账号级状态」的固有义务）
+  ///
+  /// 本 provider 持有的是**账号级**状态（读服务端 `users.subscription_expires`）。
+  /// 登出后若不复位，下一个账号（或未登录态）会**看到上一个账号的订阅状态** ——
+  /// 白哥 2026-10-09 真机实测到的正是这个：
+  /// **退出登录后订阅状态不变，仍显示「订阅版」**。
+  ///
+  /// 📌 判据（项目已记）：**「登录态」是一组状态的「所有者」——
+  ///    退出必须「整体复位」，否则跨账号泄漏。**
+  /// ⚠️ 而这条泄漏是 2026-10-09 引入的：当天把本 provider 加进订阅 UI 的判据
+  ///    （`subscriptionActiveNow` = 端侧 OR 服务端）⇒ **给判据加了一个来源，
+  ///    却没有接管它的生命周期** ⇒ 新来源带着上一个账号的值跨了过来。
+  ///    🔑 **「加一个数据来源」与「接管它的生命周期」是同一件事的两半。**
+  ///
+  /// # ⚠️ 与端侧 IAP 的区别（**不要**顺手把那个也"复位"）
+  ///
+  /// 端侧 `iapSnapshotProvider` 是 **Apple ID 级**（StoreKit `currentEntitlements`
+  /// 跟 Apple ID 走，**不跟 App 账号走**）——
+  /// 同一台设备上换个 App 账号，订阅权益**本来就还在**（用户确实付过钱）
+  /// ⇒ 登出**不该**、也动不了它。两个来源的**所有者不同**，生命周期也就不同。
+  void reset() {
+    // 关掉进行中的请求（否则它回来时会把 state 又写成上一个账号的值）
+    _client?.close();
+    _client = null;
+    state = const SubscriptionState();
+  }
+
   void setRequired() {
     state = const SubscriptionState(
       status: SubscriptionStatus.required,

@@ -45,8 +45,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uuid/uuid.dart';
 
 import '../providers/book_provider.dart';
+import '../providers/book_cloud_provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/book_raw_dir_provider.dart';
+import '../services/ebook/book_blob_parse.dart' show kCloudQuotaBytes;
 import '../theme/clay.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
@@ -78,6 +83,15 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
 
+    // 🔴 全部在**顶层** watch（不写在 `.when` 的回调里）——
+    //    条件式 watch 会让依赖随分支变化，容易出「有时更新有时不更新」的诡异行为。
+    // ⚠️ 「只有云端」的书**不在** `book` 表里（它没有正文），所以列表要合并两个来源。
+    final cloudOnly =
+        ref.watch(cloudOnlyBooksProvider).valueOrNull ?? const <CloudBook>[];
+    // 用量拿不到（未登录 / 书单从未同步）⇒ `null` ⇒ **不显示配额条**
+    //   （显示「已用 0 MB」是**假信息**，同翻译浮层额度的判据）
+    final usage = ref.watch(cloudUsageProvider).valueOrNull;
+
     return ref.watch(bookListProvider).when(
           loading: () => const Center(
             child: SizedBox(
@@ -88,7 +102,9 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
           ),
           // 🔑 错误要**能重试**（一个干巴巴的错误页 = 「静默失败 + 无出口」）
           error: (e, _) => _errorState(t, e),
-          data: (books) => books.isEmpty ? _emptyState(t) : _list(t, books),
+          data: (books) => (books.isEmpty && cloudOnly.isEmpty)
+              ? _emptyState(t)
+              : _list(t, books, cloudOnly, usage),
         );
   }
 
@@ -217,7 +233,7 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                '书库打不开',
+                '书架打不开',
                 style: TextStyle(
                   fontFamily: CoFonts.uiSans,
                   fontSize: 15,
@@ -276,13 +292,161 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
   ///    所以这里也用 **13**（+ 左右 16，同 `.feed{padding:0 16px}`）。
   ///    📌 判据：**「同一套卡片语言」不只是卡片长得一样，间距也是它的一部分** ——
   ///       只改卡片不改间距，切换时仍会有「疏密突变」。
-  Widget _list(CoEvoTokens t, List<BookSummary> books) => ListView.separated(
-        padding:
-            const EdgeInsets.fromLTRB(16, 0, 16, CoSpacing.tabBarClearance),
-        itemCount: books.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 13),
-        itemBuilder: (_, i) => _bookCard(t, books[i]),
+  Widget _list(
+    CoEvoTokens t,
+    List<BookSummary> books,
+    List<CloudBook> cloudOnly,
+    int? usage,
+  ) =>
+      Column(
+        children: [
+          // 配额条**不常驻** —— 只有用量 > 80% 才出现（低频信息不占常驻位置）
+          if (usage != null) _quotaBar(t, usage),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(
+                  16, 0, 16, CoSpacing.tabBarClearance),
+              // 🔑 本地书在前、「只有云端」的在后 —— 一个列表两种来源，
+              //    所以 index 要分段映射（不是两个 ListView 叠着）。
+              itemCount: books.length + cloudOnly.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 13),
+              itemBuilder: (_, i) => i < books.length
+                  ? _bookCard(t, books[i])
+                  : _cloudBookCard(t, cloudOnly[i - books.length]),
+            ),
+          ),
+        ],
       );
+
+  /// 云端配额条（**只在 > 80% 时出现**）。
+  ///
+  /// 🔑 措辞只说「**云端存储**」，绝不说「云端书库 / 这里可以找到书」——
+  ///    私人云存储 ≠ 在线书库，那条分界最终就落在这些 UI 文案上。
+  Widget _quotaBar(CoEvoTokens t, int used) {
+    final ratio = used / kCloudQuotaBytes;
+    if (ratio <= 0.8) return const SizedBox.shrink();
+    final over = ratio >= 1.0;
+    final pct = (ratio * 100).clamp(0, 999).toStringAsFixed(0);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '云端存储已用 $pct%'
+            '${over ? '（已满，新的上传会被拒绝）' : ''}',
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 11.5,
+              color: Color(over ? t.accent.argb32 : t.ink3.argb32),
+            ),
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: ratio.clamp(0.0, 1.0),
+              minHeight: 4,
+              backgroundColor: Color(t.line.argb32),
+              valueColor:
+                  AlwaysStoppedAnimation<Color>(Color(t.accent.argb32)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 「**只有云端**」的书 —— 本地没有正文，点它才下载。
+  ///
+  /// 🔑 形状区分（不是颜色）：它用**云图标**占位 + 右侧云下载箭头，
+  ///    与本地书的「封面占位 + ›」在**形状**上就不同 ⇒ 三个主题档下都认得出。
+  ///    📌 设计稿：默认态（本地有）**不加任何标记** —— 有标记的一定有原因。
+  Widget _cloudBookCard(CoEvoTokens t, CloudBook b) => Clay(
+        onTap: () => _downloadCloud(t, b),
+        padding: const EdgeInsets.fromLTRB(16, 15, 16, 15),
+        child: Row(
+          children: [
+            Container(
+              width: 46,
+              height: 62,
+              decoration: BoxDecoration(
+                color: Color(t.page.argb32),
+                borderRadius: BorderRadius.circular(t.clay.radius * 0.5),
+              ),
+              child: Icon(Icons.cloud_outlined,
+                  size: 22, color: Color(t.ink3.argb32)),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    b.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: CoFonts.latinSerif,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: Color(t.ink.argb32),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '云端 · 点按下载'
+                    '${b.author == null || b.author!.isEmpty ? '' : ' · ${b.author}'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: 12.5,
+                      color: Color(t.ink3.argb32),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Icon(Icons.cloud_download_outlined,
+                size: 20, color: Color(t.accent.argb32)),
+          ],
+        ),
+      );
+
+  /// 下载一本「只有云端」的书（复用导入管线落库）。
+  Future<void> _downloadCloud(CoEvoTokens t, CloudBook b) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('正在下载《${b.title}》…')));
+
+    final db = await ref.read(bookDbProvider.future);
+    final r = await downloadCloudBook(
+      token: ref.read(authProvider).token ?? '',
+      client: ref.read(bookBlobClientProvider),
+      db: db,
+      rawDir: ref.read(bookRawDirProvider).valueOrNull,
+      newId: const Uuid().v4(),
+      book: b,
+    );
+
+    // 🔑 成功才 bump（顺序反了会让读端在写入完成前重查）
+    if (r is BookDownloadSuccess) {
+      ref.read(bookDbRevisionProvider.notifier).bump();
+    }
+    if (!mounted) return;
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(switch (r) {
+        BookDownloadSuccess(:final title) => '已下载《$title》',
+        BookDownloadNeedLogin() => '登录后才能下载云端书籍',
+        BookDownloadNotFound() => '云端没有这本书的文件（可能只同步了书名）',
+        BookDownloadFailed(:final message) => '下载失败：$message',
+      })));
+  }
 
   /// 一本书 = 一张粘土卡（与信息流 `FeedCard` 同源）。
   ///
@@ -482,7 +646,7 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
           ),
         ],
         child: Text(
-          '《${b.title}》会从书库移除。\n'
+          '《${b.title}》会从书架移除。\n'
           '你设备上的原文件不受影响，需要时可以重新导入。',
           style: TextStyle(
             fontFamily: CoFonts.uiSans,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 
 import '../models/article.dart';
+import '../services/highlight_span.dart' show HighlightRange;
 import '../services/markdown_unescape.dart';
 import '../services/trace_markdown_source.dart';
 import '../theme/coevo_tokens.dart';
@@ -55,6 +56,7 @@ class TraceMarkdown extends StatelessWidget {
     required this.tokens,
     required this.bodyFontSize,
     this.traceEnabled = true,
+    this.highlights = const [],
   });
 
   /// 正文（**Markdown 形态**）。
@@ -81,6 +83,37 @@ class TraceMarkdown extends StatelessWidget {
   ///     加参数时让**旧行为成为默认值**）。
   final bool traceEnabled;
 
+  /// 🆕 **划线**区间（在 [`markdown`] 里的字符区间 · 2026-10-07）。
+  ///
+  /// # 🔴 为什么是「区间」而不是「文本」
+  ///
+  /// 痕迹只能按**词**匹配（它只有「哪些词已查过」，没有位置）；
+  /// 而划线是用户**拖动选中**的 ⇒ `highlight` 表里存了 `start/end`，
+  /// 且这些偏移**就是这份 `markdown` 的偏移**（`reader_screen` 传的
+  /// `plainText` 与 `markdown` 是**同一个字符串**）。
+  /// ⇒ 用偏移比用文本匹配**更准**（文本匹配会被 Markdown 语法挡掉，
+  ///   例：划中的文字在源里是 `**best**`，按文本找不到）。
+  ///
+  /// # ⚠️ 偏移有效的**前提是注入顺序**（见 [build] 里的三步）
+  ///
+  /// `unescapeRedundantMarkdown` 会**删反斜杠** ⇒ 它之后偏移就全错位了。
+  /// ⇒ 划线必须在 unescape **之前**注入。改顺序 = 划线画到别处（且**不报错**）。
+  ///
+  /// # 默认空 ⇒ 既有调用方行为逐字不变
+  ///
+  /// 空列表时 [injectHighlightMarkers] 直接返回原文，`build` 里也不多做一次扫描
+  /// （**逐字**走原路径）—— 同 [traceEnabled] 那条原则。
+  ///
+  /// ⚠️ 目前**只有信息流阅读页**用（书架页是纯 `Text.rich`，不走 Markdown）。
+  ///
+  /// 🔑 类型用 [`HighlightRange`]（而不是裸 record）—— 让它与
+  ///    `highlightRangesOf(provider)` 的产出**同型** ⇒ 调用方**零转换**。
+  ///    而 `injectHighlightMarkers` 收的是 `(start, end)` record（那个文件
+  ///    要保持「零 import」）⇒ 转换发生在 [build] 里那一行（唯一一处）。
+  ///    📌 判据：**类型转换只写一处** —— 写两处（调用方一次、这里一次）迟早在
+  ///       一边改了字段名而另一边没改（且 Dart 会静默用上 record 的**位置**匹配）。
+  final List<HighlightRange> highlights;
+
   @override
   Widget build(BuildContext context) {
     // ① 判定：哪些词该标、哪一档（与纯文本路径**同一份判据**）
@@ -92,25 +125,60 @@ class TraceMarkdown extends StatelessWidget {
         ? pickedTraceTiers(lookups: lookups, tokens: tokens.trace)
         : const <String, int>{};
 
-    // ② 🔴 消化**多余的 Markdown 转义**（2026-10-02 · 白哥真机反馈「转义没消化」）
+    // ① 🔴 规范化：**先把正文统一成「用户真正看到的那一份」**（2026-10-08 修复）
     //
-    // 产出侧（后端 `dom_smoothie`）按 **CommonMark** 全量转义 —— 且是**过度**转义：
-    // `DELETE\.` · `\"QUERY\"` · `\(66\.4%\)`（句点/引号/圆括号**本来都不需要转**）。
-    // 而消费侧（`gpt_markdown` 1.3.0）**只反转义 `\|`**（源码原话：`Only \| is unescaped`）
-    // ⇒ 其余 `\X` 原样显示 ⇒ 用户看到满屏反斜杠。
+    // # 为什么必须**最先**做（这是一个真 bug 的修复，不是整理）
     //
-    // 🔑 消化放在**渲染之前**（而不是渲染后处理字符串）：
-    //    渲染后拿到的是 span，改它要动 `gpt_markdown` 的渲染结果 —— 既不归我们管，也不好测。
-    //    📌 判据：**能改输入的，就别改输出**（同 `injectTraceMarkers` 的思路）。
+    // 产出侧（后端 `dom_smoothie`）按 CommonMark **过度**转义：`DELETE\.` · `\"QUERY\"` ·
+    // `\(66\.4%\)`（句点/引号/括号本来都不需要转）。而消费侧（`gpt_markdown` 1.3.0）
+    // 只反转义 `\|` ⇒ 其余 `\X` 原样显示 ⇒ 必须先删掉，否则用户看到满屏反斜杠。
     //
-    // ⚠️ 顺序：**先消化转义、再注入痕迹标记**。
-    //    · 消化会**删字符**（缩短文本），而痕迹注入是「按词匹配」不依赖偏移 ⇒ 两者互不干扰
-    //    · 反过来（先注入）也不出错，但「修正源文本」在语义上该先做 ——
-    //      痕迹标记描述的是「最终要渲染的那段文本里的词」
-    final unescaped = unescapeRedundantMarkdown(markdown: markdown);
+    // 🔴 但「删反斜杠」会**改变字符数** ⇒ 于是过去存在**两套坐标系**：
+    //    · 用户看到并选中的文本 = **已 unescape** 的
+    //    · 而拿给「划线定位」的 `plainText` = **未 unescape 的原文**
+    //    ⇒ `locateSelection` 是朴素 `indexOf` ⇒ **找不到** ⇒ `start = -1`
+    //    ⇒ `highlightRangesOf` 按设计过滤掉它（「只复习，不高亮」）
+    //    ⇒ **划线存下来了、笔记页也有，但正文不画线，且不报错**。
+    //
+    // 📊 探针实测（`app/tool/highlight_locate_probe.dart` · 6 篇真实正文 · 72 句）：
+    //
+    //    | 口径 | 定位成功率 |
+    //    |---|---|
+    //    | `plainText` = 未 unescape 原文（修复前）| **3/72 = 4%** |
+    //    | `plainText` = 已 unescape 正文（修复后）| **72/72 = 100%** |
+    //
+    //    ⇒ 修复前**96% 的划线都静默失效**（用户只会觉得「划了没反应」）。
+    //
+    // ✅ 修法：**三方口径统一到这一份 `canonical`** ——
+    //    ① 用户定位用的文本（`reader_screen` 传 `HighlightSource.plainText` 时**用同一个函数**）
+    //    ② 划线 offset 的坐标系 ③ 渲染的输入。
+    //    📌 判据：**「同一件事的口径只能一处权威」** —— 有两套坐标系就必然有静默失效，
+    //       而且**比例高达 96%**（因为英文正文里 `.` 几乎到处都是）。
+    //
+    // ⚠️ 书页（`book_reader_screen`）**不**走这里：它渲染纯文本、不经过 unescape，
+    //    所以它的 `plainText` 也**不该** unescape（同一页内自洽即可 —— 见断言）。
+    final canonical = unescapeRedundantMarkdown(markdown: markdown);
 
-    // ③ 编码：把词包成控制字符标记（跳过代码块 / 行内代码 / 链接 URL）
-    final marked = injectTraceMarkers(markdown: unescaped, tiers: tiers);
+    // ② 划线：**按字符区间**注入（offset 落在 `canonical` 上 ⇒ 与用户定位**同坐标系**）
+    //
+    // 🔄 与修复前的差别只有一处：`unescape` 从「划线**之后**」挪到了「**最前**」。
+    //    过去划线 offset 基于旧坐标系 ⇒ 与用户定位的坐标系不一致 ⇒ 就是上面那个 bug。
+    //
+    // ⚠️ 「划线先、痕迹后」的顺序**不变**：痕迹会**跳过**已有划线标记
+    //    （划过的片段里那些已查词不再有底色，见 `injectTraceMarkers` ④）。
+    // 🔑 空列表时**逐字**走原路径（不多一次扫描、不产生任何差异）。
+    final highlighted = highlights.isEmpty
+        ? canonical
+        : injectHighlightMarkers(
+            markdown: canonical,
+            // 🔑 **唯一一处**类型转换（`HighlightRange` → record）—— 见 [highlights] 的说明
+            ranges: [
+              for (final h in highlights) (start: h.start, end: h.end),
+            ],
+          );
+
+    // ③ 痕迹：把词包成控制字符标记（跳过代码块 / 行内代码 / 链接 URL / **已有划线标记**）
+    final marked = injectTraceMarkers(markdown: highlighted, tiers: tiers);
 
     final base = TextStyle(
       fontFamily: CoFonts.latinSerif,
@@ -129,7 +197,61 @@ class TraceMarkdown extends StatelessWidget {
       isStreaming: false,
 
       // 痕迹：把控制字符标记渲染成带样式的 span（见文件头）
-      inlinePatterns: [_tracePattern()],
+      // 🆕 划线：另一种标记、另一种样式（下划线）—— 两个 pattern 互不干扰
+      //    （一个匹配 `\u0001/\u0002`，一个匹配 `\u0003`）
+      // ⚠️ 曾在这里写着「**必须用 `inlineDirectives`，绝不能用 `inlinePatterns`**」——
+      //    那条结论建立在**一次 grep 漏项**上：当时断言 `inlinePatterns` 在 1.3.0 里
+      //    「没有消费点（传了等于没传）」，实际它有**五处**消费点
+      //    （`InlinePatternMd` 组件注册 · `maskInlinePatterns` ×3 · `expandInlinePatterns`）。
+      //    📌 判据：**「我没 grep 到」≠「不存在」** —— 结论若是「某 API 没被消费」，
+      //       必须换多种模式复核（`part` 文件 · `copyWith` 转发 · 换关键词大小写）。
+      //    🔴 真机症状（痕迹全不显示）的**真实根因**另在别处：见下「双注册」注释末尾。
+      // 🆕 2026-10-08：**两条路都注册**（互补 —— 谁也吃不准哪个在本机/真机上先坏）。
+      //
+      // 为什么两个都留（而不是二选一）：
+      //  · `inlinePatterns`  在**解析后**的文本 run 上匹配 ⇒ 若标记跨过 `**`/`` ` ``
+      //    这类会拆节点的字符，正则就匹配不上 ⇒ **整条不显示**（探针实测过）。
+      //  · `inlineDirectives` 在**解析前**把区间整段抽成 sentinel ⇒ 不受节点拆分影响，
+      //    但它**完全依赖 mask 成功**；mask 一旦被跳过（`blockRegistry` 非空时只处理
+      //    「自定义块之外」），sentinel 不存在 ⇒ 静默降级成不可见文本。
+      //  ⇒ **两者的失效条件是正交的** ⇒ 同时注册等于给自己上一道保险。
+      //  ⚠️ 不会重复渲染：directive 的 mask 先跑，标记被换走后 pattern 再匹配就找不到了。
+      //
+      // ══════════════════════════════════════════════════════════════
+      // 🔴 2026-10-08 真机定位结果：**根因不在这一层**（诚实的存档）
+      // ══════════════════════════════════════════════════════════════
+      //
+      // 为了查「文章页没有痕迹」，整条链在本机被逐一验过（注入 6 篇真实正文全过 ·
+      // sentinel 存活 11 项全过 · 包内展开点逐环读完 · 版本路径 · 样式层 · 数据层）
+      // —— **全部正确**。最后靠**真机诊断条**才看出来，真凶是**主题档位**：
+      //
+      // | 档 | `TraceSyntax` | 痕迹的**可见手段** | `fresh.bg` |
+      // |---|---|---|---|
+      // | 墨 | `wash`      | **底色**（`background: Paint`）| 朱砂 15%（有颜色）|
+      // | 格 | `underline` | **下划线**（`decoration`）    | `transparent` ← **设计如此** |
+      // | 夜 | `glow`      | **前景色**（`color`）         | `transparent` ← **设计如此** |
+      //
+      // 🔑 我在诊断条里只打印了 `bg`，看到 `trans=true` 就当成「痕迹不可见」——
+      //    而那是**格档的正确值**（它本来就靠下划线表达）。
+      // 📌 判据：**「同一份语义在多个变体下的表达手段可以不同」** ——
+      //    只查其中一种手段（或只看一个档）会把**正常**读成**故障**。
+      //    ⚠️ 与「三档主题」这种设计**天然同族**：每加一档就多一条表达路径要覆盖。
+      //
+      // ⚠️ 由此浮出的**真问题**（另案，未改）：格档的痕迹 = 下划线，而**划线也是下划线**
+      //    ⇒ 用户在格档下**分不清「系统记的」和「我划的」**（只靠 2.5px vs 1.2px 粗细）。
+      //    这与既定的「**形状区分优于参数**」相冲突 ⇒ 需白哥定（见当日交付说明）。
+      inlinePatterns: [
+        _tracePattern(),
+        _highlightPattern(),
+      ],
+
+      inlineDirectives: [
+        // 痕迹两档：标记字符不同 ⇒ 各注册一个 directive（builder 里硬编码档位）
+        _traceDirectiveOf(kTraceFreshOpen, 0),
+        _traceDirectiveOf(kTraceReviewingOpen, 1),
+        // 划线（下划线）
+        _highlightDirective(),
+      ],
 
       // 内联代码：治「`<img>` 等标签裸奔」—— 等宽 + 底色 chip
       inlineCodeStyle: InlineCodeStyle(
@@ -183,12 +305,9 @@ class TraceMarkdown extends StatelessWidget {
     );
   }
 
-  /// 痕迹的 inline 语法规则 —— 把 [`kTraceMarkerPattern`] 匹配到的内容
-  /// 渲染成带痕迹样式的 [`TextSpan`]。
+  /// **pattern 版**的痕迹规则（与 [`_traceDirectiveOf`] 同时注册，见注册处说明）。
   ///
-  /// 🔑 档位从**标记字符**反推（`\u0001` = fresh / `\u0002` = reviewing），
-  ///    样式再向 `tokens.trace.forReps(档位)` 取 —— 这样「档位 → 样式」的映射
-  ///    仍然只有 token 层一处权威（本函数不做任何样式判断）。
+  /// 🔑 与原版（10-02 S4）**逐字一致** —— 它当时在 git 里，不凭记忆重写。
   InlinePattern _tracePattern() => InlinePattern(
         pattern: kTraceMarkerPattern,
         builder: (context, match, style) {
@@ -203,6 +322,83 @@ class TraceMarkdown extends StatelessWidget {
 
           return TextSpan(
               text: text, style: applyTraceStyle(style, traceStyle));
+        },
+      );
+
+  /// **pattern 版**的划线规则（下划线）—— 样式与 [`_highlightDirective`] 同一口径。
+  InlinePattern _highlightPattern() => InlinePattern(
+        pattern: kHighlightMarkerPattern,
+        builder: (context, match, style) {
+          final text = match.group(1) ?? '';
+          return TextSpan(
+            text: text,
+            style: style.copyWith(
+              decoration: TextDecoration.underline,
+              decorationColor: Color(tokens.accentBright.argb32),
+              decorationThickness: 1.2,
+            ),
+          );
+        },
+      );
+
+  /// 痕迹的 inline 语法规则 —— 把 [`kTraceMarkerPattern`] 匹配到的内容
+  /// 渲染成带痕迹样式的 [`TextSpan`]。
+  ///
+  /// 🔑 档位从**标记字符**反推（`\u0001` = fresh / `\u0002` = reviewing），
+  ///    样式再向 `tokens.trace.forReps(档位)` 取 —— 这样「档位 → 样式」的映射
+  ///    仍然只有 token 层一处权威（本函数不做任何样式判断）。
+  /// 🔑 为什么**每档一个** directive 而不是「一个带档位参数」的：
+  ///    `InlineDirective` 的 `open` / `close` 是**固定字符串**（不是正则）⇒
+  ///    档位只能靠「注册的是哪一个」区分 ✓ 比从 `match.group(1)` 反推更直白。
+  ///
+  /// ⚠️ `open` 与 `close` **同一个字符**（与注入端 `\u0001内容\u0001` 逐字对应）——
+  ///    `maskInlineDirectives` 是「先找 open、再从其后找 close」⇒ 同字符开闭可正常工作。
+  ///    📌 改标记形态时，**注入端与这里的 open/close 必须一起改**（断言锁定）。
+  InlineDirective _traceDirectiveOf(String marker, int tier) => InlineDirective(
+        open: marker,
+        close: marker,
+        builder: (context, payload, style) {
+          final traceStyle = tokens.trace.forReps(tier);
+          // `forReps` 返回 null = 已掌握 → 不该有标记。
+          // 走到这里说明**标记与判据不一致**（不该发生），降级成普通文字。
+          if (traceStyle == null) return TextSpan(text: payload, style: style);
+
+          return TextSpan(
+              text: payload, style: applyTraceStyle(style, traceStyle));
+        },
+      );
+
+  /// 🆕 **划线**的 inline 语法规则 —— 把 `\u0003…\u0003` 渲染成**带下划线**的 span。
+  ///
+  /// # 🔑 样式与书架页**同一条口径**（那里是 `Text.rich` 手工拼 span）
+  ///
+  /// | | 形态 | 心智 |
+  /// |---|---|---|
+  /// | 痕迹（已查词）| **底色浸染**（面）| 系统记的 |
+  /// | 划线 | **下划线**（线）| **我**划的 |
+  ///
+  /// ⇒ 两者都是「高亮」，同形状会互相干扰 ⇒ 按项目既有判据「**形状区分优于参数**」。
+  /// ⚠️ 两处的**数值必须一致**（`accentBright` · `thickness 1.2`）——
+  ///    不同页面的同一种划线长得不一样，是最难看出来的不一致。
+  ///    🔑 但**不共用常量**：两处的渲染路径不同（span 拼接 vs inline pattern），
+  ///    硬抽一个常量出来反而要多一层间接；**共用的是口径**（写在这里，改时两处一起改）。
+  ///
+  /// ⚠️ **真机待目视**：下划线与字形的距离由字体决定，`TextDecoration` 没有
+  ///    CSS 的 `text-underline-offset`（想调只能动 `height`，那是全局的）。
+  InlineDirective _highlightDirective() => InlineDirective(
+        open: kHighlightOpen,
+        close: kHighlightOpen,
+        builder: (context, payload, style) {
+          return TextSpan(
+            text: payload,
+            style: style.copyWith(
+              decoration: TextDecoration.underline,
+              // 细线用 `accentBright`（项目规定：**细线与描边用亮调**，
+              // `accent` 是实心填充色）
+              decorationColor: Color(tokens.accentBright.argb32),
+              decorationThickness: 1.2,
+            ),
+          );
         },
       );
 

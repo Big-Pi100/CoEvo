@@ -25,7 +25,9 @@ import '../services/sync_service.dart';
 import 'auth_provider.dart';
 import 'book_provider.dart';
 import 'device_id_provider.dart';
+import 'sync_status_provider.dart';
 import 'user_db_provider.dart';
+import 'word_db_provider.dart' show wordQueryProvider, WordDbReady;
 
 /// **pull 游标**在 `SharedPreferences` 里的键前缀（实际键带 `userId` 后缀）。
 ///
@@ -107,7 +109,35 @@ Future<SyncService?> buildSyncService(
         prefs.setString('$kSyncCursorPrefsKeyPrefix$userId', since),
     deviceId: deviceId,
     log: (m) => debugPrint('[sync] $m'),
+    // 🔑 拼写解析的第 ⑤ 级（正式词）要查 `word.db` —— 那是**另一个库**，
+    //    `sync_service` 刻意不直接依赖它 ⇒ 在这里注入。
+    //
+    //    ⚠️ 词库可能**未就绪**（首次要落盘 31.4 MB）；取不到就返回 null ——
+    //       解析器会据此**不写那一列**（而不是写个 ID 占位）。
+    //       等下一轮同步 / 自愈时词库就绪了，自然能补上。
+    wordSpellingLookup: (wordId) async {
+      final svc = ref.read(wordQueryProvider).valueOrNull;
+      if (svc is! WordDbReady) return null;
+      return svc.service.spellingOfId(wordId);
+    },
+    onSpellingLog: (m) => debugPrint('[sync] $m'),
   );
+}
+
+/// 🆕 2026-10-09：删掉**某个账号**的 pull 游标。
+///
+/// # 谁需要它
+/// `providers/local_data_owner_provider.dart` —— **换账号清空本地数据之后必须调**：
+///   游标是「这台设备已经拉到哪了」，本地数据刚被清空后还留着旧游标，
+///   新账号第一次 pull 只会拿到「游标之后」的增量 ⇒ **绝大多数数据永远拉不回来**，
+///   而用户看到的是「同步正常，只是东西少了很多」（**静默**）。
+///
+/// 🔑 删的是**同一个账号**上次留下的那个键（键带 `userId`，见
+///    [kSyncCursorPrefsKeyPrefix]）—— 不会影响其它账号的游标。
+Future<void> clearSyncCursorFor(WidgetRef ref, String userId) async {
+  if (userId.isEmpty) return;
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('$kSyncCursorPrefsKeyPrefix$userId');
 }
 
 /// **登录成功后**触发一次同步（`void` —— 调用方不必 await，见下）。
@@ -120,24 +150,7 @@ Future<SyncService?> buildSyncService(
 /// ⚠️ 失败**只记日志**：同步是后台行为，绝不能因为它失败而影响「登录成功」这件事
 ///    （用户已经登录了 —— 凭据已存 —— 同步失败只是数据晚点到）。
 void runSyncAfterLogin(WidgetRef ref) {
-  Future.microtask(() async {
-    try {
-      final auth = ref.read(authProvider);
-      final svc = await buildSyncService(
-        ref,
-        token: auth.token ?? '',
-        userId: auth.userId ?? '',
-      );
-      if (svc == null) return;
-      final report = await svc.syncNow();
-      if (!report.isEmpty || !report.ok) {
-        debugPrint('[sync] 登录后同步：$report');
-      }
-    } catch (e) {
-      // 含 SyncNotSubscribed（未订阅 —— 预期内，不是故障）
-      debugPrint('[sync] 登录后同步失败（不影响登录）：$e');
-    }
-  });
+  Future.microtask(() => _runSync(ref, tag: '登录后', pushOnly: false));
 }
 
 /// **退出登录前**把待推数据送上去。
@@ -149,7 +162,8 @@ void runSyncAfterLogin(WidgetRef ref) {
 /// ⚠️ 返回 `Future`（与 [runSyncAfterLogin] 不同）—— 调用方**需要**等它完成
 ///    才能继续登出。但调用方**不应因为失败而阻止登出**：
 ///    把用户困在账号里比丢几个待推数据更糟。
-Future<void> flushBeforeLogout(WidgetRef ref) => _pushOnly(ref, '登出前 flush');
+Future<void> flushBeforeLogout(WidgetRef ref) =>
+    _runSync(ref, tag: '登出前 flush', pushOnly: true);
 
 /// **App 进入后台时**触发一次 push（只推不拉）。
 ///
@@ -170,11 +184,30 @@ Future<void> flushBeforeLogout(WidgetRef ref) => _pushOnly(ref, '登出前 flush
 /// ⚠️ 不发请求的情形：**没有任何本地改动**时 `pushOnce` 直接返回
 ///    （`pushedTotal == 0` ⇒ 空批次不发请求）⇒ 这个钩子**平时是零成本**的。
 void pushWhenAppPaused(WidgetRef ref) {
-  Future.microtask(() => _pushOnly(ref, '进后台'));
+  Future.microtask(() => _runSync(ref, tag: '进后台', pushOnly: true));
 }
 
-/// 两种「只 push」时机的共用实现（**口径只有一处**）。
-Future<void> _pushOnly(WidgetRef ref, String tag) async {
+/// 🆕 2026-10-09：供 UI **手动**触发（云朵图标点击 / 失败后重试）。
+///
+/// 🔑 它与上面三处走**同一个入口** —— 手动与自动的差别只有 `pushOnly`，
+///    不该有两套实现（否则「手动能拉、自动只推」这类差异会静默存在）。
+Future<void> syncNowFromUi(WidgetRef ref) =>
+    _runSync(ref, tag: '手动', pushOnly: false);
+
+/// 同步执行的**唯一入口** —— 三处自动时机 + 一次手动，全部走这里。
+///
+/// 🔴 它同时承担**状态上报**（`syncStatusProvider`）：这是全库**唯一**写同步状态的地方。
+///    若每个调用点各自上报，迟早在某条路径上漏写，而「漏写」的表现是
+///    **图标永远停在旧状态、不报错**（本项目最忌的静默失效）。
+///
+/// [pushOnly] `false` = 先推后拉（`syncNow`）；`true` = 只推（登出前 / 进后台）。
+Future<void> _runSync(
+  WidgetRef ref, {
+  required String tag,
+  required bool pushOnly,
+}) async {
+  final status = ref.read(syncStatusProvider.notifier);
+  status.begin();
   try {
     final auth = ref.read(authProvider);
     final svc = await buildSyncService(
@@ -182,13 +215,73 @@ Future<void> _pushOnly(WidgetRef ref, String tag) async {
       token: auth.token ?? '',
       userId: auth.userId ?? '',
     );
-    if (svc == null) return; // 未登录 / user.db 不可用 ⇒ 静默跳过（同步是可选能力）
-    final report = await svc.pushOnce();
-    // 只在「真的推了东西」或「失败了」时打日志 —— 平时安静（否则日志会被刷屏）
+    // 未登录 / user.db 不可用 ⇒ 静默跳过（同步是**可选能力**）。
+    // ⚠️ 这**不是失败**（见 `SyncPhase.skipped` 的说明）—— 标成失败会让
+    //    未登录用户看到一个「同步失败」的红云朵，而其实什么都没发生。
+    if (svc == null) {
+      status.finishSkipped();
+      return;
+    }
+    final report = pushOnly ? await svc.pushOnce() : await svc.syncNow();
+    // 只在「真的动了数据」或「失败了」时打日志 —— 平时安静（否则日志会被刷屏）
     if (!report.isEmpty || !report.ok) {
       debugPrint('[sync] $tag：$report');
     }
+    if (report.ok) {
+      status.finishOk(report);
+    } else {
+      status.finishFailed(report.error ?? '未知原因');
+    }
+
+    // 🔴🔴 **写端通知读端** —— pull 改了本地库 ⇒ 读端必须重算。
+    //
+    // 此前（直到 2026-10-09）**没有任何地方**在同步之后 bump，后果是
+    // 「变更**写进了库，界面却不刷新**」：
+    //   · 云端备份被清理（`blob_size → 0`）⇒ 书架仍显示「云端有」⇒ 点下载 **404**
+    //   · 别端新增/改动的生词、复习记录 ⇒ 生词本与复习页要等**别的动作**触发 bump
+    //     （下载书 / 删书 / 划线 / 查词…）才会出现 —— 而这些动作与同步无关
+    // ⇒ 表现为「同步明明成功了，数据就是不出来」，且**不报错**。
+    //
+    // 🔑 这正是本项目那条判据的实例：**「写端逐个通知读端」是必漏结构，
+    //    要反过来让读端 watch 一个 revision**（`bump()` 已经存在，只是没人调）。
+    //
+    // ⚠️ 两个 revision 都要 bump：pull 会同时写 `user.db`（生词/复习/划线/阅读记录）
+    //    与 `book.db`（书单 `cloud_book` / 书进度）⇒ 两个读端族都要重算。
+    // ⚠️ 只在**真的拉回东西**时 bump（`pulledTotal > 0`）：否则每次后台同步都会
+    //    白让「书列表 / 云端 presence / 云端用量」这几个 FutureProvider 重算。
+    //    （轻，但没有理由。）
+    // ⚠️ `pushOnly`（登出前 flush / App 进后台）**只推不拉** ⇒ 不需要 bump。
+    // ⚠️ 不判 `report.ok`：`pulledTotal > 0` 本身就说明「**已经有数据落库**」
+    //    ⇒ 与整轮是否 100% 成功无关，界面都该反映已落库的那部分。
+    if (!pushOnly && report.pulledTotal > 0) {
+      ref.read(userDbRevisionProvider.notifier).bump();
+      ref.read(bookDbRevisionProvider.notifier).bump();
+    }
   } catch (e) {
     debugPrint('[sync] $tag 失败（不影响用户）：$e');
+    status.finishFailed(_friendlySyncError(e));
   }
 }
+
+/// 把同步异常翻成**用户能读懂的一句话**。
+///
+/// 🔑 它是状态里 `lastError` 的**唯一出口** —— 映射不到就**原样透传**，
+///    于是云朵图标下会挂着 `SocketException: ... (OS Error: errno = 111)` 这类机器话
+///    （同 `auth_provider._friendlyError` 的判据：最该给人话的地方别漏）。
+String _friendlySyncError(Object e) {
+  // 403「跨设备同步是订阅权益」—— `SyncNotSubscribed` 自带可直接展示的文案
+  if (e is SyncNotSubscribed) return e.message;
+  final raw = e.toString();
+  if (raw.contains('TimeoutException')) return '网络超时，稍后会自动重试';
+  if (raw.contains('SocketException') ||
+      raw.contains('Connection refused') ||
+      raw.contains('Failed host lookup')) {
+    return '连不上服务器，稍后会自动重试';
+  }
+  return raw;
+}
+
+/// 两种「只 push」时机的共用实现（**口径只有一处**）。
+/// 🗑 2026-10-09：原 `_pushOnly` 已并入 [_runSync]（加了状态上报后，
+///    「执行」与「上报」必须同源 —— 分开写就会出现「跑过但没上报」的路径）。
+

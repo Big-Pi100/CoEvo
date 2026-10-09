@@ -33,6 +33,8 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:sqflite_common/sqlite_api.dart';
 
+import 'ebook/book_raw_store.dart';
+
 import 'ebook/book_import_plan.dart';
 import 'ebook/book_progress_sync.dart';
 import 'ebook/book_text.dart';
@@ -101,6 +103,16 @@ Future<BookImportResult> importBook({
   required String fileName,
   required String Function() newId,
   required String addedAt,
+  /// 🆕 原始文件的保存目录（`null` ⇒ 不保存）。
+  ///
+  /// 🔴 为什么要保存：**上传云端需要原始文件**，而解析后的章节**拼不回去**
+  ///    （epub 的 zip 结构 / manifest / spine 都在解析时丢了）；
+  ///    设计稿的「换机后复用端侧解析器」同样需要它。
+  ///    📄 理由与路径规则见 `book_raw_store.dart`。
+  ///
+  /// ⚠️ 目录由**调用方**提供（Flutter 侧用 `path_provider`）——
+  ///    本文件是零 Flutter 依赖的，不能自己去问平台要目录。
+  String? rawDir,
 }) async {
   // ── ① 入口体检（在解析之前）──
   //
@@ -142,7 +154,7 @@ Future<BookImportResult> importBook({
   }
   final parsed = work.parsed;
 
-  return switch (parsed) {
+  final result = switch (parsed) {
     // 🔴 **必须是 `EbookParseFailure`（解析层的类型）**，不是本文件的 `BookImportFailure`。
     //    两者名字相近但完全不同：前者是「解析器报的失败」，后者是「导入的最终结果」。
     //    ⚠️ 初版就是写成了 `BookImportFailure(...)` —— 那是**本文件自己的类**，
@@ -162,6 +174,31 @@ Future<BookImportResult> importBook({
         contentHash: work.hash,
       ),
   };
+
+  // 🆕 落库**成功之后**才保存原始文件 —— 顺序理由：
+  //    先存文件再落库，落库失败会留下一份「没有书对应它」的孤儿文件；
+  //    反过来最坏只是「有书、没原始文件」，而那**能自愈**
+  //    （重新导入同一本书会把它补上，`content_hash` 相同 ⇒ 覆盖同一路径）。
+  //
+  // ⚠️ **失败静默**：书已经能读了；没有原始文件只影响「能不能上传 / 换机复用」，
+  //    由**上传队列**在真正需要时给出可解释的提示 —— 在导入这一步报错会打扰用户，
+  //    而他此刻并不能做什么（重导一次大概率还是同样的结果）。
+  if (result is BookImportSuccess && rawDir != null && parsed is EbookParseSuccess) {
+    try {
+      await saveRawBook(
+        rawDir: rawDir,
+        contentHash: work.hash,
+        // 🔑 用解析出来的 `sourceFormat`（'epub'/'txt'）而不是文件名后缀 ——
+        //    它与 `book.source_format` 同源，也与后端的 `is_valid_ext` 白名单一致。
+        ext: parsed.book.sourceFormat,
+        bytes: bytes,
+      );
+    } catch (_) {
+      // 见上：静默（由上传队列在需要时提示）
+    }
+  }
+
+  return result;
 }
 
 /// 拿到 `BookDraft` 之后：检查章节数上限 → 生成计划 → 事务落库。

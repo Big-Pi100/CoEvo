@@ -260,6 +260,22 @@ class WordQueryService {
     return rows.isEmpty ? null : rows.first['id'] as String?;
   }
 
+  /// 按 `word.id` 取**拼写** —— [idOfSpelling] 的反向，**只读一列**。
+  ///
+  /// 🔑 用途：`card_review_state.spelling` 曾被写成内部 ID（`w000129` …），
+  ///    修复时要把它换回真拼写（见 `review_spelling.dart` 的解析器 ⑤ 级）。
+  ///
+  /// ⚠️ 不要用 [cardById] 代替：那个会 `LEFT JOIN card` 读 `content`
+  ///    （~1.2 KB/词）**并算聚合页入口** —— 修复场景只需要一个词形。
+  ///    （同 [idOfSpelling] 文档里对 `_cardBySpelling` 的那条说明。）
+  Future<String?> spellingOfId(String id) async {
+    final rows = await _db.rawQuery(
+      'SELECT spelling FROM word WHERE id = ? LIMIT 1',
+      [id],
+    );
+    return rows.isEmpty ? null : rows.first['spelling'] as String?;
+  }
+
   /// 按 `word.id` 取词条卡片 —— **复习页用**（那里只有 `word_id`，没有拼写）。
   ///
   /// 与 [_cardBySpelling] 的差别只在 `WHERE` 列；解析逻辑共用 [_cardFromRow]。

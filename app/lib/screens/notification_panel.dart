@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import '../api/api_config.dart';
 import '../providers/auth_provider.dart';
 import '../theme/co_spacing.dart';
+import '../theme/coevo_tokens.dart';
+import '../theme/tokens_ext.dart';
 import '../widgets/twemoji.dart';
 
 /// 通知中心页面
@@ -138,20 +140,99 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final unreadCount = _notifications.where((n) => n['read'] == false).length;
+    final t = CoEvoTokensExt.of(context);
 
+    // 🔴 2026-10-09：外壳统一 —— 本页原先是**全库唯一**用 Material `AppBar` 的页面
+    //    （`grep -rl "appBar: AppBar(" app/lib` ⇒ 只有它）⇒ 换成与**收藏页同一套**
+    //    自绘标题行（设计稿 `visual-feed-bookmark-2026-09-25.html:174-176` 的 `.bm-hd`：
+    //    `display:flex; justify-content:space-between` · 左 `h2` 23/w600/字距-.015em ·
+    //    右 `.back` 12 / accent / w600）。
+    //
+    // ⚠️ **必须一起补返回入口**：原来的「返回」是 `AppBar` 在路由可 pop 时**隐式**插入的
+    //    ⇒ 只换外壳会让本页**失去唯一返回入口**。
+    //    📌 同类事故有过：`bookmark_list_screen` 记录白哥实测「收藏列表根本没有返回按钮」
+    //    （那次也是「照着 mockup 认为不需要返回」，而设计稿 CSS 里本就有 `.back`）。
     return Scaffold(
-      appBar: AppBar(
-        title: Tw('通知中心'),
-        actions: [
-          if (unreadCount > 0)
-            TextButton(
-              onPressed: _markAllRead,
-              child: Tw('全部已读 ($unreadCount)',
-                  style: const TextStyle(fontSize: 12)),
+      backgroundColor: Color(t.page.argb32),
+      body: SafeArea(
+        // 🔑 这是**独立 push 页**（`MaterialPageRoute`）⇒ **要**避让底部安全区
+        //    （home indicator）。⚠️ 别照抄 `bookmark_list_screen` 的 `bottom: false` ——
+        //    那一页在 shell 内，底部由自绘粘土 tabbar 接管。
+        //    参照物是**同类页** `achievements_screen`（它写的就是裸 `SafeArea(`）。
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── 标题栏（照设计稿 `.bm-hd`）──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 2, 14, 14),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '通知中心',
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: 23,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 23 * -0.015,
+                      color: Color(t.ink.argb32),
+                    ),
+                  ),
+                  // 设计稿 `.bm-hd .back{font-size:12px;color:var(--accent);font-weight:600}`
+                  InkWell(
+                    onTap: () => context.pop(),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      // 撑够点击区（12px 小字太窄），视觉上仍是纯文字链接
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      child: Text(
+                        '返回',
+                        style: TextStyle(
+                          fontFamily: CoFonts.uiSans,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(t.accent.argb32),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-        ],
-      ),
-      body: _loading
+
+            // ── 批量动作（原在 `AppBar.actions` 里）──
+            //  🔑 **搬位置 ≠ 删**：文案 / 动作 / 条件渲染三者逐字保留；
+            //     形态从 `TextButton` 换成与「返回」同族的文字链接（12/accent/w600）——
+            //     项目里「动作」的统一形态就是它（`TextButton` 是 Material 的口径）。
+            if (unreadCount > 0)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(22, 0, 22, 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    InkWell(
+                      onTap: _markAllRead,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        child: Tw('全部已读 ($unreadCount)',
+                            style: TextStyle(
+                              fontFamily: CoFonts.uiSans,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(t.accent.argb32),
+                            )),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // ── 主体（原 `body:` 的内容，**逐字未动**）──
+            Expanded(
+              child: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _load,
@@ -259,7 +340,11 @@ class _NotificationPanelBodyState extends State<_NotificationPanelBody> {
                         );
                       },
                     ),
-            ),
+              ), // 收 RefreshIndicator
+            ), // 收 Expanded
+          ], // 收 children 列表
+        ), // 收 Column
+      ), // 收 SafeArea
     );
   }
 }

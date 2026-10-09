@@ -55,6 +55,8 @@ class ClayField extends StatelessWidget {
     this.autofocus = false,
     this.enabled = true,
     this.trailing,
+    this.minLines = 1,
+    this.maxLines = 1,
   });
 
   final TextEditingController controller;
@@ -90,6 +92,19 @@ class ClayField extends StatelessWidget {
   ///    既有调用点（登录/注册弹窗）不受影响。
   final Widget? trailing;
 
+  /// 多行输入（2026-10-07 新增，首个使用者：**划线笔记**）。
+  ///
+  /// 🔑 与 `trailing` 同一条取向：**这是通用形态，不是「笔记专用」** ——
+  ///    它只是「输入框能长高」，任何长文本输入都该能用。
+  ///
+  /// ⚠️ 默认 `1` ⇒ **既有调用点布局逐字不变**
+  ///（同 `TraceMarkdown.traceEnabled` 那一族原则：加参数时让旧行为成为默认值）。
+  ///
+  /// 📌 `minLines` 决定「空的时候也有多高」—— 笔记框给 `3`
+  ///    是为了**看得出这里能写多行**（单看一行高的框，用户不会想到可以换行）。
+  final int minLines;
+  final int maxLines;
+
   /// 原型 `.inp{border-radius:12px}` —— 写死，不走 token（同 `HeaderChip` 的 13）。
   static final BorderRadius _radius = BorderRadius.circular(12);
 
@@ -118,6 +133,8 @@ class ClayField extends StatelessWidget {
           textInputAction: textInputAction,
           onSubmitted: onSubmitted,
           autofocus: autofocus,
+          minLines: minLines,
+          maxLines: maxLines,
           // 🔴 四种 border 全部显式置 `none` —— 只关 `border` 不够：
           //    `TextField` 在**聚焦**时会切到 `focusedBorder`，
           //    只写 `border` 的话，一点进输入框就会冒出一条 Material 下划线

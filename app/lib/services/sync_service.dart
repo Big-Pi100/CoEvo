@@ -56,8 +56,11 @@ import 'package:sqflite_common/sqlite_api.dart';
 import 'article_read_repository.dart';
 import 'bookmark_repository.dart';
 import 'ebook/book_progress_sync.dart';
+import 'ebook/cloud_book_repository.dart';
 import 'fsrs_service.dart';
+import 'highlight_repository.dart';
 import 'review_list_query.dart';
+import 'review_spelling.dart';
 import 'sync_merge.dart' as m;
 import 'user_word_repository.dart';
 
@@ -88,6 +91,11 @@ class SyncReport {
   int pushedBookmarks = 0;
   int pushedBookProgress = 0;
 
+  /// 🆕 2026-10-09：划线记忆（`highlight`）。**必须计入 [pushedTotal]/[pulledTotal]** ——
+  ///    否则「本轮只同步了笔记」会被判成「什么都没做」⇒ 不 bump ⇒ 界面不刷新
+  ///    （同 `pulledBooks` 那条注释里记的坑）。
+  int pushedHighlights = 0;
+
   /// 本次**认领**（把「别端的电子书进度」应用到本地已导入的书）的本数。
   ///
   /// 🔑 单列而不是并进 `pulledBookProgress`：后者是「交换区写入数」，
@@ -101,6 +109,12 @@ class SyncReport {
   int pulledBookmarks = 0;
   int pulledBookProgress = 0;
 
+  /// 🆕 2026-10-09：划线记忆（`highlight`）。
+  int pulledHighlights = 0;
+
+  /// 🆕 书架上云：本轮**合并进 `cloud_book`** 的条数（含删除）。
+  int pulledBooks = 0;
+
   /// 是否成功。`false` 时 [error] 一定有值。
   bool ok = true;
   String? error;
@@ -110,14 +124,29 @@ class SyncReport {
       pushedUserWords +
       pushedArticleReads +
       pushedBookmarks +
+      pushedHighlights +
       pushedBookProgress;
 
+  /// 🔴 2026-10-09 修正：原先**漏了 `pulledBooks` 与 `claimedBooks`** ——
+  ///    它们是「书架上云」之后新加的两项，而这个 getter 没跟着更新。
+  ///    后果是**静默的**：
+  ///    · `isEmpty` 会把「本轮只拉回了书单变更」判成「**什么都没做**」
+  ///      ⇒ 日志不打（`_say('sync.pull: …')`）、调用方跳过 UI 提示；
+  ///    · 「拉回书单但没拉回别的」正是**云端备份清理**生效时的样子
+  ///      （`blob_size → 0` 只有 `pulledBooks` 计到）⇒ 会被整条漏掉。
+  ///    ⚠️ `sync_status_provider` 原先写的是 `pulledTotal + claimedBooks`
+  ///      —— 那是**调用方打的补丁**；补全本 getter 后**必须撤掉**，否则**双计**。
+  ///    📌 判据：**补丁 ≠ 修法** —— 判据有洞时要先问「还有哪些地方在补这个洞」，
+  ///       再一次性改全（同族：`isEmpty` / 日志 / 状态显示三处都受影响）。
   int get pulledTotal =>
       pulledReviewEvents +
       pulledUserWords +
       pulledArticleReads +
       pulledBookmarks +
-      pulledBookProgress;
+      pulledHighlights +
+      pulledBookProgress +
+      pulledBooks +
+      claimedBooks;
 
   /// 本次**什么都没做**（无待推 + 无新拉）。
   ///
@@ -128,7 +157,8 @@ class SyncReport {
   @override
   String toString() => ok
       ? 'SyncReport(推 $pushedTotal: 复习$pushedReviewEvents 词$pushedUserWords '
-          '读$pushedArticleReads 藏$pushedBookmarks 书$pushedBookProgress | '
+          '读$pushedArticleReads 藏$pushedBookmarks 划线$pushedHighlights '
+          '书$pushedBookProgress | '
           '拉 $pulledTotal${claimedBooks > 0 ? ' 认领书$claimedBooks' : ''})'
       : 'SyncReport(失败: $error)';
 }
@@ -159,6 +189,12 @@ class SyncService {
     required String deviceId,
     SyncLog? log,
     FsrsService? fsrs,
+    /// 查词库（`word.db`）拿拼写 —— 见 [_spellingFor] 的说明。
+    /// 不传也能工作（少一级来源：正式词解析不出来就返回 `null`，不写坏数据）。
+    WordSpellingLookup? wordSpellingLookup,
+    /// 拼写解析的诊断输出（可选）。**本文件不 import flutter**（保持纯 Dart），
+    /// 所以由调用方把 `debugPrint` 传进来。
+    void Function(String message)? onSpellingLog,
   })  : _userDb = userDb,
         _bookDb = bookDb,
         _pushHttp = pushHttp,
@@ -167,7 +203,12 @@ class SyncService {
         _writeCursor = writeCursor,
         _deviceId = deviceId,
         _log = log,
-        _fsrs = fsrs ?? FsrsService();
+        _fsrs = fsrs ?? FsrsService(),
+        _spellingResolver = ReviewSpellingResolver(
+          userDb,
+          wordLookup: wordSpellingLookup,
+          onLog: onSpellingLog,
+        );
 
   final Database _userDb;
 
@@ -182,6 +223,12 @@ class SyncService {
   final String _deviceId;
   final SyncLog? _log;
   final FsrsService _fsrs;
+
+  /// `word_id` → 真拼写的**唯一解析处**（`review_spelling.dart`）。
+  ///
+  /// ⚠️ 由构造参数构建（不是每次现 new）—— 解析器持有 `userDb` 与注入的词库查询，
+  ///    每行重建一次是浪费。
+  final ReviewSpellingResolver _spellingResolver;
 
   void _say(String msg) => _log?.call(msg);
 
@@ -239,17 +286,20 @@ class SyncService {
       final uw = UserWordRepository(_userDb);
       final ar = ArticleReadRepository(_userDb);
       final bm = BookmarkRepository(_userDb);
+      final hl = HighlightRepository(_userDb);
 
       final reviews = await q.pendingReviews();
       final words = await uw.pending();
       final reads = await ar.pending();
       final marks = await bm.pending();
+      final highlights = await hl.pending();
       final progress = await _pendingBookProgress();
 
       r.pushedReviewEvents = reviews.length;
       r.pushedUserWords = words.length;
       r.pushedArticleReads = reads.length;
       r.pushedBookmarks = marks.length;
+      r.pushedHighlights = highlights.length;
       r.pushedBookProgress = progress.length;
 
       // 🔑 **空批次不发请求** —— 一次网络往返有成本（电量/流量/延迟），
@@ -264,7 +314,10 @@ class SyncService {
         words: words,
         reads: reads,
         marks: marks,
+        highlights: highlights,
         progress: progress,
+        // 🆕 书架上云：书单**先到**（服务端上传文件时会校验书单行存在）
+        books: await _pendingBooks(),
       ));
 
       // ── 只有 **push 成功** 才标记（失败则不标记 ⇒ 下次重试）──
@@ -272,6 +325,7 @@ class SyncService {
       await uw.markSynced(words.map((w) => w.id));
       await ar.markSynced(reads.map((e) => e.articleId));
       await bm.markSynced(marks.map((b) => b.contentId));
+      await hl.markSynced(highlights.map((h) => h.id));
       // ⚠️ `book_progress_pending` **没有待推标记** ⇒ 每次全量带上。
       //    代价可忽略（一本书一行）+ 服务端 UPSERT 的 `WHERE` 保证
       //    「值没变就不刷新 received_at」⇒ **不会产生回声**。
@@ -296,7 +350,9 @@ class SyncService {
     required List<UserWord> words,
     required List<({int articleId, String readAt})> reads,
     required List<Bookmark> marks,
+    required List<Highlight> highlights,
     required List<Map<String, Object?>> progress,
+    required List<Map<String, Object?>> books,
   }) {
     return {
       'device_id': _deviceId,
@@ -321,10 +377,62 @@ class SyncService {
             'deleted': b.deleted ? 1 : 0,
           }
       ],
+      // 🆕 2026-10-09 划线记忆。⚠️ 位置**与后端 `PushInput` 的字段顺序一致**
+      //    （`bookmarks` 与 `book_progress` 之间）—— 顺序无功能意义，
+      //    但它让「两张清单逐条对照」变成可能（漏一张表时一眼看得出）。
+      'highlights': [
+        for (final h in highlights) m.highlightToPushJson(h.toPushRow())
+      ],
       'book_progress': [
         for (final p in progress) m.bookProgressToPushJson(p)
       ],
+      // 🆕 书单（书架上云）。⚠️ 它必须**先于文件上传**到达服务端，
+      //    否则上传会被 400 拒（「这本书还没在书单里」）。
+      'books': books,
     };
+  }
+
+  /// 书单的待推行（本地 `book` 表**全量**）。
+  ///
+  /// 🔑 为什么全量而不是增量：书的元数据**很少变**（导入后就是固定的），
+  ///    而且服务端的 `sync_book` 是 upsert ⇒ 全量推是幂等的、代价也小。
+  ///    ⚠️ 与 `book_progress_pending`（只推变化）的取舍不同：
+  ///       那边是**高频写**（每次翻章都变），这边是**一次性**。
+  ///
+  /// ⚠️ `size_bytes` 传 0：配额看的是服务端的 `blob_size`（权威），
+  ///    这个字段只用于端侧展示，而当前 UI 并不显示它。
+  ///    ⇒ 不为此在 push 时去 `stat` 每个原始文件（书多时是 N 次磁盘 I/O）。
+  Future<List<Map<String, Object?>>> _pendingBooks() async {
+    final db = _bookDb;
+    if (db == null) return const [];
+    try {
+      final rows = await db.query('book');
+      final out = <Map<String, Object?>>[];
+      for (final r in rows) {
+        final h = r['content_hash'];
+        // ⚠️ 无指纹 ⇒ **不参与同步**（同进度同步的判据：
+        //    拿一个错误的身份去匹配比不同步更糟）
+        if (h is! String || h.isEmpty) continue;
+        final at = (r['added_at'] as String?) ?? '';
+        out.add({
+          'content_hash': h,
+          'title': (r['title'] as String?) ?? '',
+          'author': (r['author'] as String?) ?? '',
+          'lang': (r['language'] as String?) ?? '',
+          'chapter_count': (r['chapter_count'] as int?) ?? 0,
+          'size_bytes': 0,
+          'added_at': at,
+          // 🔑 书导入后元数据不变 ⇒ 用 `added_at` 当 `updated_at`
+          //    （服务端按它做「较新者赢」的合并）
+          'updated_at': at,
+          'deleted': 0,
+        });
+      }
+      return out;
+    } catch (e) {
+      _say('sync.push: 读书单失败（跳过书单）: $e');
+      return const [];
+    }
   }
 
   /// 电子书进度的待推行（`book_progress_pending` 全量）。
@@ -356,13 +464,33 @@ class SyncService {
       final words = _listOf(resp, 'user_words');
       final reads = _listOf(resp, 'article_reads');
       final marks = _listOf(resp, 'bookmarks');
+      final highlights = _listOf(resp, 'highlights');
       final progress = _listOf(resp, 'book_progress');
+      final books = _listOf(resp, 'books');
 
-      r.pulledReviewEvents = await _applyReviewEvents(events);
+      // 🔴 **这两行的顺序有语义**（2026-10-09 修）：`user_words` 必须**先**落库。
+      //
+      //    理由：`_applyReviewEvents` 要为每个 word_id **解析拼写**，而它的
+      //    第 ② 级 fallback 正是 `user_word.spelling`。原先它排在前面 ⇒
+      //    **同一次 pull 里那份正确的拼写还没写进去** ⇒ 解析必然失败 ⇒
+      //    退回 `word_id` 占位（而那个占位会被持久化成列表标题，见
+      //    `review_spelling.dart` 文件头）。
+      //
+      //    📌 判据：**「谁依赖谁」的顺序不能靠巧合** —— 被依赖的那步排在前面。
       r.pulledUserWords = await _applyUserWords(words);
+      // 🔴 划线必须**排在 `_applyReviewEvents` 之前**（同 `user_words` 的理由，2026-10-09）。
+      //
+      //    `ReviewSpellingResolver` 解析 `hl:<uuid>` 的第 ③ 级正是**同一个库**的
+      //    `highlight.text` ⇒ 若划线还没落库，这一步必然解析失败 ⇒ 只能退到
+      //    「保留原值」（见 `review_spelling.dart`）⇒ 用户在新设备上先看到一张
+      //    标题还是 `hl:<uuid>` 的卡，直到下一次启动的自愈才修好。
+      //    📌 判据同 `user_words` 那条：**「谁依赖谁」的顺序不能靠巧合**。
+      r.pulledHighlights = await _applyHighlights(highlights);
+      r.pulledReviewEvents = await _applyReviewEvents(events);
       r.pulledArticleReads = await _applyArticleReads(reads);
       r.pulledBookmarks = await _applyBookmarks(marks);
       r.pulledBookProgress = await _applyBookProgress(progress);
+      r.pulledBooks = await _applyCloudBooks(books);
 
       // 🔴🔴 **pull 之后必须认领一次** —— 否则对**已导入**的书，
       //    别端刚推来的进度会被写进交换区却**永远不被应用**
@@ -395,6 +523,43 @@ class SyncService {
       _say('sync.pull 失败: $e');
     }
     return r;
+  }
+
+  /// 把 pull 来的书单**增量合并**进 `cloud_book`。
+  ///
+  /// 🔑 两条路：`deleted=1` 的进 [CloudBookRepository.mergeCloudBooks] 的删除列表，
+  ///    其余进 upsert 列表 —— 这样「别端删了书」在本端也会消失
+  ///    （否则本地会一直显示一本云端已不存在的书，点开下载必然 404）。
+  ///
+  /// ⚠️ `CloudBook.fromJson` 对缺字段宽容、但**缺 `content_hash` / `title` 就返回 null**
+  ///    ⇒ 这里静默跳过那种行（服务端给不出身份的书没法用，猜一个更糟）。
+  Future<int> _applyCloudBooks(List<Map<String, dynamic>> rows) async {
+    final db = _bookDb;
+    if (db == null || rows.isEmpty) return 0;
+    try {
+      final upserts = <CloudBook>[];
+      final deleted = <String>[];
+      for (final r in rows) {
+        final b = CloudBook.fromJson(r);
+        if (b == null) continue;
+        final d = r['deleted'];
+        final isDeleted = (d is num && d.toInt() == 1) || d == true;
+        if (isDeleted) {
+          deleted.add(b.contentHash);
+        } else {
+          upserts.add(b);
+        }
+      }
+      return await CloudBookRepository.mergeCloudBooks(
+        db,
+        upserts,
+        deletedHashes: deleted,
+      );
+    } catch (e) {
+      // 书单合并失败**不连累其余五类**（各表独立）
+      _say('sync.pull: 合并书单失败: $e');
+      return 0;
+    }
   }
 
   static List<Map<String, dynamic>> _listOf(
@@ -446,9 +611,21 @@ class SyncService {
       // ③ 写回派生状态。
       //    🔴 `pending_push: 0` —— `card_review_state` **不参与同步**
       //       （推的依据是 `review_log.synced`）。已核实 UI 层无人读该列。
+      //
+      // 🔴 **拼写：解析不出就保留原值**（2026-10-09 修）。
+      //    原实现是 `spelling: await _spellingFor(wordId)`，而 `_spellingFor`
+      //    两级都查不到时**返回 `word_id` 当占位**。`upsertState` 是
+      //    `INSERT OR REPLACE`（整行覆盖）⇒ 那个占位被**持久写进表里**，
+      //    而复习列表的标题读的正是这一列 ⇒ 用户看到 `w000129` / `hl:<uuid>`。
+      //    ⇒ 现在：解析不出 ⇒ 沿用表里现有的值（**不动那一列**，留给自愈）。
+      //    ⚠️ 连行都没有时才退到 `word_id`（`NOT NULL` 约束下唯一可用值）——
+      //       这是极端情况（既不在 state、也不在 user_word、非 hl:/ext:、
+      //       词库也查不到），下一轮同步或自愈会再试。
+      final currentRow = await q.stateOf(wordId);
+      final resolved = await _spellingFor(wordId);
       await q.upsertState(
         wordId: wordId,
-        spelling: await _spellingFor(wordId),
+        spelling: resolved ?? currentRow?.spelling ?? wordId,
         state: state.state,
         step: state.step,
         stability: state.stability,
@@ -463,22 +640,22 @@ class SyncService {
     return n;
   }
 
-  /// `word_id` → 拼写（`card_review_state.spelling` 是 `NOT NULL`）。
+  /// `word_id` → 真拼写；**解析不出来返回 `null`**（调用方据此**不动那一列**）。
   ///
-  /// 🔑 顺序：**本地已有状态 → 生词本 → `word_id` 本身**。
-  ///    · 前两者能命中时拿到的是**真拼写**
-  ///    · 都命中不了（首次同步且这个词不在生词本里）⇒ 用 `word_id` 兜底
-  ///      ⚠️ 那是个**难看的占位**（列表会显示 `w008732` 而不是单词），
-  ///         但**比崩掉好**，且下次该词进生词本 / 本地查词后会被覆盖。
-  ///    📌 为什么不查 `word.db`：那是**另一个库**，跨库 JOIN 会把
-  ///       「库不可用」的风险引进来（本文件的其余部分都不依赖 word.db）。
-  Future<String> _spellingFor(String wordId) async {
-    final st = await ReviewListQuery(_userDb).stateOf(wordId);
-    if (st != null && st.spelling.isNotEmpty) return st.spelling;
-    final uw = await UserWordRepository(_userDb).findByWordId(wordId);
-    if (uw != null && uw.spelling.isNotEmpty) return uw.spelling;
-    return wordId;
-  }
+  /// 🔴 2026-10-09：原实现自己查两级，**兜底 `return wordId`** ——
+  ///    那个占位会被 `INSERT OR REPLACE` **持久化成列表标题**（用户看到 `w000129`）。
+  ///    现在**委托给唯一的解析器** `ReviewSpellingResolver`：
+  ///    它多两级来源（`hl:` 划线原文——**同一个库**可取 / `ext:` id 自带拼写 / 词库），
+  ///    并且**拿不到就返回 `null`**，由调用方保留原值。
+  ///
+  ///    📌 判据：**「解析拼写」这件事只能有一处口径** —— 两处各写一份，
+  ///       规则必然漂移，而漂移是静默的（这一轮缺陷就是这么来的）。
+  ///
+  /// ⚠️ 为什么解析器**不直接查 `word.db`**：那是另一个库，本文件的其余部分
+  ///    刻意不依赖它（不想把「另一个库不可用」的风险引进同步主流程）。
+  ///    ⇒ 词库那一级由 `buildSyncService` **注入**（见构造参数 `wordSpellingLookup`）。
+  Future<String?> _spellingFor(String wordId) =>
+      _spellingResolver.resolve(wordId);
 
   ReviewEvent? _eventFromPullJson(Map<String, dynamic> j) {
     final wordId = j['word_id'];
@@ -641,6 +818,97 @@ class SyncService {
       n++;
     }
     return n;
+  }
+
+  /// 🆕 2026-10-09：拉回来的划线 → **合并**写进本地 `highlight`。
+  ///
+  /// 🔴 写的是 `highlight` 表（**不是** `card_review_state`）——
+  ///    后者是 `review_log` 的**派生态**，由 `_applyReviewEvents` 的重放负责。
+  ///    本方法只对齐「划线本体」：正文 / 位置 / 笔记 / 暂停 / 软删。
+  ///
+  /// ## 🔴 为什么走「直写」而不是 `HighlightRepository.add()`
+  ///
+  /// `add()` 带业务语义（「**用户刚刚划了这条**」）：它会把 `deleted` 与 `paused`
+  /// **归零**。用它做同步的后果很具体：
+  ///   ① 别端**取消**的划线，在本地**复活**；
+  ///   ② 别端**暂停**的笔记，在本地**恢复排期**。
+  /// ⇒ 同步路径只对齐数据，**不借用业务方法**（同 `_upsertUserWord` 的判据）。
+  ///
+  /// ## 🔴 `pending_push` 由 [m.pendingPushAfterPull] 决定
+  ///
+  /// pull 下来的是**服务端已经知道的**数据 ⇒ 若一律标待推，下次 push 会把它们
+  /// 整批推回去（回声），且在首次同步（全量）时最严重。同其余四张表。
+  Future<int> _applyHighlights(List<Map<String, dynamic>> rows) async {
+    if (rows.isEmpty) return 0;
+    var n = 0;
+    for (final j in rows) {
+      final remote = m.highlightFromPullJson(j);
+      final id = remote['id'] as String? ?? '';
+      if (id.isEmpty) continue;
+
+      // ⚠️ 取**整行**（不是只取几列）：`mergeHighlight` 的「首次事实」那一组
+      //    （正文 / offsets / 来源）都要读本地值 —— 少取一列会让合并**静默**
+      //    用 `null` 覆盖真值（`Map` 取不存在的键返回 null，不报错）。
+      final existing = await _userDb
+          .query('highlight', where: 'id = ?', whereArgs: [id], limit: 1);
+      final Map<String, Object?>? localRow =
+          existing.isEmpty ? null : {...existing.first};
+      final Map<String, Object?> merged =
+          localRow != null ? m.mergeHighlight(localRow, remote) : {...remote};
+      merged['pending_push'] = m.pendingPushAfterPull(
+        localExisted: localRow != null,
+        localWasPending:
+            localRow != null && (localRow['pending_push'] as num?)?.toInt() == 1,
+      )
+          ? 1
+          : 0;
+      await _upsertHighlight(merged);
+      n++;
+    }
+    return n;
+  }
+
+  /// 按 `id` upsert 一行划线（**直写**，不经仓储的业务方法）。
+  ///
+  /// ⚠️ 列名**显式列出**（不依赖表的物理列顺序）——
+  ///    `paused` 是 v1.9 用 `ALTER TABLE ADD COLUMN` 追加的，
+  ///    而新建库是 `CREATE TABLE` 一次成型 ⇒ **两边的列顺序不同**。
+  ///    显式列名让这个差异与本次写入无关（同 `bookmark.deleted` 那条教训）。
+  Future<void> _upsertHighlight(Map<String, Object?> row) async {
+    await _userDb.rawInsert(
+      'INSERT INTO highlight '
+      '(id, source_type, source_id, chapter_idx, start_offset, end_offset, '
+      ' text, note, created_at, updated_at, deleted, pending_push, paused) '
+      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) '
+      'ON CONFLICT (id) DO UPDATE SET '
+      '  source_type  = excluded.source_type, '
+      '  source_id    = excluded.source_id, '
+      '  chapter_idx  = excluded.chapter_idx, '
+      '  start_offset = excluded.start_offset, '
+      '  end_offset   = excluded.end_offset, '
+      '  text         = excluded.text, '
+      '  note         = excluded.note, '
+      '  created_at   = excluded.created_at, '
+      '  updated_at   = excluded.updated_at, '
+      '  deleted      = excluded.deleted, '
+      '  pending_push = excluded.pending_push, '
+      '  paused       = excluded.paused',
+      [
+        row['id'],
+        row['source_type'],
+        row['source_id'],
+        row['chapter_idx'],
+        row['start_offset'],
+        row['end_offset'],
+        row['text'],
+        row['note'],
+        row['created_at'],
+        row['updated_at'],
+        row['deleted'] ?? 0,
+        row['pending_push'] ?? 0,
+        row['paused'] ?? 0,
+      ],
+    );
   }
 
   /// 把交换区里「本地已有这本书」的进度**认领**进 `book_progress`。

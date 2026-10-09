@@ -50,16 +50,21 @@ import 'dart:async';
 import '../providers/achievement_notifier.dart';
 import '../providers/achievement_provider.dart';
 import '../providers/device_id_provider.dart';
+import '../providers/memory_settings_provider.dart';
 import '../providers/review_list_provider.dart';
 import '../providers/review_session_provider.dart';
 import '../providers/user_db_provider.dart';
 import '../services/fsrs_service.dart';
+import '../services/highlight_grader.dart';
+import '../services/highlight_repository.dart';
 import '../services/review_list_query.dart';
 import '../services/spelling_grader.dart';
 import '../theme/clay.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/theme_builder.dart';
 import '../theme/tokens_ext.dart';
+import '../widgets/clay_button.dart';
+import '../widgets/note_dialog.dart';
 import '../widgets/word_card.dart';
 
 class ReviewSessionScreen extends ConsumerStatefulWidget {
@@ -97,7 +102,29 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     if (_busy) return;
 
     final typed = _input.text;
-    final correct = gradeSpelling(typed, row.item.spelling);
+
+    // 🆕 判定分流：**词卡拼写** vs **划线卡默写**
+    //    🔑 出口相同（对/错 → `ratingForSpelling`），只是**判据**不同：
+    //       划线卡按「**错词比例**」（阈值 = **用户在「我的 → 记忆」里的设置**，
+    //       默认 5%，见 `memory_settings.dart`）。
+    //    🔴 **只有划线卡读这个设置** —— 单词卡的答案是唯一的，
+    //       「多准算对」在它上面没有意义（拼错一个字母就是拼错了）。
+    //    ⚠️ 用 `read` 不是 `watch`：提交是**一次性动作**，不需要因设置变化重建页面；
+    //       而且判定必须用「**此刻**的值」（用户中途去改了设置，已提交的这次判定不该回溯）。
+    // 🔴 2026-10-09：`cardBundleProvider` 改为返回 sealed 的 `CardLoad`
+    //    （一个 `null` 分不出「词库未就绪」与「取不到卡」—— 见该 provider 的文档）。
+    //    这里只需要「拿到的是不是划线卡」⇒ 非 `CardReady` 一律按词卡判定，
+    //    与旧行为一致（旧代码取不到卡时 `bundle` 也是 `null`）。
+    final load = ref.read(cardBundleProvider).valueOrNull;
+    final bundle = load is CardReady ? load.bundle : null;
+    final correct = bundle is HighlightCardBundle
+        ? gradeCloze(
+            typed,
+            bundle.highlight.text,
+            maxWrongPercent:
+                ref.read(memorySettingsProvider).maxWrongPercent,
+          ).correct
+        : gradeSpelling(typed, row.item.spelling);
     final rating = ratingForSpelling(correct: correct);
 
     // 🔑 **在任何 `await` 之前**取到 notifier 引用（同 `reader_screen._writeBackLookup`）：
@@ -168,17 +195,53 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     } catch (e, st) {
       // 🔴 失败**不静默、不前进** —— 用户再点一次就是重试
       debugPrint('[review_session] 提交失败：$e\n$st');
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(
-            content: Text('这次没记上，再点一次试试。'),
-            duration: Duration(seconds: 2),
-          ));
-      }
+      if (mounted) _hint('这次没记上，再点一次试试。');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// 给当前划线卡写 / 改笔记（结果态与浏览态的入口）。
+  ///
+  /// # 三态（`NoteDialogResult` 存在的理由）
+  /// · 弹窗被取消 ⇒ `null` ⇒ **什么都不做**
+  /// · 「删除这条笔记」⇒ `isClearing` ⇒ 写 `null`
+  /// · 「保存」⇒ 写新内容（**空串也归为清除**，见 `NoteDialog._save`）
+  ///
+  /// 🔑 **写完要 `invalidate(cardBundleProvider)`**，否则结果页还显示旧笔记 ——
+  ///    `cardBundleProvider` 的依赖里**没有** `userDbRevisionProvider`
+  ///    （它依赖的是`reviewSessionProvider.current`），所以 `bump()` 不会让它重算。
+  ///    ⚠️ 这里**刻意用 invalidate 而不是加一条 watch**：卡片重算意味着重新查词库，
+  ///       而「写笔记」只改了一个字段 —— 为它把「每次写库都重取卡片」变成常态
+  ///       是**拿全局代价换局部方便**。
+  Future<void> _writeHighlightNote(Highlight h) async {
+    final r = await NoteDialog.show(context, excerpt: h.text, initial: h.note);
+    if (r == null || !mounted) return;
+
+    try {
+      final db = await ref.read(userDbProvider.future);
+      await HighlightRepository(db).setNote(h.id, r.note);
+      ref.invalidate(cardBundleProvider);
+      if (!mounted) return;
+      _hint(r.isClearing ? '笔记已删除' : '笔记已保存');
+    } catch (e, st) {
+      debugPrint('[review_session] 笔记保存失败：$e\n$st');
+      if (!mounted) return;
+      _hint('笔记没存上，请再试一次');
+    }
+  }
+
+  /// 轻提示（全项目同一款式：`snackBarTheme` 已是「ink 底 + page 字 + floating」）。
+  ///
+  /// 🔑 抽出来是因为本页有**两处**要用（提交失败 / 笔记保存）——
+  ///    复制两次「hide → show + 2 秒」就是两处迟早漂移的重复。
+  void _hint(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 2),
+      ));
   }
 
   /// 检查成就解锁并入队（**不阻塞复习流程**）。
@@ -237,14 +300,16 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
     final s = ref.watch(reviewSessionProvider);
-    final bundle = ref.watch(cardBundleProvider);
+    final cardLoad = ref.watch(cardBundleProvider);
     final row = s.current;
 
     // 队列空（正常流程不会出现 —— `_openSession` 已挡掉越界）
     if (row == null) {
       return Scaffold(
         backgroundColor: Color(t.page.argb32),
-        body: const SafeArea(child: _CardUnavailable()),
+        body: const SafeArea(
+          child: _CardUnavailable(message: '复习队列里没有这一张卡。'),
+        ),
       );
     }
 
@@ -262,12 +327,30 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
           children: [
             _topBar(t, s),
             Expanded(
-              child: bundle.when(
+              child: cardLoad.when(
                 loading: () => const _CardLoading(),
-                error: (e, st) => const _CardUnavailable(),
-                data: (b) => b == null
-                    ? const _CardUnavailable()
-                    : _body(t, s, b, row, isDue: isDue),
+                error: (e, st) => _CardUnavailable(
+                  message: '这张卡暂时读不出来，稍后再试。',
+                  onRetry: () => ref.invalidate(cardBundleProvider),
+                ),
+                // 🔴 三态分流（2026-10-09）：
+                //    · `CardPreparing`（词库首次落盘 0.5–2 s）→ **转圈**，
+                //      而不是像旧实现那样说「这张卡打不开」（那是谎报）
+                //    · `CardMissing` → **准确的话** + **可重试时给出口**
+                data: (load) => switch (load) {
+                  // ⚠️ 用**字段名**匹配（`bundle:`）而不是位置参数 ——
+                  //    object pattern 只认命名字段（分析器实测如此）。
+                  CardReady(bundle: final bundle) =>
+                    _body(t, s, bundle, row, isDue: isDue),
+                  CardPreparing() => const _CardLoading(),
+                  CardMissing(:final message, :final retryable) =>
+                    _CardUnavailable(
+                      message: message,
+                      onRetry: retryable
+                          ? () => ref.invalidate(cardBundleProvider)
+                          : null,
+                    ),
+                },
               ),
             ),
           ],
@@ -283,6 +366,18 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     ReviewRow row, {
     required bool isDue,
   }) {
+    // ── 🆕 划线卡：走**另一条**渲染与交互（骨架提示 + 默写）──
+    if (b is! WordCardBundle) {
+      return _highlightBody(
+          t, s, (b as HighlightCardBundle).highlight, row, isDue: isDue);
+    }
+    // 🔑 取一个**局部 final 副本**：直接对参数 `b` 做流类型提升在这里**不生效** ——
+    //    `b` 被下面 `onOpenAggregate` 的闭包捕获，而 Dart 的流分析
+    //    **不给「被闭包捕获的变量」做提升**（编译器会直接报 `undefined_getter`）。
+    //    ⚠️ 报错是好事：它把「每种卡都要渲染一次」这件事**逼到编译器层面**。
+    // ⇒ `wc` 在**声明处**就继承了提升后的类型（`is!` 分支已 return），此后无需再提升。
+    final wc = b;
+
     // ── 结果态（已作答）──
     if (s.answered) {
       return Column(
@@ -296,13 +391,13 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
           ),
           Expanded(
             child: WordCardView(
-              card: b.card,
-              profile: b.profile,
-              mnemonicNames: b.names,
+              card: wc.card,
+              profile: wc.profile,
+              mnemonicNames: wc.names,
               scrollController: _scroll,
               // 判定后**可以**点 ① / ② 展开聚合页 —— 同上，答案已经揭晓
               onOpenAggregate: (pageId, slotLabel) =>
-                  _openAggregate(pageId, slotLabel, b.card.spelling),
+                  _openAggregate(pageId, slotLabel, wc.card.spelling),
               footer: _NextBar(label: '下一个', onTap: _next),
             ),
           ),
@@ -313,9 +408,9 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     // ── 浏览态（词未到期 → 只看不考，不写 FSRS）──
     if (!isDue) {
       return WordCardView(
-        card: b.card,
-        profile: b.profile,
-        mnemonicNames: b.names,
+        card: wc.card,
+        profile: wc.profile,
+        mnemonicNames: wc.names,
         scrollController: _scroll,
         onOpenAggregate: (pageId, slotLabel) =>
             _openAggregate(pageId, slotLabel, b.card.spelling),
@@ -331,15 +426,77 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
     return Column(
       children: [
         Expanded(
-          child: WordPromptView(card: b.card, scrollController: _scroll),
+          child: WordPromptView(card: wc.card, scrollController: _scroll),
         ),
         _answerBar(t, row),
       ],
     );
   }
 
+  /// 划线卡的三个状态（与词卡**同构**：考核 / 结果 / 浏览）。
+  ///
+  /// 🔴 与词卡**最要紧的一处差别**：**笔记在判定之前不许出现**
+  ///    —— 笔记是用户自己写的，很可能**就写着答案**（设计稿 §7 的硬约束）。
+  Widget _highlightBody(
+    CoEvoTokens t,
+    ReviewSessionState s,
+    Highlight h,
+    ReviewRow row, {
+    required bool isDue,
+  }) {
+    // ── 结果态（已作答）：此时才可以看原文与笔记 ──
+    if (s.answered) {
+      return Column(
+        children: [
+          _ResultBanner(
+            t: t,
+            correct: s.correct ?? false,
+            submitted: s.submitted,
+            expected: h.text,
+            nextReviewAt: s.nextReviewAt,
+          ),
+          Expanded(
+            child: _HighlightReveal(
+              highlight: h,
+              showNote: true,
+              scrollController: _scroll,
+              onWriteNote: () => _writeHighlightNote(h),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // ── 浏览态（未到期 → 只看不考，不写 FSRS；与词卡同一条规则）──
+    if (!isDue) {
+      return _HighlightReveal(
+        highlight: h,
+        showNote: true,
+        scrollController: _scroll,
+        onWriteNote: () => _writeHighlightNote(h),
+        footer: _NextBar(
+          label: '下一个',
+          hint: '还没到期 · ${_dueLabel(row.item.nextReviewAt, DateTime.now())}',
+          onTap: _next,
+        ),
+      );
+    }
+
+    // ── 考核态：**只给骨架**，复用同一个作答栏 ──
+    return Column(
+      children: [
+        Expanded(
+          child: _HighlightPrompt(highlight: h, scrollController: _scroll),
+        ),
+        _answerBar(t, row, hint: '默写这段'),
+      ],
+    );
+  }
+
   /// 作答区（固定在底部；键盘弹出时随 `resizeToAvoidBottomInset` 上移）。
-  Widget _answerBar(CoEvoTokens t, ReviewRow row) {
+  ///
+  /// [hint] 随卡种变化：词卡「拼出这个单词」· 划线卡「默写这段」。
+  Widget _answerBar(CoEvoTokens t, ReviewRow row, {String hint = '拼出这个单词'}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(22, 8, 22, 14),
       child: Row(
@@ -374,7 +531,7 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
                 //    会让 theme 的 `focusedBorder`（朱砂 1.6px）直接显形。
                 //    根因与判据 → `theme_builder.dart` 的 `borderlessInputDecoration`
                 decoration: borderlessInputDecoration(
-                  hintText: '拼出这个单词',
+                  hintText: hint,
                   hintStyle: TextStyle(
                     fontFamily: CoFonts.uiSans,
                     fontSize: 14,
@@ -482,6 +639,171 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
 /// · **正确拼写** —— 错了却不显示正确答案，这个错误就**毫无价值**
 /// · **下次复习时间** —— 让用户看到「这一答的后果」
 ///    （原先四键上那层「看到后果」的意思没丢：只是从「选项的预览」变成「已发生的事实」）
+/// 划线卡的**考核态** —— 只给骨架，不给原文。
+///
+/// 🔑 骨架是**纯算法生成**的（`skeletonFor`）⇒ 零成本、任意长度都能出。
+///    它就是「单词卡的释义」在划线卡上的对应物：**提示**。
+class _HighlightPrompt extends StatelessWidget {
+  const _HighlightPrompt({required this.highlight, required this.scrollController});
+
+  final Highlight highlight;
+  final ScrollController scrollController;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    // ⚠️ 揭示程度目前固定「只给首字母」。它是 `skeletonFor` 的**一个参数**
+    //    （`SkeletonReveal.none` / `firstTwo`）—— 将来要做难度档，改这里一处。
+    final skeleton = skeletonFor(highlight.text);
+
+    return SingleChildScrollView(
+      controller: scrollController,
+      padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '默写下面这段',
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 12,
+              color: Color(t.ink3.argb32),
+            ),
+          ),
+          const SizedBox(height: 14),
+          // 🔑 骨架与原文字号**同档**（17，对齐阅读正文）——
+          //    差太多会让「看着骨架回忆原文」变成另一种排版任务。
+          Text(
+            skeleton,
+            style: TextStyle(
+              fontFamily: CoFonts.latinSerif,
+              fontSize: 17,
+              height: 1.75,
+              color: Color(t.ink.argb32),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 划线卡的**结果 / 浏览态** —— 显示原文，判定后**才**显示笔记。
+class _HighlightReveal extends StatelessWidget {
+  const _HighlightReveal({
+    required this.highlight,
+    required this.showNote,
+    required this.scrollController,
+    this.onWriteNote,
+    this.footer,
+  });
+
+  final Highlight highlight;
+
+  /// 🔴 **判定之前必须传 `false`** —— 笔记里可能就写着答案（泄题）。
+  final bool showNote;
+
+  final ScrollController scrollController;
+
+  /// 🆕 2026-10-07「写 / 改笔记」的回调。
+  ///
+  /// 🔑 **为什么笔记入口在这里，而不是只在划词那一刻**：
+  ///    复习时**反而最想补笔记** —— 默不出来的时候，正好记下「我为什么没记住」。
+  ///    （依据：白哥 2026-10-07「可以在划线的时候写，也可以在卡片里写」）
+  ///
+  /// ⚠️ 传 `null` ⇒ **不渲染入口**（而不是渲染一个点不动的）——
+  ///    「看起来能点、点了没反应」比没有更糟。
+  /// ⚠️ 它**只在 [showNote] 为真时**才被渲染 —— 「写笔记」按钮本身不泄题，
+  ///    但判定前来一个「写笔记」会**提示用户这里该记点什么**，
+  ///    而此刻他还没看到原文。
+  final VoidCallback? onWriteNote;
+
+  final Widget? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    final note = highlight.note;
+    final hasNote = note != null && note.trim().isNotEmpty;
+
+    return SingleChildScrollView(
+      controller: scrollController,
+      padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 左侧色条 —— 与词卡 ④ 语境段、`LookupSheet` 的例句**同一规格**
+          Container(
+            padding: const EdgeInsets.only(left: 11),
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(color: Color(t.accentBright.argb32), width: 2),
+              ),
+            ),
+            child: Text(
+              highlight.text,
+              style: TextStyle(
+                fontFamily: CoFonts.latinSerif,
+                fontSize: 17,
+                height: 1.75,
+                color: Color(t.ink.argb32),
+              ),
+            ),
+          ),
+          if (showNote) ...[
+            if (hasNote) ...[
+              const SizedBox(height: 20),
+              Text(
+                '笔记',
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 11,
+                  letterSpacing: .5,
+                  color: Color(t.ink3.argb32),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                note,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 14,
+                  height: 1.6,
+                  color: Color(t.ink2.argb32),
+                ),
+              ),
+            ],
+            if (onWriteNote != null) ...[
+              SizedBox(height: hasNote ? 10 : 16),
+              GestureDetector(
+                onTap: onWriteNote,
+                // `opaque`：整块 padding 都可点（文字本身太小，对已举起的手指不友好）
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(
+                    hasNote ? '改笔记' : '＋ 写笔记',
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w500,
+                      color: Color(t.accent.argb32),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+          if (footer != null) ...[
+            const SizedBox(height: 26),
+            footer!,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _ResultBanner extends StatelessWidget {
   const _ResultBanner({
     required this.t,
@@ -652,9 +974,27 @@ class _CardLoading extends StatelessWidget {
   }
 }
 
-/// 卡片取不出来 —— **给准确的话**，不空白、不假装正常。
+/// 卡片取不出来 —— **给准确的话**，并在**可重试时给出口**。
+///
+/// # 🔴 2026-10-09 重写（原实现只有一句**固定**文案）
+/// 原文案是「这张卡暂时打不开。若一直这样，可能是**词库还在准备** —— 返回列表稍后再试。」
+///
+/// 而 `ext:`（**词库外**）的词取不到卡时，原因**与词库无关** —— 它本来就在词库外，
+/// 词库再准备一万年也不会有它（2026-10-09 白哥真机：重装后「LLM 生词」卡片全是这句）。
+/// 用户照提示「返回列表稍后再试」**永远不会好**。
+///
+/// ⇒ 现在：原因由调用方按**真实情形**传入（`CardMissing.message`），
+///    并在 `retryable` 时给一个「重试」按钮 ——
+///    否则就是本项目一直在消灭的「**静默失败 + 无出口**」。
 class _CardUnavailable extends StatelessWidget {
-  const _CardUnavailable();
+  const _CardUnavailable({required this.message, this.onRetry});
+
+  /// **面向用户**的一句话说清为什么打不开（服务端文案优先 —— 它已按情形区分）。
+  final String message;
+
+  /// `null` = 重试没有意义（如服务端 422 合规拒绝）⇒ **不给按钮**。
+  /// 🔑 「一个永远不会成功的重试按钮」比没有按钮更糟：它会训练用户点无效的东西。
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -662,15 +1002,30 @@ class _CardUnavailable extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: Text(
-          '这张卡暂时打不开。\n若一直这样，可能是词库还在准备 —— 返回列表稍后再试。',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontFamily: CoFonts.uiSans,
-            fontSize: 13,
-            height: 1.7,
-            color: Color(t.ink3.argb32),
-          ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 13,
+                height: 1.7,
+                color: Color(t.ink3.argb32),
+              ),
+            ),
+            if (onRetry != null) ...[
+              const SizedBox(height: 24),
+              // 🔑 `secondary` 而不是 `primary` —— 本屏的主动作是「提交作答」，
+              //    重试只是恢复手段，不该与主 CTA 争同样的视觉权重。
+              ClayButton(
+                label: '重试',
+                variant: ClayButtonVariant.secondary,
+                onTap: onRetry!,
+              ),
+            ],
+          ],
         ),
       ),
     );

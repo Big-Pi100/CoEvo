@@ -12,7 +12,7 @@ import 'api_config.dart';
 /// |---|---|
 /// | [register] | `username, realName?, phone?` → **`email`** |
 /// | [login] | `username` → **`email`** |
-/// | [trialClaim] | `username, realName?, phone?` → **`email`** |
+/// | ~~`trialClaim`~~ | 该端点连带整个试用账号机制于 **2026-10-09 删除** |
 ///
 /// 📄 后端对应改动：`users` 表删 `real_name`/`phone`/`phone_hash`/`id_number`/`bind_hash`，
 ///    加 `email` 唯一索引。方案见 `profile-redesign-plan-2026-09-29.md`。
@@ -91,50 +91,9 @@ class AuthClient {
     return {'valid': true}; // Be lenient on network errors
   }
 
-  /// Create a trial account. Returns {user_id, token}.
-  Future<Map<String, dynamic>> trialStart() async {
-    final body = <String, String>{};
-    final resp = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}/api/trial/start'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
-    ).timeout(ApiConfig.requestTimeout);
-    final data = jsonDecode(resp.body) as Map<String, dynamic>;
-    if (resp.statusCode != 200 || data.containsKey('error')) {
-      throw Exception(data['error'] ?? 'Trial start failed');
-    }
-    return data;
-  }
-
-  /// 认领试用账号（= 把匿名账号升级为正式账号）。Returns `{token, email}`.
-  ///
-  /// 🔴 **需要既有账号**（`userId` / `token`）—— 调用方必须先确保已登录
-  /// （哪怕是匿名试用账号）。未登录时应走 [register]。
-  Future<Map<String, dynamic>> trialClaim(
-    String userId,
-    String token,
-    String email,
-    String password,
-  ) async {
-    final body = <String, dynamic>{
-      'user_id': userId,
-      'email': email,
-      'password': password,
-    };
-    final resp = await http.put(
-      Uri.parse('${ApiConfig.baseUrl}/api/trial/claim'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode(body),
-    ).timeout(ApiConfig.requestTimeout);
-    final data = jsonDecode(resp.body) as Map<String, dynamic>;
-    if (resp.statusCode != 200 || data.containsKey('error')) {
-      throw Exception(data['error'] ?? 'Trial claim failed');
-    }
-    return data;
-  }
+  // 🔴 2026-10-09 已删 `trialStart()` / `trialClaim()` —— 试用账号机制整体退役
+  //    （后端 `/api/trial/start` 与 `/api/trial/claim` 两个路由一并删除）。
+  //    见 `docs/review/trial-account-removal-2026-10-09.md`。
 
   /// 修改密码（需登录）。
   ///

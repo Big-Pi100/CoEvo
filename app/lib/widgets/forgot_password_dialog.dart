@@ -13,7 +13,7 @@
 //
 // | 入口 | 位置 | 谁走到 |
 // |---|---|---|
-// | **A** | `claim_dialog`（登录弹层）密码框下方「忘记密码？」 | **卡在门外**的人 |
+// | **A** | `auth_dialog`（登录弹层）密码框下方「忘记密码？」 | **卡在门外**的人 |
 // | **B** | `change_password_dialog` 尾部「忘了原密码？找回密码 ›」 | 已进来、但**想不起原密码**的人 |
 //
 // 🔑 入口 B 的位子在「修改密码」弹层里**早已留好**（`change_password_dialog.dart` §④ 原文：
@@ -21,7 +21,7 @@
 //
 // # 三屏在同一弹层内分步（不套新弹层）
 //
-// 与 `ClaimDialog` 的「登录 ⇄ 注册」切换同构 ⇒ 用户不会迷路。
+// 与 `AuthDialog` 的「登录 ⇄ 注册」切换同构 ⇒ 用户不会迷路。
 // 顶部三条进度指示展示「走到第几步了」。
 //
 // # 流程与后端的对应（**关键**：屏②不单独调接口）
@@ -82,7 +82,7 @@ class ForgotPasswordDialog extends ConsumerStatefulWidget {
   ///
   /// 📌 白哥 2026-07 反馈原话：「找回密码应该是账号绑定的邮箱，**而非填写任意邮箱**，
   ///    现在让填写邮箱。」—— 指的就是这条路径。
-  /// ⚠️ 入口是「未登录」时（`ClaimDialog` 的「忘记密码？」）**不能锁定** ——
+  /// ⚠️ 入口是「未登录」时（`AuthDialog` 的「忘记密码？」）**不能锁定** ——
   ///    系统那时确实不知道用户是谁，只能靠他填（或预填他刚打完的）。
   final String? lockedEmail;
 
@@ -389,7 +389,7 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
             ],
           ],
 
-          // ── 次要出口（放在末尾，与 `ClaimDialog` 的「没有账号？注册」**同一形态**）──
+          // ── 次要出口（放在末尾，与 `AuthDialog` 的「没有账号？注册」**同一形态**）──
           // 🔑 屏②③ 必须有：屏③ 若码错，用户得有路**回去改码**
           //    （判据：「有提示、无出口」比没有提示更糟 —— 本项目已因这条改过两处）。
           if (_step > 0) ...[
@@ -564,7 +564,7 @@ class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog> {
     ];
   }
 
-  /// 次要文字链接（与 `ClaimDialog` 的「没有账号？注册」同一形态）。
+  /// 次要文字链接（与 `AuthDialog` 的「没有账号？注册」同一形态）。
   Widget _secondaryLink({required String label, VoidCallback? onTap}) {
     final t = CoEvoTokensExt.of(context);
     return GestureDetector(

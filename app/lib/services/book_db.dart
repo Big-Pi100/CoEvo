@@ -40,6 +40,7 @@ const String kBookDbSchemaAsset = 'assets/sql/book_db_schema.sql';
 /// |---|---|---|
 /// | **1** | 初版：`book` · `book_chapter` · `book_progress` | — |
 /// | **2** | 🆕 `book.content_hash`（内容指纹）· 🆕 `book_progress_pending`（待认领进度）| **加列** + 新增表 |
+/// | **3** | 🆕 `book_marker`（书签 · 位置标记）| **新增表** |
 ///
 /// ⚠️ 本库是**新增的库**（真机上尚不存在）⇒ `onCreate` 一定会走。
 ///
@@ -50,7 +51,24 @@ const String kBookDbSchemaAsset = 'assets/sql/book_db_schema.sql';
 ///      · `book.content_hash` = **加列** ⇒ 重跑脚本**不能**覆盖（`IF NOT EXISTS` 见表就跳过）
 ///   ⇒ 只测「全新库」会**假绿**（全新的当然有这一列，因为建表语句里写了）。
 ///   📌 判据：**「新建库跑通」≠「老库能升级」**。
-const int kBookDbVersion = 2;
+///
+/// 🔑 **v3 只是「新增表」** ⇒ `onUpgrade` 重跑全量幂等脚本**就够**（不需要列级迁移分支）。
+///    但 `verify_bookdb_migration` 仍要**真跑一次 v2 → v3**：只验「全新库有这张表」
+///    会假绿（同 v2 那条教训）。
+///
+/// 🔑 **v4（2026-10-08）同样只是「新增表」**（`cloud_book` = 云端书单的本地镜像）
+///    ⇒ 同样**不需要**列级迁移分支。
+///
+/// 🔴 **但版本号必须升** —— 这正是 `user.db` 上刚踩过的坑（`highlight` 表）：
+///    加表却忘了升版本 ⇒ 老库（`version == 目标版本`）**不触发 `onUpgrade`**
+///    ⇒ 表**永远建不出来**，而且 `IF NOT EXISTS` 一句都不会执行 ⇒ **静默失败**
+///    （界面上表现为「功能点了没反应」，不会是报错）。
+///
+/// ⚠️ 因此 `verify_bookdb_migration` **必须有 `fromVersion: 3` 这条路径**
+///    （= 「真机此刻所处的版本」）。只测 v1/v2 → v4 会**假绿** ——
+///    那些路径的版本都在变 ⇒ `onUpgrade` 一定触发 ⇒ 新表一定建出来。
+///    🔑 判据：**测试要覆盖「用户此刻真实所处的状态」**，不只是历史版本。
+const int kBookDbVersion = 4;
 
 /// 打开（必要时创建）`book.db`。
 ///
@@ -128,7 +146,8 @@ Future<Database> openBookDb({
         }
 
         // ── ② **再**重跑全量幂等脚本：建出缺失的表 / 索引 ──
-        // （含 v2 新增的 `book_progress_pending` 表与 `idx_book_hash` 索引）
+        // （含 v2 的 `book_progress_pending` + `idx_book_hash` · v3 的 `book_marker`
+        //   · v4 的 `cloud_book` + `idx_cloud_book_added`）
         await executeSqlScript(db, schemaSql);
       },
     ),

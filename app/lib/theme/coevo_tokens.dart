@@ -767,6 +767,33 @@ class CoEvoTokens {
   final CoRgba accentOut; // 彩色元素外阴影
   final CoRgba line; // 分隔线
   final CoRgba sunken; // 凹陷底
+
+  /// 状态色 · **成功 / 正常**（🆕 2026-10-09）。
+  ///
+  /// # 为什么加它（全 token 集里**此前没有任何绿**）
+  ///
+  /// 白哥 2026-10-09 指令：「云朵状态要**一直显示**，同步了就显示**绿色**，
+  /// 未同步显示**灰色**，这样没有订阅的用户才知道要订阅」。
+  /// 而当时可用的颜色只有朱砂 `accent` 系（= 红）与 `ink` 系（= 中性灰）——
+  /// 表达不出「成功」这一档，只能新增。
+  ///
+  /// 🔑 判据：**颜色只能来自 token**（`theme_builder` 是唯一 ThemeData 产出点）
+  ///    ⇒ 不在组件里硬编码 `Colors.green`（那会在三档主题里失控）。
+  ///
+  /// # 取值依据（不是挑好看 —— 按**它实际出现的位置**验对比度）
+  ///
+  /// 用到它的地方是同步状态标：**14px 图标 + 11.5px 小字**，
+  /// 底是胶囊的 `sunken` ⇒ 按正文级 **4.5:1** 要求：
+  ///
+  /// | 档 | 底（`sunken`）| 取值 | 实测对比度 |
+  /// |---|---|---|---|
+  /// | 墨 | `#EDE6DA` | `#1F6B4A` | **5.19** ✅ |
+  /// | 格 | `#F0F0F0` | `#1F6B4A` | **5.65** ✅ |
+  /// | 夜 | `#0B0D12` | `#57B87D` | **7.92** ✅ |
+  ///
+  /// 🔑 **夜档必须另取亮绿** —— 深底上放深绿等于不可见（同 `accent` 在夜档换亮调的做法）。
+  /// 🔑 墨 / 格共用同一值：与 `accent` 那两档共用是同一个先例（少一个会漂的数字）。
+  final CoRgba success;
   final double readLineHeight; // 阅读行高 —— **不是全局 1.5**（对英文偏紧）
 
   // ── 质感 ──
@@ -834,6 +861,7 @@ class CoEvoTokens {
     required this.accentOut,
     required this.line,
     required this.sunken,
+    required this.success,
     required this.readLineHeight,
     required this.clay,
     required this.trace,
@@ -856,7 +884,7 @@ class CoEvoTokens {
   /// `ThemeExtension.lerp`（本档经 `CoEvoTokensExt` 挂载）→ 最终落到这里。
   ///
   /// **插值策略**（完整依据见文件头 ⓪）：
-  /// - ✅ **颜色 12 项 + `readLineHeight` + 字号 11 项** → 插值
+  /// - ✅ **颜色 13 项 + `readLineHeight` + 字号 11 项** → 插值
   /// - ❌ `theme` / `label` / `character` → 取一侧（枚举 / 字符串）
   /// - ❌ `clay` / `trace` 内部按各自规则（几何与枚举整组阶跃）
   static CoEvoTokens lerp(CoEvoTokens a, CoEvoTokens b, double t) {
@@ -879,6 +907,7 @@ class CoEvoTokens {
       accentOut: CoRgba.lerp(a.accentOut, b.accentOut, t),
       line: CoRgba.lerp(a.line, b.line, t),
       sunken: CoRgba.lerp(a.sunken, b.sunken, t),
+      success: CoRgba.lerp(a.success, b.success, t),
       readLineHeight: _lerpD(a.readLineHeight, b.readLineHeight, t),
       clay: ClayTokens.lerp(a.clay, b.clay, t),
       trace: TraceTokens.lerp(a.trace, b.trace, t),
@@ -913,6 +942,7 @@ const CoEvoTokens inkTokens = CoEvoTokens(
   accentOut: _accentOutLight,
   line: CoRgba.hex(0xEFE9DE),
   sunken: CoRgba.hex(0xEDE6DA),
+  success: CoRgba.hex(0x1F6B4A),
   readLineHeight: 1.82,
   clay: ClayTokens(
     out: CoRgba(150, 125, 95, 0.24),
@@ -954,6 +984,7 @@ const CoEvoTokens gridTokens = CoEvoTokens(
   accentOut: _accentOutLight,
   line: CoRgba.hex(0xE8E8E8),
   sunken: CoRgba.hex(0xF0F0F0),
+  success: CoRgba.hex(0x1F6B4A),
   readLineHeight: 1.74,
   clay: ClayTokens(
     out: CoRgba(110, 115, 125, 0.22),
@@ -1011,6 +1042,7 @@ const CoEvoTokens nightTokens = CoEvoTokens(
   accentOut: CoRgba(219, 126, 107, 0.40),
   line: CoRgba.hex(0x262A34),
   sunken: CoRgba.hex(0x0B0D12),
+  success: CoRgba.hex(0x57B87D),
   readLineHeight: 1.84,
   clay: ClayTokens(
     out: CoRgba(0, 0, 0, 0.55),

@@ -21,6 +21,8 @@
 // | `article_read.read_at` | 首次事实 | 取**较早** |
 // | `bookmark.deleted` | 最新意愿 | 取**较新** |
 // | `book_progress.*` | 最新意愿 | 取**较新** |
+// | 🆕 `highlight.note` / `.paused` / `.deleted` | 最新意愿 | 取**较新** |
+// | 🆕 `highlight.text` / offsets / `source_*` | 首次事实（**整组同端**） | 取**较早**那端 |
 //
 // ⇒ 用「整行新胜」会把「例句取首次」那条静态规则**静默推翻**（例句会跳动、干扰复习）。
 //
@@ -47,7 +49,7 @@
 // 复习事件是「事件日志 + 重放」，其合并由 `FsrsService.merge()` / `replay()` 负责
 // （那需要 fsrs 包 ⇒ 非纯逻辑，无法放本文件）。分工：
 //   · `review_log`      → `fsrs_service.dart`（重放派生 `card_review_state`）
-//   · 其余 4 张表       → **本文件**（字段级合并）
+//   · 其余 5 张表       → **本文件**（字段级合并）
 //
 // # ⚠️ 关于 `pending_push`：**合并函数不产出它**（由调用方决定）
 //
@@ -99,24 +101,32 @@ String _pickEarlierTs(Object? a, Object? b) {
   return (a ?? b ?? '') as String;
 }
 
-/// 从两行中选出「`added_at` 更早」的那一行（= **首次加入生词本**的那次）。
+/// 从两行中选出「`key` 更早」的那一行（= **首次事实**那一端）。
 ///
 /// 都不可解析时返回 `a`（保持确定性 —— 同一对输入永远同一输出）。
-Map<String, Object?> _earlierAddedSide(
+Map<String, Object?> _earlierSideBy(
   Map<String, Object?> a,
   Map<String, Object?> b,
+  String key,
 ) {
-  final ta = parseSyncTs(a['added_at']);
-  final tb = parseSyncTs(b['added_at']);
+  final ta = parseSyncTs(a[key]);
+  final tb = parseSyncTs(b[key]);
   if (ta != null && tb != null) {
     if (ta.isBefore(tb)) return a;
     if (tb.isBefore(ta)) return b;
-    return a; // 同一时刻 ⇒ 两侧等价（例句视为同一份）
+    return a; // 同一时刻 ⇒ 两侧等价
   }
   if (ta != null) return a;
   if (tb != null) return b;
   return a;
 }
+
+/// 从两行中选出「`added_at` 更早」的那一行（= **首次加入生词本**的那次）。
+Map<String, Object?> _earlierAddedSide(
+  Map<String, Object?> a,
+  Map<String, Object?> b,
+) =>
+    _earlierSideBy(a, b, 'added_at');
 
 /// 从两行中选出「`updated_at` 更**新**」的那一行（= **最新意愿**）。
 Map<String, Object?> _latestUpdatedSide(
@@ -309,6 +319,104 @@ Map<String, Object?> mergeBookmark(
   };
 }
 
+// ───────────────────────── ③b highlight（划线记忆）─────────────────────────
+//
+// 🔑 为什么排在 `bookmark` 之后：两者**同族** —— 资产型 + 软删 + 新意愿取较新。
+//    差别只在它多一组「**首次事实**」（正文 / offsets / 来源）。
+//
+// 🔴 这张表是 2026-10-09 才纳入同步的，它补的是一个**真实缺口**：
+//    此前 `review_log`（复习事件）同步而划线本体不同步 ⇒ 重装 / 换机的设备
+//    会拿到「**无主划线卡**」（标题是 `hl:<uuid>`、点暂停静默无反应）。
+//    📌 判据：**同步的粒度必须覆盖「引用关系」**。
+
+/// `highlight` 的合并键：`id`（端侧生成的 uuid v4）。
+///
+/// 🔴 **不能是自增 rowid** —— 两台设备各自从 1 开始必撞（见 `highlight_id.dart`）。
+String highlightKey(Map<String, Object?> r) => r['id'] as String? ?? '';
+
+/// 划线一行 → 待推送的 JSON（字段名与后端 `HighlightInput` **逐字一致**）。
+Map<String, Object?> highlightToPushJson(Map<String, Object?> r) => {
+      'id': r['id'],
+      'source_type': r['source_type'],
+      'source_id': r['source_id'],
+      'chapter_idx': r['chapter_idx'],
+      'start_offset': r['start_offset'],
+      'end_offset': r['end_offset'],
+      'text': r['text'],
+      'note': r['note'],
+      'paused': r['paused'] ?? 0,
+      'deleted': r['deleted'] ?? 0,
+      'created_at': r['created_at'],
+      'updated_at': r['updated_at'],
+    };
+
+/// 服务端 `HighlightOut` → 本地行（可直接喂给 [mergeHighlight] 或 INSERT）。
+Map<String, Object?> highlightFromPullJson(Map<String, dynamic> j) => {
+      'id': j['id'],
+      'source_type': j['source_type'],
+      'source_id': j['source_id'],
+      'chapter_idx': j['chapter_idx'],
+      'start_offset': j['start_offset'],
+      'end_offset': j['end_offset'],
+      'text': j['text'],
+      'note': j['note'],
+      'paused': j['paused'] ?? 0,
+      'deleted': j['deleted'] ?? 0,
+      'created_at': j['created_at'],
+      'updated_at': j['updated_at'],
+    };
+
+/// 🔴 划线合并是**字段级**的，与 [mergeUserWord] 同一形状。
+///
+/// | 字段 | 类别 | 口径 |
+/// |---|---|---|
+/// | `note` / `paused` / `deleted` | 最新意愿 | 取**较新**（按 `updated_at`）|
+/// | `text` / `start_offset` / `end_offset` / `source_type` / `source_id` / `chapter_idx` | 首次事实 | 取**较早**（按 `created_at`）|
+///
+/// ## 🔑 为什么 `text` / offsets / 来源**必须整组来自同一端**
+///
+/// 它们是一组**耦合**字段（「划的是**哪段**文字」）—— 若逐字段各取所需，
+/// 会拼出 `text = "the quick fox"` 配 `start_offset = 999` 这种**不存在的组合**
+/// （同 [mergeBookProgress] 那条：三个字段要一起来自同一端）。
+/// 所以这里用**同一端**（`_earlierSideBy(…, 'created_at')`）整体取值，不做逐字段宽松。
+///
+/// ⚠️ 唯一的例外是 `chapter_idx`（**可空**：文章是单页 ⇒ 没有章节号）——
+///    沿用 [mergeUserWord] 对 `source_sentence` 的宽松口径：较早那端为 `null` 时
+///    退到另一端。理由同：`null` 表示「这一端没有这份信息」，不是「信息是空」。
+///
+/// ## ⚠️ `note` 取较新时**连 `null` 一起取**
+///
+/// `note` 是**可空的意愿型**字段，而「清空笔记」是一个**真实意图**
+/// ⇒ 不能写成「取非空」（那样笔记**永远清不掉**：清空会被当成「没带这个字段」）。
+/// 服务端那条 upsert 用的是同一条判据（见 `sync_handlers.rs` 的 `sync_highlight` 段）。
+Map<String, Object?> mergeHighlight(
+  Map<String, Object?> local,
+  Map<String, Object?> remote,
+) {
+  final latest = _latestUpdatedSide(local, remote); // 最新意愿
+  final first = _earlierSideBy(local, remote, 'created_at'); // 首次事实（整组）
+
+  var chapterIdx = first['chapter_idx'];
+  if (chapterIdx == null) chapterIdx = latest['chapter_idx'];
+
+  return {
+    'id': local['id'] ?? remote['id'],
+    // ── 首次事实（整组来自同一端）──
+    'source_type': first['source_type'] ?? local['source_type'] ?? remote['source_type'],
+    'source_id': first['source_id'] ?? local['source_id'] ?? remote['source_id'],
+    'chapter_idx': chapterIdx,
+    'start_offset': first['start_offset'],
+    'end_offset': first['end_offset'],
+    'text': first['text'],
+    'created_at': _pickEarlierTs(local['created_at'], remote['created_at']),
+    // ── 最新意愿 ──
+    'note': latest['note'],
+    'paused': latest['paused'] ?? 0,
+    'deleted': latest['deleted'] ?? 0,
+    'updated_at': latest['updated_at'],
+  };
+}
+
 // ───────────────────────── ④ book_progress（电子书进度）─────────────────────────
 
 /// `book_progress` 的合并键：**`content_hash`**（不是端侧 `book_id`）。
@@ -424,6 +532,21 @@ const Map<String, List<(String table, String column)>> kSyncFieldSources = {
     ('bookmark', 'bookmarked_at'),
     ('bookmark', 'deleted'),
   ],
+  // 🆕 2026-10-09：划线记忆（12 列，全部在 `user_db_schema.sql` 的 `highlight`）
+  'highlight': [
+    ('highlight', 'id'),
+    ('highlight', 'source_type'),
+    ('highlight', 'source_id'),
+    ('highlight', 'chapter_idx'),
+    ('highlight', 'start_offset'),
+    ('highlight', 'end_offset'),
+    ('highlight', 'text'),
+    ('highlight', 'note'),
+    ('highlight', 'paused'),
+    ('highlight', 'deleted'),
+    ('highlight', 'created_at'),
+    ('highlight', 'updated_at'),
+  ],
   'book_progress': [
     ('book', 'content_hash'), // 🔴 跨设备身份在 `book` 表，不在 `book_progress`
     ('book_progress', 'chapter_idx'),
@@ -451,5 +574,20 @@ const Map<String, List<String>> kPushJsonContract = {
   ],
   'article_read': ['article_id', 'read_at'],
   'bookmark': ['content_id', 'bookmarked_at', 'deleted'],
+  // 🆕 2026-10-09：与后端 `HighlightInput` 的字段**逐字一致**
+  'highlight': [
+    'id',
+    'source_type',
+    'source_id',
+    'chapter_idx',
+    'start_offset',
+    'end_offset',
+    'text',
+    'note',
+    'paused',
+    'deleted',
+    'created_at',
+    'updated_at',
+  ],
   'book_progress': ['content_hash', 'chapter_idx', 'scroll_ratio', 'updated_at'],
 };

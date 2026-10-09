@@ -25,6 +25,11 @@
 //
 // ⚠️ **本文件本机不可验证**（import Flutter）—— 靠 CI 的 `flutter analyze` 兜。
 
+import 'dart:async';
+import '../../providers/book_cloud_provider.dart';
+import '../../providers/book_raw_dir_provider.dart';
+import '../../providers/sync_provider.dart';
+import '../../providers/auth_provider.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -119,6 +124,10 @@ Future<void> runBookImportFlow({
       fileName: file.name,
       newId: const Uuid().v4,
       addedAt: DateTime.now().toUtc().toIso8601String(),
+      // 🆕 同时保存**原始文件** —— 上传云端与「换机复用解析器」都要它。
+      //    ⚠️ 目录口径唯一来源：`book_raw_dir_provider.dart`。
+      //    拿不到目录也不影响导入（书已能读）⇒ 传 null。
+      rawDir: await _safeRawDir(),
     );
 
     if (!context.mounted) return;
@@ -127,6 +136,14 @@ Future<void> runBookImportFlow({
       case BookImportSuccess(:final bookId, :final title):
         // 🔑 写库成功**之后**才 bump（顺序反了会让读端在写入完成前重查）
         ref.read(bookDbRevisionProvider.notifier).bump();
+
+        // 🆕 书架上云：导入完成后**后台**触发上传。
+        //    🔴 三条都重要：
+        //      ① **不 await** —— 上传 50 MB 要几十秒，阻塞导入会让 toast 迟迟不出现
+        //      ② **失败不影响导入** —— 书已经能读了（见 `_kickBookUpload` 的兜底）
+        //      ③ 必须**先推书单** —— 服务端上传时会校验书单行存在，
+        //         而 push 由同步流程负责 ⇒ 这里先 `pushOnce()`（幂等）
+        unawaited(_kickBookUpload(ref));
         _toast(context, '已导入《$title》', action: '打开', onAction: () {
           if (context.mounted) context.push('/books/$bookId');
         });
@@ -237,4 +254,51 @@ void _toast(
           : SnackBarAction(label: action, onPressed: onAction ?? () {}),
     ),
   );
+}
+
+/// 取原始文件目录；**失败返回 null**（导入不因它失败）。
+///
+/// 🔑 为什么不让异常冒出去：这个目录只影响「能不能上传 / 换机复用」，
+///    而导入的**主要职责**是「让用户能读这本书」。
+///    📌 判据：**次要依赖失败不该阻断主流程** —— 但要留痕（`debugPrint`），
+///       否则将来「上传总是提示没有原始文件」会查不到源头。
+Future<String?> _safeRawDir() async {
+  try {
+    return await rawBooksDir();
+  } catch (e) {
+    debugPrint('[book] 取原始文件目录失败（不影响导入，但该书无法上传）：$e');
+    return null;
+  }
+}
+
+/// 导入后**后台**上传这本书（书架上云）。
+///
+/// 🔴 顺序：**先推书单**再传文件 —— 服务端的 `book_upload_handler` 会校验
+///    「这本书的 `sync_book` 行存在」，否则直接 400。
+///    ⇒ 所以这里先 `pushOnce()`（幂等：失败会在下次同步重试）。
+///
+/// ⚠️ **整段失败都静默**（只留日志）：导入已经成功、书能读，
+///    上传失败不该给用户报警 —— 真正的出口在书架页（那本书会显示为「未上云」，
+///    用户可以下拉重试）。
+Future<void> _kickBookUpload(WidgetRef ref) async {
+  try {
+    final db = await ref.read(bookDbProvider.future);
+    // ① 先把书单推上去（含刚导入的这本）
+    //    ⚠️ `buildSyncService` 返回 `null` = 不满足同步前提（未登录 / 库打不开）
+    //    ⇒ 静默跳过（同步是**可选能力**，不能阻塞导入）
+    final auth = ref.read(authProvider);
+    final svc = await buildSyncService(
+      ref,
+      token: auth.token ?? '',
+      userId: auth.userId ?? '',
+    );
+    await svc?.pushOnce();
+    // ② 再把待上传的文件传上去
+    await kickBookUpload(
+      db: db,
+      queue: ref.read(bookUploadQueueProvider),
+    );
+  } catch (e) {
+    debugPrint('[book] 后台上传失败（不影响导入）：$e');
+  }
 }

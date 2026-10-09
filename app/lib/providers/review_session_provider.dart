@@ -22,9 +22,13 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/external_word_card.dart';
 import '../services/fsrs_service.dart';
+import '../services/highlight_id.dart';
+import '../services/highlight_repository.dart';
 import '../services/word_query_service.dart';
 import 'review_list_provider.dart';
+import 'user_db_provider.dart';
 import 'word_db_provider.dart';
 
 /// 一次复习会话：**队列快照 + 当前位置 + 当前卡的作答结果**。
@@ -144,8 +148,24 @@ final reviewSessionProvider =
 /// ⚠️ **不再含四档预览**（2026-09-28 改）：评分方式从「自评四档」改为
 /// **拼写判定**（对/错）→ 不需要预先算四个分支的间隔。
 /// 结果态显示的是 `FsrsService.apply` 产出的**真实**新到期时间（不是预测）。
-class CardBundle {
-  const CardBundle({
+///
+/// # 🆕 2026-10-07：改成 **sealed**（词卡 / 划线卡两种）
+///
+/// 划线的复习形态与词卡**完全不同**（提示是**首字母骨架**、判定是**默写**），
+/// 而它们**共用同一个复习页与同一条 FSRS 链**。
+///
+/// 🔴 **为什么用 sealed 而不是「给一个可空的 `highlight` 字段」**：
+/// 后者要么让 `card` 变可空（每个用到处都得 `!`），要么给划线卡硬造一张
+/// **空壳 `WordCard`**（`sections: []`、`spelling: 摘录`）——
+/// 那正是本项目已经否掉的「**硬套形状 ⇒ 造一堆空字段**」。
+/// ⇒ sealed 让**编译器**替我们找出「每一处该分流的渲染点」，而不是靠人记。
+sealed class CardBundle {
+  const CardBundle();
+}
+
+/// 词卡（`w0xxxxx` / `ext:<拼写>`）。
+class WordCardBundle extends CardBundle {
+  const WordCardBundle({
     required this.card,
     required this.profile,
     required this.names,
@@ -160,6 +180,49 @@ class CardBundle {
   final Map<String, String> names;
 }
 
+/// 划线卡（`hl:<uuid>`）。
+///
+/// 🔑 它**不经过词库** ⇒ 词库还在首次落盘（31.4 MB，0.5–2 s）时，
+///    划线卡**照样能复习**（词卡要等词库就绪）。
+class HighlightCardBundle extends CardBundle {
+  const HighlightCardBundle(this.highlight);
+
+  final Highlight highlight;
+}
+
+/// 复习页取卡的**三态**。
+///
+/// # 🔴 为什么要把 `CardBundle?` 换成三个类型（2026-10-09）
+/// 旧实现用**一个 `null` 同时表示两件完全不同的事**：
+/// · 词库还没落盘（首次 31.4 MB / 0.5–2 s）→ 该**转圈**
+/// · 真的取不到卡 → 该给**准确的话 + 出口**
+///
+/// 界面分不出来，只好把两者都渲染成「这张卡暂时打不开」——
+/// 于是 `ext:`（**词库外**）的卡提示「可能是**词库**还在准备」，
+/// 用户照提示「返回列表稍后再试」**永远不会好**（白哥 2026-10-09 真机报的就是这个）。
+/// 📌 判据：**一个 `null` 承担两种语义 ⇒ 界面必然猜错原因**。
+sealed class CardLoad {
+  const CardLoad();
+}
+
+/// 词库尚未就绪 —— 该**转圈**（不是「打不开」）。
+final class CardPreparing extends CardLoad {
+  const CardPreparing();
+}
+
+/// 取不到卡 —— `message` 是**面向用户的准确原因**；`retryable` 决定给不给「重试」。
+final class CardMissing extends CardLoad {
+  const CardMissing(this.message, {this.retryable = false});
+  final String message;
+  final bool retryable;
+}
+
+/// 拿到卡（词卡或划线卡）。
+final class CardReady extends CardLoad {
+  const CardReady(this.bundle);
+  final CardBundle bundle;
+}
+
 /// 取**当前这张卡**的数据（含四档预览）。
 ///
 /// # 依赖关系（为什么不是 `family(wordId)`）
@@ -167,37 +230,79 @@ class CardBundle {
 /// 于是 `next()` 一调用，本 provider **自动重算** —— 不需要调用方
 /// 记得「换卡后要重新取数据」（那正是最容易漏的一步）。
 ///
-/// # ⚠️ 词库未就绪时**返回 `null`**（不是抛）
-/// 调用方据此渲染「这张卡暂时打不开」。
+/// # ⚠️ 取不到时**不抛**，而是返回 [CardMissing]（**带准确原因**）
 /// 🔑 与列表项释义的处理**取向一致**：跨库依赖不该让页面崩，
 ///    但**必须给准确的话**（不是空白、不是假装正常）。
+///
+/// # ⚠️ 唯一的例外：[ExternalCardUnavailable] 必须在这里接住
+/// `cardById` 对 `ext:`（**词库外**）的词会在**联网取卡失败**时抛它 ——
+/// 那里带着服务端的**准确文案**与「能否重试」。
+/// 不接住的话它会被下面那个 `catch (e, st)` 吞成一个没有原因的失败
+/// （= 又回到「界面猜原因」的老路）。
 ///
 /// # 🔑 为什么把「算四档预览」也放这里
 /// 它是纯粹的「状态 → 间隔」计算，与渲染无关。
 /// 放在页面里会让**预览**与**提交**分散在两处 —— 而这两者**必须用同一套
 /// scheduler 与同一套确定性抖动**（否则用户看到的「下次 14 天」是假的）。
 /// 放在一起，才容易保证它们共用同一个 [fsrsServiceProvider]。
-final cardBundleProvider = FutureProvider.autoDispose<CardBundle?>((ref) async {
+final cardBundleProvider = FutureProvider.autoDispose<CardLoad>((ref) async {
   final row = ref.watch(reviewSessionProvider.select((s) => s.current));
-  if (row == null) return null;
+  if (row == null) return const CardMissing('复习队列里没有这一张卡。');
 
-  // 词库要 31.4 MB 首次落盘（0.5–2 s）→ `watch` 它，就绪后自动重算
-  final load = ref.watch(wordQueryProvider).valueOrNull;
-  if (load is! WordDbReady) return null;
+  final wordId = row.item.wordId;
+
+  // ── 🆕 划线卡：走 `highlight` 表，**不碰词库**（也就不用等词库落盘）──
+  if (isHighlightWordId(wordId)) {
+    final uuid = highlightUuidOf(wordId);
+    if (uuid == null) return const CardMissing('这张划线卡的数据不完整。');
+    try {
+      final db = await ref.read(userDbProvider.future);
+      final h = await HighlightRepository(db).byId(uuid);
+      // ⚠️ 已取消（`deleted`）的划线**也照常复习**：队列里那一行还在，
+      //    此时说「打不开」比让用户复习一条他取消过的内容更没有帮助。
+      //    （真正的清理是「取消时一并把队列行也处理掉」—— 当前**刻意不做**，
+      //      因为「取消划线」不等于「不再复习」，见 schema 的软删说明。）
+      if (h == null) return const CardMissing('这张划线卡已经不在了。');
+      return CardReady(HighlightCardBundle(h));
+    } catch (e, st) {
+      debugPrint('[review_session] 加载划线失败 wordId=$wordId：$e\n$st');
+      return const CardMissing('本机数据暂时读不出来，稍后再试。', retryable: true);
+    }
+  }
+
+  // ── 词卡：要等词库就绪（31.4 MB 首次落盘 0.5–2 s）→ `watch` 它，就绪后自动重算 ──
+  final loadAsync = ref.watch(wordQueryProvider);
+  final load = loadAsync.valueOrNull;
+  if (load is! WordDbReady) {
+    // 🔴 「词库**打不开**」与「词库**还在准备**」必须分开：
+    //    前者永远转不完（用户对着转圈白等），后者等一会儿就好。
+    //    📌 旧实现两条都渲染成「打不开」，是同一个 `null` 的另一种表现。
+    if (loadAsync.hasError) {
+      return const CardMissing('词库打不开，这张卡暂时显示不了。', retryable: true);
+    }
+    return const CardPreparing();
+  }
 
   try {
-    final data = await load.service.reviewCardOf(row.item.wordId);
-    if (data == null) return null; // 词库里没有这个词（数据不一致）
+    final data = await load.service.reviewCardOf(wordId);
+    // 词库里没有这个词（数据不一致：复习队列按 `word_id` 存的，却查不到）
+    if (data == null) return const CardMissing('词库里没有这张卡的数据。');
     final names = await load.service.mnemonicTypeNames();
 
-    return CardBundle(
-      card: data.card,
-      profile: data.profile,
-      names: names,
+    return CardReady(
+      WordCardBundle(
+        card: data.card,
+        profile: data.profile,
+        names: names,
+      ),
     );
+  } on ExternalCardUnavailable catch (e) {
+    // 🔴 **词库外**的词取不到卡 —— 原因与「词库」无关（它本来就在词库外），
+    //    而是**联网取卡失败**。带服务端给的准确话 + 能不能重试。
+    return CardMissing(e.message, retryable: e.retryable);
   } catch (e, st) {
-    debugPrint('[review_session] 加载卡片失败 wordId=${row.item.wordId}：$e\n$st');
-    return null;
+    debugPrint('[review_session] 加载卡片失败 wordId=$wordId：$e\n$st');
+    return const CardMissing('这张卡暂时读不出来，稍后再试。', retryable: true);
   }
 });
 

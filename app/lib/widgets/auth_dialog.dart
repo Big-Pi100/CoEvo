@@ -1,20 +1,21 @@
 /// **登录 / 注册弹窗** —— 全应用**唯一**一处账号入口。
 ///
-/// # 🔴 它承担两个职责（这正是它一度被误删的原因）
+/// # 🔴 它为什么曾是「两个职责」，以及 2026-10-09 之后只剩一个
 ///
-/// | 职责 | 谁在用 | 场景 |
+/// | 职责 | 2026-10-09 之前 | 现在 |
 /// |---|---|---|
-/// | **登录已有账号** | 「我的」页账号区 | 用户已有账号，想同步 / 找回订阅 |
-/// | **认领试用账号**（注册） | `home_screen._showAuthDialog()` | 试用期满 / 已登录但没填姓名 |
+/// | **登录已有账号** | 「我的」页账号区 | ✅ 保留 |
+/// | **注册新账号** | 「我的」页账号区（未登录时）| ✅ 保留 |
+/// | **认领匿名试用账号** | `home_screen._showAuthDialog()`（启动弹窗）| 🔴 **已删**（试用账号机制整体退役）|
 ///
-/// ⚠️ 2026-09-29 之前它只在第 2 个场景被调用过（由「我的」页的自动弹窗触发）。
-/// 那次重排把自动弹窗当作「trial 认领弹窗」删掉时，**连带删掉了「登录」的唯一入口** ——
-/// 因为**同一个控件承担了两个职责**，按其中一个职责处置就会消灭另一个。
-/// 📄 判据见 `MEMORY.md` 判据库：「删一个元素前，先查『它还承担什么职责』」。
-///
-/// ⚠️ **文件名/类名已名不副实**：`Claim` 指的是 trial 认领时代。
-/// 现在它的主要消费者是「登录」。改名（→ `AuthDialog`）尚未做，
-/// 因为那会牵动 `home_screen` 的引用 —— **留待与「登录页」一并处理**（见下）。
+/// ⚠️ 2026-09-29 有过一次事故：那时它**同时**承担「登录」（「我的」页用）与
+///    「trial 认领」（启动弹窗用）两个职责。重排时把启动弹窗当作
+///    「trial 认领弹窗」删掉，**连带删掉了「登录」的唯一入口** ——
+///    因为同一个控件承担了两个职责，按其中一个职责处置就会消灭另一个。
+/// 📄 判据：**删一个元素前，先查「它还承担什么职责」**。
+///    🔑 2026-10-09 这次是**反过来**做的：先确认「认领」是**唯一的**被删对象，
+///    再动它 —— 而且把类名/文件名从 `ClaimDialog` 改为 `AuthDialog`，
+///    让那个已消失的概念**不会从名字里渗回来**（同族判据：删功能要清语义残留）。
 ///
 /// # 🔴 形态说明：本批是**弹窗**，不是原型里的「登录页」
 ///
@@ -56,27 +57,31 @@ import 'co_dialog.dart';
 import 'forgot_password_dialog.dart';
 import 'twemoji.dart';
 
-class ClaimDialog extends ConsumerStatefulWidget {
-  const ClaimDialog({super.key});
+/// 登录 / 注册弹窗（**全库唯一的账号入口**）。
+class AuthDialog extends ConsumerStatefulWidget {
+  const AuthDialog({super.key});
 
-  /// 弹出本弹窗（「我的」页账号区与 `home_screen` 都走这里）。
+  /// 弹出本弹窗（「我的」页账号区）。
   ///
   /// 🔑 弹出方式统一走 [CoDialog.show] —— 遮罩浓度 / `insetPadding` 只该有一处定义。
   ///
   /// 🔴 2026-10-06：原 `pendingRefCode` / `pendingCampaignId` 两个参数已删 ——
   /// 分销/营销链整体退役（后端 `/api/referral/*` 与 `/api/campaign*` 路由已不存在）。
+  /// 🔴 2026-10-09：原 `home_screen` 那个**自动弹窗**调用点已删 ——
+  /// 启动不再弹任何东西（「未登录」是一等状态）；本弹窗现在只由
+  /// 「我的」页的常驻入口打开。
   static Future<bool?> show(BuildContext context) {
     return CoDialog.show<bool>(
       context,
-      builder: (_) => const ClaimDialog(),
+      builder: (_) => const AuthDialog(),
     );
   }
 
   @override
-  ConsumerState<ClaimDialog> createState() => _ClaimDialogState();
+  ConsumerState<AuthDialog> createState() => _AuthDialogState();
 }
 
-class _ClaimDialogState extends ConsumerState<ClaimDialog> {
+class _AuthDialogState extends ConsumerState<AuthDialog> {
   /// 🔴 2026-09-29：字段由「用户名 + 密码 + 真实姓名 + 手机号」收敛为**邮箱 + 密码**。
   ///    白哥：「注册不要真实姓名和手机号，用邮箱注册+密码注册」。
   final _emailController = TextEditingController();
@@ -128,22 +133,17 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
 
       if (_isLogin) {
         await notifier.login(email, _passwordController.text);
-      } else if (ref.read(authProvider).isAuthenticated) {
-        // ── 已登录（匿名试用账号）→ **认领**：保留这个账号已有的学习记录 ──
-        await notifier.trialClaim(
-          email,
-          _passwordController.text,
-        );
       } else {
-        // ── 未登录 → **直接注册** ──
+        // ── 注册：**直接建号** ──
         //
-        // 🔴 这条分支是 2026-09-29 补的，修掉一个真错误：
-        //    此前无论是否已登录都调 `trialClaim`，而它内部用 `state.userId!` ——
-        //    未登录时是 `null` → 抛 `Null check operator used on a null value`，
-        //    而 `_friendlyError` 映射不到这种字符串 → **用户看到一句英文机器话**。
+        // 🔴 2026-10-09：原「已登录（匿名试用账号）⇒ 认领 `trialClaim`」这条分支
+        //    已随试用账号机制一起删除 —— 不再有匿名账号可认领。
+        //    ⚠️ 它历史上还害过一次：**未登录时**误走认领，而 `trialClaim` 内部用
+        //    `state.userId!` ⇒ 抛 `Null check operator used on a null value`
+        //    ⇒ 用户看到一句英文机器话。现在那条路不存在了。
         //
-        // 🔑 两者的语义本就不同：认领 = 「升级**这个**匿名账号」，
-        //    直接注册 = 「新建一个账号」。混用是接口选错了，不是参数写错了。
+        // 🔑 语义差异（值得留在注释里）：**认领** = 「升级**这个**匿名账号」，
+        //    **注册** = 「新建一个账号」。两者本就不同，混用是接口选错了。
         await notifier.register(email, _passwordController.text);
       }
       if (mounted) Navigator.of(context).pop(true);
@@ -185,7 +185,7 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
       if (identityToken == null || identityToken.isEmpty) {
         // 拿不到 token **不是用户取消**（取消走下面的 exception 分支），
         // 通常是 entitlement / 后台 capability 没配齐 ⇒ 留日志便于排查。
-        debugPrint('claim_dialog: Apple 未返回 identityToken（检查 App ID 的 '
+        debugPrint('auth_dialog: Apple 未返回 identityToken（检查 App ID 的 '
             'Sign in with Apple capability 与 Runner.entitlements）');
         if (mounted) setState(() => _isSubmitting = false);
         return;
@@ -196,17 +196,17 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
       // 🔑 用户**主动取消**不是错误 —— 静默收场，不弹「登录失败」
       //    （弹了会让用户以为系统出问题，而他只是改了主意）。
       if (e.code == AuthorizationErrorCode.canceled) {
-        debugPrint('claim_dialog: 用户取消了 Apple 登录');
+        debugPrint('auth_dialog: 用户取消了 Apple 登录');
         if (mounted) setState(() => _isSubmitting = false);
         return;
       }
-      debugPrint('claim_dialog: Apple 授权失败 code=${e.code} msg=${e.message}');
+      debugPrint('auth_dialog: Apple 授权失败 code=${e.code} msg=${e.message}');
       if (mounted) setState(() => _isSubmitting = false);
     } catch (e) {
       // 服务端/网络错误：文案已由 `authProvider` 归一化并写进 `authState.error`
       // ⇒ 这里只 `setState` 触发重绘，**不重复拼一遍原始异常**
       //   （否则界面上会同时出现「网络异常」和「Exception: …」两行）。
-      debugPrint('claim_dialog: Apple 登录失败: $e');
+      debugPrint('auth_dialog: Apple 登录失败: $e');
       if (mounted) setState(() => _isSubmitting = false);
     }
   }
@@ -274,16 +274,19 @@ class _ClaimDialogState extends ConsumerState<ClaimDialog> {
           // 第一句照原型第 ⑤ 屏原文（`profile-redesign-plan` §六「未登录」态副标题：
           // 「登录后可跨设备同步 · 找回订阅」）—— **仍然成立**，保留。
           //
-          // 🔴 第二句是**本地补充**（原型里没有），2026-10-01 改写：
-          //    原文是「只有『生词本超过 200 词』等少数能力需要账号」，
-          //    而 200 上限**已取消**（免费可全量使用，见
-          //    `docs/review/free-tier-limit-removal-assessment-2026-10-01.md`）
-          //    ⇒ 那句成了**假陈述** ⇒ 必须改。
-          // 🔑 改法：**只保留「不登录也能用」这一半**，不再列举「哪些能力需要账号」——
-          //    因为现在**没有任何能力**需要账号，列举什么都不对。
+          // 🔴 第二句改过两次：
+          //    2026-10-01 原文是「只有『生词本超过 200 词』等少数能力需要账号」，
+          //       而 200 上限**已取消** ⇒ 那句成了**假陈述** ⇒ 改成
+          //       「不登录也能用 —— 全部功能都可以直接使用，无需账号」。
+          //    2026-10-09 那句**也不准了**：实测后端 —— **整段翻译**走
+          //       `authorize_login_only`（额度按 `user_id` 记），未登录用不了
+          //       ⇒ 「全部功能」是错的。改为**如实列举**：常用功能不需要账号，
+          //       翻译因为要记免费额度才需要（那是它自己的提示会说明的事）。
+          //    📌 判据：**「不登录也能用」这种全称断言，必须逐项核对** ——
+          //       它会随任何一个功能加门而失效，而且失效时**没有任何东西会报错**。
           Tw(
             '登录后可跨设备同步生词本与学习记录，并找回已购订阅。'
-            '不登录也能用 —— 全部功能都可以直接使用，无需账号。',
+            '阅读、划词、生词本与复习都不需要账号。',
             style: TextStyle(
               fontFamily: CoFonts.uiSans,
               fontSize: 12.5,

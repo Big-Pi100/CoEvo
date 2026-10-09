@@ -16,7 +16,7 @@ import 'screens/aggregate_page_screen.dart';
 import 'screens/book_reader_screen.dart';
 import 'screens/bookmark_list_screen.dart';
 import 'screens/reading_tab_screen.dart';
-import 'screens/review_screen.dart';
+import 'screens/review_tab_screen.dart';
 import 'screens/review_session_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reader_screen.dart';
@@ -24,13 +24,13 @@ import 'screens/subscribe_screen.dart';
 import 'screens/notification_panel.dart';
 import 'providers/auth_provider.dart';
 import 'providers/iap_provider.dart';
+import 'providers/local_data_owner_provider.dart';
 import 'providers/subscription_provider.dart';
 import 'providers/sync_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/iap_plan.dart';
 import 'services/iap_service.dart';
 import 'widgets/achievement_unlock_overlay.dart';
-import 'widgets/dialog_overlay.dart';
 
 final goRouter = GoRouter(
   initialLocation: '/',
@@ -113,7 +113,11 @@ final goRouter = GoRouter(
           routes: [
             GoRoute(
               path: '/review',
-              builder: (context, state) => const ReviewScreen(),
+              // 🆕 2026-10-08：从单页改为**容器**（「复习 ｜ 笔记」双标题）——
+              //    白哥定案：「把『我的划线』移动到复习页面，名称改为『笔记』
+              //    与『复习』同级，就像阅读页面有『今日精选』和『书架』」。
+              //    ⇒ 与 `/home` 用 `ReadingTabScreen` 容器是**同一个模式**。
+              builder: (context, state) => const ReviewTabScreen(),
             ),
           ],
         ),
@@ -200,6 +204,18 @@ final goRouter = GoRouter(
       path: '/achievements',
       builder: (context, state) => const AchievementsScreen(),
     ),
+    // 🆕 记忆列表（2026-10-07）—— 从「我的」页「**记忆**」组进入。
+    // 🔑 与 `/achievements` 同级、同依据：它是「我的」页的**二级信息页**，
+    //    不是某个 tab 的内容 ⇒ 顶层路由，不带 tabbar。
+    //    🔄 **2026-10-08 白哥定案后本路由已删除** ——
+    //    「我的划线」改名「笔记」、移入**「复习」tab** 作为与「复习」平级的一段
+    //    （见 `screens/review_section.dart` / `ReviewTabScreen`）。
+    //    🔑 原注释的理由「它跨两种来源 ⇒ 挂任何 tab 都不合适」**已经变了**：
+    //       白哥要的是「像阅读页面那样有**两个同级页面**」——
+    //       层级归属按**用户在哪用**（记完东西回去复习时顺手看），
+    //       而不是按「数据来自几张表」。
+    //    ⚠️ 一并删掉了「我的」页的那个入口 —— 两个入口指向同一份数据
+    //       会让栈行为分叉（生词本那次已经踩过）。
     // 关于（二级页）—— 从「我的」页「其他」组进入
     // 🔑 与 `/achievements` 同级：两者都是「我的」页的**二级信息页**，
     //    不是 tab 的内容（所以走顶层路由，不带 tabbar）。
@@ -686,28 +702,57 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp>
   void _checkSubscription() {
     final auth = ref.read(authProvider);
     final iap = ref.read(iapServiceProvider).snapshot;
-    final isTrial = (auth.username ?? '').startsWith('trial_');
 
+    // 🔴 2026-10-09：判据由 `username.startsWith('trial_')` 改为 `!isRegistered`。
+    //
+    // 旧写法**正是** `auth_provider` 里 **2026-09-29 已废弃并删除**的
+    // `isTrialAccount` 那一套（「靠 `trial_` 前缀猜，改用户名即失效」）——
+    // 全库已统一为「**邮箱是否为空**」。这里是最后一处残留，口径必须跟齐：
+    //   · 认领（`trialClaim`，2026-10-09 已删）后的正式账号 `username` **仍是 `trial_*`**
+    //     ⇒ 旧判据把**已注册的正式账号**当试用 ⇒ 「该弹不弹」，且**永远查不出来**
+    //        （没有任何一处会红）。
+    // 🔑 语义：`!isRegistered` = 账号**没有邮箱** ⇒ 只剩**存量**匿名账号会命中
+    //    （2026-10-09 起不再创建新的；见 `docs/review/trial-account-removal-2026-10-09.md`）。
+    //    ⚠️ 那类账号不该被反复推订阅（它们连邮箱都没有，推了也没法买）
+    //       ⇒ 这一支作为**存量兼容**保留。将来若把存量账号清干净，它可以一起删。
+    //    📌 判据：**同一个概念在全库只能有一种判据** —— 否则两处会各自漂移，且漂移是静默的。
+    final isAnonymous = !auth.isRegistered;
+
+    // ── ① 对账：**无论 IAP 可不可用都拉一次**服务端订阅记录 ──
+    //
+    // 🔴 2026-10-09（白哥真机：服务端已开的订阅，App 里显示未订阅）：
+    //   订阅 UI 现在读 `subscriptionActiveNow`（端侧 **或** 服务端）⇒
+    //   **服务端那一侧必须有值**。原先只在 IAP 不可用时才 fetch
+    //   ⇒ iOS 上 `subscriptionProvider` 永远是 `unknown`，「兜底」形同虚设。
+    //   🔑 **对账与判定是两件事**：判定仍以**端侧为权威**（下面的分支一字未改）；
+    //      对账只是把服务端记录拉新 —— 换设备 / 后台授予 / 人工开通靠它才看得见。
+    //   ⚠️ 代价：iOS 上每 5 分钟多一次轻量 GET（几百字节）。
+    if (auth.isAuthenticated && auth.userId != null) {
+      ref.fetchSubscription().then((_) {
+        // ⚠️ 回退路径必须用**刚拉回来的**值判定（不能沿用旧值）
+        if (iap.availability != IapAvailability.available) {
+          _applyExpired(
+            expired: ref.read(subscriptionProvider).isExpired,
+            isAnonymous: isAnonymous,
+          );
+        }
+      }, onError: (Object e) {
+        // 对账失败**不影响**判定与内容可用性（同本方法的总体取向：失败静默）
+        debugPrint('_checkSubscription 对账失败（不影响判定）：$e');
+      });
+    }
+
+    // ── ② 判定（端侧权威）：IAP 可用 ⇒ 用 StoreKit 的 entitlement ──
     if (iap.availability == IapAvailability.available) {
       _applyExpired(
         expired: iap.entitlement == IapEntitlementStatus.expired,
-        isTrial: isTrial,
+        isAnonymous: isAnonymous,
       );
-      return;
     }
-
-    // 回退：IAP 不可用 → 沿用后端记录
-    if (!auth.isAuthenticated || auth.userId == null) return;
-    ref.fetchSubscription().then((_) {
-      _applyExpired(
-        expired: ref.read(subscriptionProvider).isExpired,
-        isTrial: isTrial,
-      );
-    });
   }
 
   /// 按「是否已到期」驱动覆盖层显隐（含 backoff）。
-  void _applyExpired({required bool expired, required bool isTrial}) {
+  void _applyExpired({required bool expired, required bool isAnonymous}) {
     // 距上次关闭时间按 dismiss 次数递增（已显示的覆盖层不在此限，支付后需立即刷新）
     if (_lastDismissed != null && !_showSubExpired) {
       final idx = _dismissCount.clamp(0, _backoffMinutes.length - 1);
@@ -717,8 +762,9 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp>
       }
     }
 
-    // 临时账户不弹订阅覆盖层，引导注册由 ChatScreen 处理
-    if (expired && mounted && !_showSubExpired && !isTrial) {
+    // 匿名试用账号不弹订阅覆盖层（判据见 `_checkSubscription`）；
+    // 引导注册另有**常驻**入口（「我的」页账号组的下拉区）
+    if (expired && mounted && !_showSubExpired && !isAnonymous) {
       setState(() => _showSubExpired = true);
     }
     // 订阅已激活（刚买完）→ 关闭覆盖层
@@ -769,7 +815,28 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp>
                       _lastDismissed = DateTime.now();
                       _dismissCount++;
                       setState(() => _showSubExpired = false);
-                      context.push('/subscribe');
+                      // 🔴 2026-10-09 修复：**不能用 `context.push`**（白哥真机报
+                      //    「点击查看订阅只是关闭弹窗，并没有跳转到订阅页面」）。
+                      //
+                      // 根因：本覆盖层挂在 `MaterialApp.router` 的 `builder:` 里，
+                      //    而那个 `context` 在 **Navigator 之上** ——
+                      //      · Flutter SDK `widgets/app.dart`：`builder(context, routing)`，
+                      //        `routing` 就是 Router 本身 ⇒ 上下文在 Router **上面**
+                      //      · go_router 14.8.1 `src/router.dart` 的 `builderWithNav`
+                      //        把 `InheritedGoRouter` 包在 **Navigator 周围** ⇒ 在
+                      //        builder 上下文里**查不到**
+                      //    ⇒ `context.push`（= `GoRouter.of(context).push`）抛
+                      //      「No GoRouter found in context」；release 下 assert 被剥掉，
+                      //      变成「空值崩溃」。
+                      //    ⇒ 症状：`setState` 在它**之前**已执行 ⇒ 弹窗关掉了，
+                      //      而导航**从未发生**。
+                      //
+                      // ✅ 正解：直调**同文件顶层的 `goRouter` 实例** —— 不经 context，
+                      //    不受「上下文在 Navigator 之上」影响。
+                      // 📌 判据：**`MaterialApp.builder` 的上下文在 Navigator 之上** ——
+                      //    那里只能放不需要 Navigator / GoRouter 的东西；
+                      //    要导航必须**持实例**（`goRouter` / `navigatorKey`）。
+                      goRouter.push('/subscribe');
                     },
                     child: const Text('查看订阅'),
                   ),
@@ -807,7 +874,18 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp>
         //    `AuthNotifier` 是 `StateNotifier`（**拿不到 `ref`**），
         //    而这里是**所有登录路径**（登录弹层 / 注册 / 会话恢复）的**唯一汇聚点**
         //    ⇒ 一处接线覆盖全部，且 `syncNow` 内部失败只记日志、不影响登录。
-        runSyncAfterLogin(ref);
+        //
+        // 🔴🔴 **2026-10-09：顺序是判据的一部分 —— 先判归属，再同步。**
+        //
+        //    `runSyncAfterLogin` → `syncNow` 会**先 push** 本地 `pending_push = 1` 的行。
+        //    若那时**上一个账号**的数据还在本地（换账号场景），它们会被推到
+        //    **新登录的账号**名下 —— 这正是「本地数据归属账号」要修的那个缺口。
+        //    ⇒ 必须 `applyLocalOwnerPolicy`（可能清空）**跑完**才允许 push。
+        //    📌 判据同 `sync_service` 里那条「谁依赖谁」的顺序不能靠巧合。
+        Future.microtask(() async {
+          await applyLocalOwnerPolicy(ref, userId: next);
+          if (mounted) runSyncAfterLogin(ref);
+        });
       }
     });
 
@@ -846,16 +924,25 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp>
         final scale = MediaQuery.of(context).textScaleFactor.clamp(1.0, 1.3);
         final content = MediaQuery(
           data: MediaQuery.of(context).copyWith(textScaleFactor: scale),
-          child: DialogOverlay(
-            child: Stack(
-              children: [
-                child!,
-                // 全局成就解锁弹窗（**任何页面**解锁都会弹）—— 顶层 Stack 最上层
-                // 数据源：端侧（见 providers/achievement_notifier.dart）
-                const AchievementUnlockOverlay(),
-                _buildSubExpiredOverlay(),
-              ],
-            ),
+          // 🔴 2026-10-09：原先这里还包了一层 `DialogOverlay`（全局弹窗队列）——
+          //    **已删除**，理由两条：
+          //    ① **零消费者**：`dialogQueueProvider.enqueue` 全库无调用方
+          //       （判据：零消费者 = 死代码；且「写了没人跑 = 迟早失效」）；
+          //    ② 它建在**已退役的概念**上：`DialogPriority` 里是
+          //       `P0_PAYMENT` / `P1_SHARE` / `P2_CP1_CONCEPT` —— 分销 / 概念制卡
+          //       时代的东西，那些链路早已退役。
+          //    ⚠️ 更糟的是它**是个陷阱**：`_showDialog` 在**本上下文**
+          //       （Navigator 之上，理由同上一条注释）里调 `showDialog` ⇒
+          //       一旦有人真用起来，弹窗会**静默不出现**（异常被它自己的 catch 吞掉）。
+          //    📄 完整证据 → `docs/review/subscription-expiry-overlay-investigation-2026-10-09.md` §三.a
+          child: Stack(
+            children: [
+              child!,
+              // 全局成就解锁弹窗（**任何页面**解锁都会弹）—— 顶层 Stack 最上层
+              // 数据源：端侧（见 providers/achievement_notifier.dart）
+              const AchievementUnlockOverlay(),
+              _buildSubExpiredOverlay(),
+            ],
           ),
         );
         if (!isWide) return content;

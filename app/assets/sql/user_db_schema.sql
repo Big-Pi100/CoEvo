@@ -454,6 +454,169 @@ CREATE INDEX IF NOT EXISTS idx_ewc_pending ON external_word_cache (pending_push)
   WHERE pending_push = 1;
 
 -- ─────────────────────────────────────────────────────────────
+-- 🆕 v1.7（2026-10-07）划线记忆（highlight）
+-- ─────────────────────────────────────────────────────────────
+-- 依据：`docs/design/visual-generic-card-2026-10-07.html` v2
+--      （白哥定：**不做 AI 制卡，只做划线记忆** —— 划线任何长度 → 进记忆队列 → 复习考默写）
+--
+-- # 🔑 为什么划一条线就能进复习队列（**一行既有结构都没改**）
+-- 队列的主键是 `card_review_state.word_id`（TEXT）。只要给划线一个**稳定 id**，
+-- 它就能复用整条既有链：`card_review_state` → `ReviewListQuery.list()` → FSRS。
+--   · 划线 id 形态 = **`hl:<uuid>`**（见 `services/highlight_id.dart`）
+--   · 🔴 **必须是 uuid 而不是本地自增** —— 自增在两台设备上会从 1 重新开始 ⇒
+--     同步时 `hl:1` 互相覆盖。而 `word_id` 会被抄进 `card_review_state` **与**
+--     `review_log` 两份用户数据 ⇒ 将来改 id 形态要**迁移用户数据**（不可逆）。
+--     📌 判据：「将来要改的成本」要在选型时算。
+--
+-- # 🔴 时间列用**毫秒**（`%f`）—— 与 `bookmark` / v6 之后的所有同步表一致
+--    合并判定是「谁的时间戳更新谁赢」（严格大于）。秒精度会让**同一秒内的两次操作**
+--     得到相同时间戳 ⇒ 后者永不生效（详见 `bookmark_repository.dart` 的 `kSqlNowUtc`）。
+--
+-- # ⚠️ `pending_push` 目前**没有消费者**（如实标注，同 `bookmark` 的既有形态）
+--
+-- # 🔴 两处「有意为之」别顺手改
+--   ① **软删**（`deleted`）—— 与 `bookmark` / `user_word` 同一模式：
+--      并集同步下硬删会被别端**并回来**（`bookmark` 已踩过）。
+--      且「取消划线 ≠ 删掉内容」，那条划线的**笔记**可能还要保留 ⇒ 软删语义更对。
+--   ② **`text` 存全文**（不是只存 offset）——
+--      offset 依赖「同一份正文」这个前提，而文章正文可能被重新抓取（内容源会更新）
+--      ⇒ 只存 offset 的话，正文一变，划线就**指到别处**了。
+--      存全文后：定位错了也**仍能复习**（内容是对的，只是高亮位置可能偏）。
+CREATE TABLE IF NOT EXISTS highlight (
+  -- uuid v4（端侧生成）—— 见上方「为什么必须是 uuid」
+  id           TEXT    PRIMARY KEY,
+  -- 'article' = 信息流文章 · 'book' = 用户导入的书
+  source_type  TEXT    NOT NULL
+               CHECK (source_type IN ('article', 'book')),
+  -- article: 文章 id（int，以文本存）· book: `book.id`（端侧 uuid）
+  source_id    TEXT    NOT NULL,
+  -- 章内下标（**只有书有**；文章是单页 ⇒ NULL）
+  chapter_idx  INTEGER,
+  -- 章内字符 offset（半开区间 [start, end)）
+  start_offset INTEGER NOT NULL,
+  end_offset   INTEGER NOT NULL,
+  -- 🔴 选中的**原文** —— 复习时的**标准答案**（理由见上「有意为之 ②」）
+  text         TEXT    NOT NULL,
+  -- 🆕 用户的笔记（设计稿 §7）。🔴 **默写判定之前不得显示**（笔记里可能就写着答案）
+  note         TEXT,
+  created_at   TEXT    NOT NULL
+               DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  -- 🔑 语义同 `bookmark.bookmarked_at`：**最后一次改变该条状态的时刻**
+  --    （取消划线/改笔记也要刷新 —— 否则同步会丢弃这次变更）
+  updated_at   TEXT    NOT NULL
+               DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  deleted      INTEGER NOT NULL DEFAULT 0
+               CHECK (deleted IN (0, 1)),
+  pending_push INTEGER NOT NULL DEFAULT 1
+               CHECK (pending_push IN (0, 1)),
+  -- 🆕 v1.9 (2026-10-08)：**暂停复习** —— 复习页那一行「暂停」动作对划线卡的落点。
+  --
+  -- 🔴 **与 `deleted` 是两个语义，绝不能合并**：
+  --    · `deleted` = **这条划线不要了**（正文里下划线消失 · 笔记页不再列它）
+  --    · `paused`  = **划线还在**（正文仍有下划线 · 笔记页照常列），
+  --                  只是**不参与复习排期**（从复习列表里离开视野）
+  --    合并的后果：用户点一下「暂停」，划线就没了 —— 与「删除」混为一谈。
+  --
+  -- 🔴 **为什么必须新开一列**（而不是复用 `user_word.deleted`）：
+  --    复习列表的「暂停」判据原本是 `LEFT JOIN user_word`（生词用的是那张表的 `deleted`）。
+  --    而划线卡的 `word_id = 'hl:<uuid>'` 在 `user_word` 里**没有行**
+  --    ⇒ 那个 JOIN 永远取不到值 ⇒ **「暂停」对划线卡完全无效**
+  --    （2026-10-08 白哥真机报「无效」；且写端 affected=0 后**静默 return** ⇒ 连提示都没有）。
+  --
+  -- 🔴 **为什么不放到 `card_review_state`**（曾考虑过）：那张表是**派生**的 ——
+  --    云端同步拉回 `review_log` 之后会用 `upsertState`（`INSERT OR REPLACE`）
+  --    **整行重建**（见 `sync_service.dart` 的重放段）⇒ 放进去的状态会被抹掉。
+  --    📌 判据：**「会被重建的表」不能存用户意图**。
+  --
+  -- 恢复 = `paused` 1→0（入口在「笔记」页那一条上，见 `highlights_screen`）。
+  -- ⚠️ 与 `setNote` / `remove` 同规矩：**改这个列必须刷 `updated_at` + `pending_push`**。
+  --
+  -- ⚠️ **列顺序**：`ALTER TABLE ADD COLUMN` 只能追加到**末尾** ⇒ 本列必须是最后一列
+  --    （与 `bookmark.deleted` 同一条教训：新库与升级库的列顺序必须一致）。
+  paused       INTEGER NOT NULL DEFAULT 0
+               CHECK (paused IN (0, 1))
+);
+
+-- 清单只读未删的（漏了它界面会显示「已取消的划线」）
+CREATE INDEX IF NOT EXISTS idx_hl_alive ON highlight (deleted)
+  WHERE deleted = 0;
+-- 「这篇文章/这本书里有哪些划线」—— 按**(来源, 位置)**聚簇，供正文渲染时一次取全
+CREATE INDEX IF NOT EXISTS idx_hl_source
+  ON highlight (source_type, source_id, start_offset)
+  WHERE deleted = 0;
+-- 「我刚划了什么」= 按时间倒序
+CREATE INDEX IF NOT EXISTS idx_hl_time ON highlight (created_at DESC);
+-- 待上传（与 `idx_bm_pending` / `idx_uw_pending` 同模式）
+CREATE INDEX IF NOT EXISTS idx_hl_pending ON highlight (pending_push)
+  WHERE pending_push = 1;
+
+-- ─────────────────────────────────────────────────────────────
+-- 翻译缓存（`translation_cache`）—— 本机翻过的句子不再重复付费
+-- ─────────────────────────────────────────────────────────────
+-- v1.8 (2026-10-08) 整段翻译：新增 `translation_cache`
+--
+-- 🔑 **为什么缓存在端侧**（设计稿 §4）：服务端刻意**不做**全局缓存 ——
+--    缓存的全部价值来自「同一份结果被多人复用」，而翻译的单位是**句子**：
+--    每篇文章的每句话都唯一 ⇒ 跨用户命中率 ≈ 0 ⇒ 服务端加缓存只是白付一层复杂度。
+--    端侧则**有价值**：同一个用户会重复看同一句。
+--    📌 判据：**能摊薄才有缓存价值**（`product-core-expansion` §4.3）。
+--
+-- 🔴 主键 = **规范化后的原文本身**（不是 hash）：
+--    ① 原文上限 300 字符 ⇒ 当主键完全可行，没必要为省空间再引一层 hash
+--    ② 少一层就少一处「hash 与文本不一致」的可能（判据：**能少一处口径就少一处**）
+--    ⚠️ 存进去的**必须是规范化后的形式** —— SQLite 的 TEXT 主键比较是**二进制**的，
+--       若规范化没做在写入端，「同一句但空格不同」会变成两行 ⇒ **白花两次钱**
+--       （而这**不报错**：用户只觉得"这句好像翻过"）。
+--    🔑 规范化口径只有一处 → `services/translation_cache.dart::normalizeTranslationSource`
+--
+-- ⚠️ 它是**派生缓存**，不是用户资产：清掉只会让下次重新付费，**不丢任何数据**。
+--    因此**不参与同步**（设计稿：译文「不写进文章、不参与痕迹、不进生词本」）。
+--
+-- 🔴 **退出登录时必须清空** —— 「他翻过哪些句子」是**行为数据**，
+--    跨账号保留会泄漏（同 `word_lookup` 一族的教训：登录态是一组状态的**所有者**）。
+CREATE TABLE IF NOT EXISTS translation_cache (
+  src_text   TEXT PRIMARY KEY,        -- 规范化后的原文（口径见上）
+  -- JSON 数组（与接口 `segments` 同一形状）⇒ 读出来直接能用，不需要第二套解析
+  segments   TEXT NOT NULL,
+  created_at TEXT NOT NULL
+             DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  -- 最近一次命中时间（LRU 淘汰用）。⚠️ 与 `created_at` 分开：
+  -- 淘汰要看「有多久没被用到」，不是「多老」。
+  used_at    TEXT NOT NULL
+             DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+-- LRU 淘汰：按最近使用时间升序删最旧的几条
+CREATE INDEX IF NOT EXISTS idx_tcache_used ON translation_cache (used_at);
+
+-- ─────────────────────────────────────────────────────────────
+-- 🆕 v1.9 (2026-10-09) `local_meta` —— 本机库的**元信息**（单行键值表）
+-- ─────────────────────────────────────────────────────────────
+--
+-- # 它存什么
+-- `owner_user_id` = **本机这份学习数据属于哪个账号**（见下方「为什么需要它」）。
+--
+-- # 🔴 为什么必须存**在库里**（而不是 prefs / 单独文件）
+--
+-- 归属标记描述的是**这个文件的内容** ⇒ 它必须与内容**同生命周期**。
+-- 放 prefs 会出现两个独立的可清点（清 App 数据只清一个、或反过来），
+-- 而一旦两者不一致，失败形态是**静默的**：「把 B 的数据当成 A 的」。
+--   判据：**「谁的事实，就跟谁放一起」** —— 它不是说 `prefs` 不能用，
+--   而是「DB 内容的归属」这个事实的产生方就是 DB 本身。
+-- 附带好处：清库与改归属可以放进**同一个事务**（不会出现「清了数据但归属没更新」）。
+--
+-- # 为什么是「单行键值表」而不是「专用单列表」
+--
+-- 将来还会有本机级元信息（例如「上次迁移来源版本」）。键值表加一项不改结构，
+-- 而专用表一次只能装一个事实 ⇒ 第二项来时就要么加列（老库要 ALTER）要么加表。
+-- ⚠️ 代价：`value` 无类型约束（都是 TEXT）—— 本表只装**少量、低风险**的元信息，
+--    这一点如实标注在这里。
+CREATE TABLE IF NOT EXISTS local_meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+-- ─────────────────────────────────────────────────────────────
 -- 说明（不在本次范围）
 -- ─────────────────────────────────────────────────────────────
 -- · **`article`** —— v2 已改名为 `content_cache` 并修正语义，属 Phase 3
@@ -492,6 +655,43 @@ CREATE INDEX IF NOT EXISTS idx_ewc_pending ON external_word_cache (pending_push)
 --     理由见该表注释：收敛切换时要形状不变 → 真正无缝）
 --   · ⚠️ `pending_push` 现无消费者（同 `bookmark` 的既有形态，如实标注）
 --   · 📄 依据：`docs/review/a2-and-worddb-convergence-checklist-2026-10-01.md` §四 阶段 2
+--
+-- v1.7 (2026-10-07) 划线记忆：新增 `highlight`
+--   · 🔑 **一行既有结构都没改** —— 给划线造合成 id `hl:<uuid>`，直接进现有 FSRS 队列
+--   · 🔴 id 用 **uuid 而非本地自增**：自增会在多设备同步时互相覆盖，
+--     而 `word_id` 已抄进两份用户数据（`card_review_state` / `review_log`）⇒ 改形态要迁移
+--   · 🔴 **存全文**（不只存 offset）：offset 依赖「同一份正文」，而文章正文会被重新抓取
+--   · 📄 依据：`docs/design/visual-generic-card-2026-10-07.html` v2
+--
+-- 🔴🔴 v1.7 的**事故（2026-10-08 发现并修复）**：加这张表时**忘了升 `kUserDbVersion`**。
+--   · `CREATE TABLE IF NOT EXISTS` 只对**新库**（走 `onCreate`）生效；
+--     老库**只能靠 `onUpgrade`**，而它**只在版本号变化时触发**。
+--   · 后果：真机上的库恰好是 **v6** ⇒ 版本没变 ⇒ 升级不触发 ⇒ **`highlight` 永远建不出来**
+--     ⇒ 划线功能**静默失败**（写库时报 `no such table: highlight`）。
+--   · 🔑 **为什么既有断言没抓到**：`verify_userdb_migration.dart` 的起点是 v1–v5，
+--     那些路径**都会触发升级**（版本在变）⇒ 每次都能建出 `highlight` ⇒ **全绿**。
+--     **真机现状（v6 → v6）那条路径从未被测过。**
+--   · ✅ 修复 = 升到 v7（顺带把 `translation_cache` 一起带上）+ 补 `fromVersion: 6` 断言路径。
+--   📌 判据：**加表/加列之后必须问「老库怎么拿到它」** ——
+--      `onCreate` 只对新库生效，老库**只有 `onUpgrade`**，而它**只在版本号变化时触发**。
+--
+-- v1.8 (2026-10-08) 整段翻译：新增 `translation_cache`（端侧缓存翻过的句子）
+--   · 🔑 纯**派生缓存**（不参与同步、丢了只是重新付费）
+--   · 🔴 退出登录时**必须清空**（「翻过哪些句子」是行为数据）
+--   · 📄 依据：`docs/design/visual-translation-2026-10-07.html` §4
+--
+-- v1.9 (2026-10-09) 本地数据**归属账号**：新增 `local_meta`（单行键值）
+--   · 🔑 表里存 `owner_user_id` = **本机这份学习数据属于哪个账号**
+--   · 🔴 起因（白哥实测 + 复查代码）：本地数据一直是**设备维度**
+--     （退出/注销都不清，注销弹窗也明说「本机学习数据不受影响」），
+--     但**换账号**时没人管 ⇒ 双向混合：
+--       ① 旧账号未推完的改动会被推到**新登录的账号**名下
+--       ② 新账号的云端数据会**并集**进本地，与旧账号的数据混在一起
+--     ⇒ 现在：`owner` 为空 ⇒ **认领**（保留数据，覆盖「先划词后登录」与老库升级）；
+--             相同 ⇒ 不动；**不同 ⇒ 清空本机学习数据**（详见 `local_data_owner.dart`）。
+--   · ⚠️ 加表 ⇒ 与 v1.7 同一个坑：**必须升 `kUserDbVersion`**（8→9），
+--     否则真机上「恰好就是 v8」的库**不会触发 `onUpgrade`** ⇒ 表建不出来。
+--     ✅ 守护断言：`scripts/query_verify/bin/verify_userdb_migration.dart` 的 `fromVersion: 8` 路径。
 --
 -- 🔴🔴 **升级注意（本次起「已有用户库」必须走迁移）**
 --    v1.2 时本库尚无任何端创建，故 version 停在 1。

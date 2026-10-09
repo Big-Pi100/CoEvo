@@ -44,7 +44,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../api/generate_card_client.dart';
 import '../providers/achievement_notifier.dart';
 import '../providers/achievement_provider.dart';
 import '../providers/device_id_provider.dart';
@@ -53,6 +52,7 @@ import '../providers/user_db_provider.dart';
 import '../providers/user_word_provider.dart';
 import '../providers/word_db_provider.dart';
 import 'external_word_cache_repository.dart';
+import 'external_word_card.dart';
 import 'external_word_id.dart';
 import 'generated_card_adapter.dart';
 import 'review_list_query.dart';
@@ -244,6 +244,17 @@ Future<void> _lookupExternalWord(
 ///
 /// 返回**已转换的 `card.content` JSON**（`null` = 失败，且已提示过用户）。
 ///
+/// # 🔴 数据层的活**不在这里**（2026-10-09 收口）
+/// 「调接口 → 转形状 → 写回端侧缓存 → 失败给**准确的话** + 能不能重试」
+/// 全部在 `services/external_word_card.dart::resolveExternalWordCard`（**纯 Dart**），
+/// 与**复习取卡**路径共用同一份 —— 原先两边各写一半，
+/// 而「文案」与「重试判据」这类东西**两边必然漂移**（本项目已有教训）。
+/// 本函数只负责**UI 部分**：转圈的开关时序 + 把 `message` 提示给用户。
+///
+/// ⚠️ `readCache: null` 不是「当作没有缓存」，而是「**调用方已经查过并确定未命中**」：
+///    `_lookupExternalWord` 的 ① 查过缓存，而「转圈」必须插在「读缓存」与「联网」之间
+///    ⇒ 那次读只能留在那里（同 `resolveExternalWordCard` 的文档）。
+///
 /// # 🔴 时序要点：**先关转圈，再提示**
 /// 若在浮层还开着时 `_hint`，SnackBar 会被 modal 遮住 —— 用户看到的是
 /// 「转圈转完了，什么都没发生」。**静默失败**正是本项目一直在消灭的东西。
@@ -261,42 +272,25 @@ Future<String?> _generateExternalCard(
     // 🔑 device_id 是**可选**统计信号（服务端算 `distinct_user_count`，A3 回流门槛用）：
     //    取不到就传 `null` —— **不阻断制卡**（它是统计，不是功能前提）。
     final deviceId = await deviceIdOrNull(ref);
-    final res = await ref.read(generateCardClientProvider).generate(
-          text,
-          deviceId: deviceId,
-        );
+    final client = ref.read(generateCardClientProvider);
 
-    switch (res) {
-      case GenerateCardReady():
-        try {
-          raw = toCardContent(
-            res.card,
-            spelling: text,
-            contractVersion: res.contractVersion,
-          );
-          // 写缓存 —— ⚠️ 失败**不**影响本次展示（只在下次查同一个词时要重新联网）
-          try {
-            final db = await ref.read(userDbProvider.future);
-            await ExternalWordCacheRepository(db).put(text, raw);
-          } catch (e) {
-            debugPrint('[lookup] 写词库外缓存失败（$text）：$e');
-          }
-        } on GeneratedCardException catch (e) {
-          // 🔴 契约对不上 / 缺 definition → **显式失败**，不要静默弹一张空卡
-          debugPrint('[lookup] 契约转换失败（$text）：$e');
-          error = '「$text」的词卡格式异常，请稍后重试';
-        }
-
-      case GenerateCardInProgress():
-        // 白哥裁决的「报错 + 稍后重试」—— 这不是故障，是「有人正在生成同一个词」
-        error = '「$text」正在生成中，请稍后重试';
-
-      case GenerateCardFailed(:final message):
-        // 🔑 **不改写服务端的文案** —— 它已按情形给了**准确**的话
-        //    （参数错 / 上游失败 / 合规拒绝各有措辞，见 `CardError::message()`）。
-        //    端侧若自己拼一句笼统的「生成失败」，就把这些区别抹掉了。
-        error = message;
-    }
+    raw = await resolveExternalWordCard(
+      spelling: text,
+      generate: (sp) async =>
+          externalCardReplyOf(await client.generate(sp, deviceId: deviceId)),
+      // 写缓存 —— ⚠️ 失败**不**影响本次展示（只在下次查同一个词时要重新联网），
+      // 但会经 `onWarn` 留痕（不静默）。
+      writeCache: (sp, content) async {
+        final db = await ref.read(userDbProvider.future);
+        await ExternalWordCacheRepository(db).put(sp, content);
+      },
+      onWarn: (m) => debugPrint('[lookup] $m'),
+    );
+  } on ExternalCardUnavailable catch (e) {
+    // 🔑 **不改写服务端的文案** —— 它已按情形给了**准确**的话
+    //    （参数错 / 上游失败 / 合规拒绝各有措辞，见 `CardError::message()`）。
+    //    端侧若自己拼一句笼统的「生成失败」，就把这些区别抹掉了。
+    error = e.message;
   } finally {
     await closeLoading();
   }

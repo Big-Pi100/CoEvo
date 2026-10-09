@@ -87,7 +87,58 @@ import 'package:sqflite_common/sqlite_api.dart';
 /// ⚠️ **列顺序**：`ALTER` 只能把新列追加到**末尾** ⇒ schema 文件里
 ///    `deleted` 也写在末尾，让「新库」与「升级库」列顺序一致
 ///    （否则按位置取值的代码会在两种库上读到不同列 —— **静默值错位**）。
-const int kUserDbVersion = 6;
+///
+/// ## 🆕 v7（2026-10-08）：**修一次「漏升版本号」的事故** + 翻译缓存
+///
+/// 🔴🔴 **v1.7（`highlight`）当时漏升版本号** —— `kUserDbVersion` 停在 **6**，
+///    而 schema 文件里**已经加了 `highlight` 表**。
+///
+/// | 库的来源 | 走哪条路 | 结果 |
+/// |---|---|---|
+/// | **新装**（无库）| `onCreate` | ✅ 有 `highlight`（全量脚本）|
+/// | **老库且 < v6** | `onUpgrade` | ✅ 有（重跑全量脚本）|
+/// | **老库 == v6**（🔴 **真机现状**）| **什么都不走** | ❌ **没有 `highlight`** |
+///
+/// ⇒ 后果：真机上打开新版 app 后，**划线功能静默失败**
+///    （写库时报 `no such table: highlight`）。
+///
+/// 🔑 **为什么既有断言没抓到**（这是本条最值得记的地方）：
+///    `scripts/query_verify/bin/verify_userdb_migration.dart` 的起点是 **v1–v5**，
+///    那些路径**版本都在变** ⇒ `onUpgrade` 一定触发 ⇒ 每次都能建出 `highlight` ⇒ **全绿**。
+///    **「真机现状（v6 → v6）」那条路径从未被测过。**
+///    📌 「在错条件下验证」的又一种形态 —— 差异不是平台，是**初始版本恰好等于目标版本**。
+///    ⇒ 本次一并补上 `fromVersion: 6` 的断言路径。
+///
+/// ✅ **修复 = 升版本号**（顺带把 v1.8 的 `translation_cache` 一起带上，一次升级全拿到）。
+///    ⚠️ 不需要新写 `onUpgrade` 分支 —— 两张都是**纯新增表**，重跑全量脚本即可覆盖。
+///
+/// ---
+///
+/// # 🔴 v1.9（2026-10-08）：`highlight.paused`（**加列**，与上面那条不同！）
+///
+/// 复习页的「暂停」对划线卡**完全无效**（白哥真机报）：写端
+/// `UserWordRepository.pause` 更新的是 **`user_word`**，而划线卡的
+/// `word_id = 'hl:<uuid>'` 在那张表里**没有行** ⇒ affected = 0 ⇒
+/// `review_screen._pause` 里 `if (!changed) return;` ⇒ **静默、连提示都没有**。
+/// ⇒ 划线自己需要一列「暂停」（语义与 `deleted` 分开，见 schema 注释）。
+///
+/// 🔴 **加列 ≠ 加表** —— 这一条是 v1.7/v1.8 那些教训的**反面**：
+///    `CREATE TABLE IF NOT EXISTS highlight (...)` 对**已存在的表整条跳过**，
+///    schema 里新加的列对老库**永远加不上** ⇒ **必须**在 `onUpgrade` 里写
+///    `ALTER TABLE ... ADD COLUMN` 分支（已加，见下方 ①b）。
+///    📌 判据：**「加表」靠重跑脚本，「加列」必须写 ALTER** ——
+///       而两者都要问同一句：**老库怎么拿到它？**
+///
+/// 📌 另一条：**加表/加列之后必须问「老库怎么拿到它」**。
+///    `onCreate` 只对**新库**生效；老库**只有 `onUpgrade`**，
+///    而它**只在版本号变化时触发** —— 不升版本号 = 那条路根本不存在。
+///
+/// 🆕 v9（2026-10-09）：`local_meta`（本地数据**归属账号**）。
+///    ⚠️ 与 v1.7 那次同一个坑的**第二次**：不动版本号 ⇒
+///       真机上「恰好是 v8」的库不触发 `onUpgrade` ⇒ `local_meta` 建不出来
+///       ⇒ 归属读不到 ⇒ **换账号判定失效**（而它失效是静默的：
+///         只会表现成「数据没被清」）。守护断言见 `verify_userdb_migration.dart`。
+const int kUserDbVersion = 9;
 
 /// `user.db` 的文件名（调用方拼路径用）。
 const String kUserDbFileName = 'user.db';
@@ -201,6 +252,27 @@ Future<Database> openUserDb({
             table: 'bookmark',
             column: 'deleted',
             ddl: 'INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))',
+          );
+        }
+
+        // ── ①b v8：给 `highlight` 补 `paused` 列（复习页「暂停」对划线卡的落点）──
+        //
+        // 🔴 与上一条同理：`CREATE TABLE IF NOT EXISTS highlight (...)` 对**已存在的表**
+        //    **整条跳过** ⇒ schema 文件里那一列对老库**永远加不上** ⇒ 必须在这里 ALTER。
+        //
+        // 🔑 「老库 < v7、`highlight` 表还没建」由 `addColumnIfMissing` 自己处理：
+        //    它先查 `sqlite_master`，表不存在就**跳过** —— 随后重跑的全量脚本建出的表
+        //    **已含 `paused`** ✅
+        //
+        // 🔴 ddl 必须与 `user_db_schema.sql` 里那一列**逐字一致**（同 `bookmark.deleted`
+        //    的理由）——否则「升级出来的库」与「新建的库」约束漂移，
+        //    而后果是静默的（一类库拒非法值、另一类库放过）。
+        if (oldVersion < 8) {
+          await addColumnIfMissing(
+            db,
+            table: 'highlight',
+            column: 'paused',
+            ddl: 'INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1))',
           );
         }
 

@@ -1,6 +1,7 @@
 import 'package:sqflite_common/sqlite_api.dart';
 
 import 'fsrs_service.dart' show ReviewEvent, ReviewState;
+import 'highlight_id.dart' show kHighlightIdPrefix;
 
 /// 复习列表查询 —— `user.db` 侧，**纯 Dart，不 import Flutter**。
 ///
@@ -57,6 +58,96 @@ class ReviewListQuery {
     orderAlphabetical,
   };
 
+  /// 两个 JOIN —— 「暂停 / 不该显示」的状态在**另外两张表**里，本表只放排期。
+  ///
+  /// | JOIN | 给谁用 | 判据列 |
+  /// |---|---|---|
+  /// | `user_word uw` | **生词**卡（`w…`）| `uw.deleted`（= 移出生词本 / 暂停）|
+  /// | `highlight h` | **划线**卡（`hl:<uuid>`）| `h.deleted`（取消划线）+ `h.paused`（暂停复习）|
+  ///
+  /// 🔑 JOIN 键：划线卡的 `crs.word_id` 就是**前缀 + 划线 id**（见 `highlight_id.dart`）
+  ///    ⇒ `crs.word_id = 'hl:' || h.id`。用常量插值而不是手写 `'hl:'`，
+  ///    这样前缀改了口径**只改一处**。
+  ///
+  /// ⚠️ 代价（如实标注）：JOIN 条件左边是表达式 ⇒ **走不了 `highlight.id` 的索引**，
+  ///    对 `highlight` 是全表扫。可接受，因为该表只装**用户自己的划线**
+  ///    （量级 10²–10³，SQLite 扫千行在亚毫秒级）。
+  ///    真要优化就加一个可索引的冗余列 —— 但那要多维护一处一致性，
+  ///    在「问题尚未被观察到」之前不做（同 `trace_markdown` 那条判据）。
+  static const String _joins =
+      'LEFT JOIN user_word uw ON uw.word_id = crs.word_id '
+      'LEFT JOIN highlight h ON crs.word_id = \'$kHighlightIdPrefix\' || h.id ';
+
+  /// 列表**可见性**的四条判据 —— `list` / `count` / `dueCount` **必须共用**。
+  ///
+  /// 🔴 抽成常量而不是在三处各写一遍：三处不一致会出现
+  ///    「列表里 3 条，顶部却写 5 个该复习」这类**自相矛盾**（本文件的设计原则）。
+  ///
+  /// 🔴 为什么是 `COALESCE(x, 0) = 0` 而不是 `x = 0`：
+  ///    一张卡**只会命中其中一个 JOIN**（生词卡在 `highlight` 里没有行、
+  ///    划线卡在 `user_word` 里没有行）⇒ 另一个的列是 NULL。
+  ///    写成 `h.paused = 0` 会把「JOIN 不上」判成 NULL ⇒ 整行被过滤掉 ⇒
+  ///    **所有生词卡都会从复习页消失**。`COALESCE` 把 NULL 当作「不适用」。
+  static const List<String> _visibilityWheres = [
+    'COALESCE(uw.deleted, 0) = 0', // 生词：移出生词本 / 暂停
+    'COALESCE(h.deleted, 0) = 0', // 划线：**已取消**的划线，卡也跟着消失
+    'COALESCE(h.paused, 0) = 0', // 划线：**暂停复习**（2026-10-08 新增）
+    // ── 🆕 2026-10-09 ④「无主划线卡」不得出现 ──────────────────────────
+    "(crs.word_id NOT LIKE '$kHighlightIdPrefix%' OR h.id IS NOT NULL)",
+  ];
+
+  /// # 🆕 2026-10-09 ④：**无主划线卡**（孤儿卡）
+  ///
+  /// ## 现象（白哥真机）
+  ///
+  /// 复习列表顶部有一张标题显示成 `hl:8613b24d-…` 的卡，**点「暂停」没有任何反应**
+  /// （不报错、不提示），而且界面上**没有任何出口**能把它去掉。
+  ///
+  /// ## 根因（两层，都是既有的设计事实）
+  ///
+  /// ① `highlight`（划线本体）**从不参与同步** —— 服务端连 `sync_highlight` 表都没有
+  ///    （6 张 `sync_*` 表：review_log / user_word / article_read / bookmark /
+  ///     book_progress / book）。端侧 push/pull 也不含它。
+  /// ② 而 `review_log`（复习事件）**参与同步**，`hl:<uuid>` 的复习事件照常上云。
+  ///
+  /// ⇒ 一旦本机的 `highlight` 行没了而服务端的复习事件还在（**重装 / 换机 / 清数据**），
+  ///    pull 回来的复习事件会被重放成一行 `card_review_state`（`word_id = 'hl:…'`），
+  ///    而它引用的划线**在本机不存在** —— 这就是「无主卡」。
+  ///    🔴 直查线上确认：`sync_review_log` 里确有 `hl:8613b24d-…` 的事件，
+  ///       而该设备的 `highlight` 表里没有它（`user.db` 被重装清掉）。
+  ///
+  /// ## 🔴 为什么修在**判据层**（而不是在「暂停」按钮上补一段）
+  ///
+  /// 判据：**补丁 ≠ 修法 —— 判据有洞时先问「还有哪些地方有」再一次性改全。**
+  ///    · 无主卡**不是某一次点击的问题**：它出现在**列表**里、被**计数**统计、
+  ///      还能被点进翻卡页。修在按钮上只堵住其中一个出口，而且要先让用户**找到并点它**。
+  ///    · 而它的成因（重装/换机）**对每个用户都会发生**⇒ 必须一次性、系统性地挡住。
+  ///    ⇒ 修在**可见性判据**（`list` / `count` / `dueCount` 三处自动同源）：
+  ///      无主卡**立刻全部不可见**，用户不需要做任何动作。
+  ///
+  /// ## 🔴 为什么**不删**那一行派生数据（曾提过「清掉它的复习状态」）
+  ///
+  /// 1. **删了也留不住**：`card_review_state` 是 `review_log` 的**派生态**，
+  ///    `_applyReviewEvents` 的重放随时能重建它（同 `user_db_schema.sql` 里
+  ///    `paused` 那条注释的判据：**「会被重建的表」不能存用户意图**，
+  ///    反过来也一样 —— 从它上面删东西，别端一重放就回来了）。
+  /// 2. **留着是可恢复的前提**：`paused` 列那条注释记着同族结论 ——
+  ///    待「划线纳入同步」上线后，只要那条划线从别端同步回来，
+  ///    卡片就会**自动恢复可用**（排期还在）。删掉这一行就把这条恢复路径**永久切断**了。
+  /// 3. 它在「不可见」之后**没有任何副作用**（不占屏、不进计数、不影响任何查询）。
+  /// ⇒ 📌 判据：**「不显示」是可逆的，「删除」不是** —— 能用前者解决就不要用后者。
+  ///
+  /// ## ⚠️ 代价（如实标注）
+  ///
+  /// 这是一个**全表判据**（`crs.word_id` 上的 `LIKE` + `h.id IS NOT NULL`），
+  /// 走不了索引 —— 但与 [_joins] 里那个 `'hl:' || h.id` 同性质、同量级
+  ///（`card_review_state` 是用户自己的卡，10²–10³ 行）。
+  ///
+  /// ## 反向断言（防「顺手改成删数据」）
+  ///
+  /// `verify_review_list.dart` 锁住：判据里**不得**出现 `DELETE`
+  /// （清理无主卡唯一允许的手段是「不显示」）。
+
   /// 列表查询。
   ///
   /// - [search]：按单词搜索。空/仅空白 = 不筛。用 `LIKE 'x%'` **前缀**匹配，
@@ -82,29 +173,20 @@ class ReviewListQuery {
       '       crs.stability, crs.difficulty, crs.last_review_at, '
       '       crs.next_review_at, crs.pending_push '
       'FROM card_review_state crs '
-      // 🔴 `LEFT JOIN user_word` —— 只为了拿「暂停」状态（`deleted`）
-      //
-      // ## 为什么需要这个 JOIN（2026-09-28 · 白哥定「移出 → 改为暂停」）
-      // 复习页是**单一列表**（`ui-ux` §6.2），一个词「离开视野」不是被移出，
-      // 而是它的状态变了 —— 数据层就是 `user_word.deleted = 1`（先不学了）。
-      // 而**排序依据 `next_review_at` 只在 `card_review_state`** → 两个信息在两张表里。
-      //
-      // 🔑 两表**同在 `user.db`** → 直接 JOIN 即可，**不需要改 schema**
-      //    （曾考虑给 `card_review_state` 加 `paused` 列并做 version 3 迁移，
-      //     但 `user_word.deleted` 的原始语义**本来就是**「用户先不学了」——
-      //     见 `user_db_schema.sql` 该列的注释 → 复用它才是对的）。
+      // 🔴 两个 JOIN 与三条可见性判据都走 [_joins] / [_visibilityWheres]
+      //    （见那里的长说明）—— 它们是 `list` / `count` / `dueCount` 的**唯一口径**，
+      //    别在这里另写一份（三处不一致会出现「列表 3 条但顶部写 5 个」）。
       //
       // ## 为什么是 `LEFT` 而不是 `INNER`（有意的）
       // 以 `card_review_state` 为**主表**（FSRS 状态是复习页的核心）。
-      // 若某词在 `crs` 却不在 `uw`（异常数据），`INNER` 会让它**静默消失**；
-      // `LEFT` + `COALESCE(uw.deleted, 0) = 0` 则**照常显示** ——
+      // 一张卡**只会命中其中一个 JOIN**（生词卡在 `highlight` 里没有行、
+      // 划线卡在 `user_word` 里没有行）⇒ 用 `INNER` 会让**一半的卡静默消失**；
+      // `LEFT` + `COALESCE(..., 0) = 0` 把「不适用」当作「没暂停」。
       // 🔑 「宁可显示一个状态可疑的词，也不让用户的词无声消失」。
-      'LEFT JOIN user_word uw ON uw.word_id = crs.word_id ',
+      '$_joins',
     );
     final args = <Object?>[];
-    // 🔑 暂停的词**不进列表** —— 这是 `COALESCE` 而非 `uw.deleted = 0`：
-    //    后者对「uw 里没有这一行」会判 NULL → 被过滤掉（那是 INNER 的效果）
-    final wheres = <String>['COALESCE(uw.deleted, 0) = 0'];
+    final wheres = <String>[..._visibilityWheres];
 
     if (q.isNotEmpty) {
       // 🔑 ESCAPE 处理通配符：用户搜 `%` 或 `_` 时按字面匹配，而不是当通配符
@@ -134,7 +216,7 @@ class ReviewListQuery {
     DateTime? nowUtc,
   }) async {
     final q = search?.trim() ?? '';
-    final wheres = <String>['COALESCE(uw.deleted, 0) = 0'];
+    final wheres = <String>[..._visibilityWheres];
     final args = <Object?>[];
 
     if (q.isNotEmpty) {
@@ -148,7 +230,7 @@ class ReviewListQuery {
 
     final r = await _db.rawQuery(
       'SELECT count(*) AS n FROM card_review_state crs '
-      'LEFT JOIN user_word uw ON uw.word_id = crs.word_id '
+      '$_joins'
       'WHERE ${wheres.join(' AND ')}',
       args,
     );
@@ -164,8 +246,8 @@ class ReviewListQuery {
   Future<int> dueCount(DateTime nowUtc) async {
     final r = await _db.rawQuery(
       'SELECT count(*) AS n FROM card_review_state crs '
-      'LEFT JOIN user_word uw ON uw.word_id = crs.word_id '
-      'WHERE COALESCE(uw.deleted, 0) = 0 AND crs.next_review_at <= ?',
+      '$_joins'
+      "WHERE ${_visibilityWheres.join(' AND ')} AND crs.next_review_at <= ?",
       [_iso(nowUtc)],
     );
     return (r.first['n'] as int?) ?? 0;

@@ -28,20 +28,39 @@
 // | 5 | 权益卡是**最重的一块**，但内容不成立 | §4.4.1 判据 3 要「主张具体」—— **没说要大卡片** |
 //
 // ⇒ 新结构（自上而下）：价值主张(一句话) → **价格并排(28px)** → 按钮紧邻
-//    → **法定要点(贴按钮·不折叠)** → 折叠详情 → 恢复购买 → 法律链接
+//    → **法定要点(贴按钮·不可折叠)** → **订阅权益(对照表·常驻)** → **订阅到期后(常驻)**
+//    → 恢复购买 → 法律链接
+//
+// ## 🔴 2026-10-09 二稿（白哥定）：**整页去掉折叠**
+//
+// 白哥原话：「标题直接写『订阅权益』，同时这个区域不需要折叠」+
+// 「订阅到期后当然也要常驻 —— 这就是为了让人知道订阅有什么好处」。
+//
+// | 一稿 | 二稿 | 为什么 |
+// |---|---|---|
+// | 折叠区「订阅详情与免费版说明」 | **常驻**「订阅权益」+「订阅到期后」两块 | **看不见 = 白做** —— 对照表正是这页的**说服材料**（10-07 §4.3 要解决的正是「用户读完不知道我有没有」）|
+// | 折叠里放「免费版包含」列表 | 三列**对照表**（共同享有 / 订阅版专享）| 10-07 §四已定对比形态 = `功能\|免费\|订阅`；§4.2：**合并共同项、突出专享项** |
+// | 一稿首屏的「订阅专享」胶囊 | 删掉 | 它**不自解释**（白哥问「这是什么」）⇒ 下方常驻的「订阅权益」已承担该职责 |
+//
+// ## 🔑 这两块的**受众**是未订阅 / 已到期的人（白哥 2026-10-09）
+//
+// 原话：「**这就是为了让人知道订阅有什么好处，没订阅、订阅到期的人看到才是关键，
+// 已经订阅了的人有什么好看的**」⇒ 已订阅态（[_activeChildren]）**不渲染**这两块。
+// 📌 判据：**先问「这块内容给谁看」，再决定它出现在哪个状态里** ——
+//    对已订阅的人重复推销权益，既占地方又不产生任何决策价值。
+//
+// ## 🔑 法定要点与折叠的关系（口径已变）
+//
+// 法定要求的是「**显著提示**自动续期与取消路径」（§4.4.2）⇒ 那几句在本页
+// **始终可见且紧贴购买按钮**（见 [_keynote]，含续费扣款时机）。
+// 一稿曾把「续费与扣款」放进折叠区并论证「补充可折叠」；
+// 二稿整页无折叠 ⇒ 它回到按钮正下方，**更符合「显著」**。
 //
 // # 🔴 三条不可省的法定义务（删任一条都会被拒审）
 //
 // ① **自动续费说明**必须在购买按钮**附近**（§4.4.2：接受服务前就要显著提示）
 // ② **隐私政策 + 用户协议**链接（Apple 对订阅类 App 的强制要求）
 // ③ **恢复购买**入口（审核指南 3.1.1；且**两处**：本页 + 「我的」页）
-//
-// ## 🔑 「要点不可折叠，补充可以」—— 折叠区的合规边界
-//
-// 法定要求的是「**显著提示**自动续期与取消路径」⇒ 那两句在本页
-// **始终可见且紧贴购买按钮**（见 [_keynote]）。
-// 折叠区（[_detailFold]）只放**补充细节**（续费扣款时机 / 免费版清单 / 到期后行为），
-// 它们不影响「用户是否被告知」⇒ 折叠不构成隐瞒。
 //
 // # 🔴 不预选任何档位
 //
@@ -58,6 +77,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../providers/iap_provider.dart';
+import '../providers/subscription_provider.dart';
 import '../services/iap_plan.dart';
 import '../services/iap_service.dart';
 import '../theme/clay.dart';
@@ -66,6 +86,7 @@ import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
 import '../widgets/clay_button.dart';
 import '../widgets/legal_link_row.dart';
+import '../widgets/sync_cloud_badge.dart';
 
 /// 弱说明（角标 / 附注 / 补充段落）字号。
 ///
@@ -91,6 +112,13 @@ const double _kPrice = 28;
 ///    权重靠**位置（顶部）+ 色彩（主文字色）**表达，不靠字号（§5.2）。
 const double _kLead = 16;
 
+/// 「订阅权益」对照表里，右侧两个值列（免费版 / 订阅版）的宽度。
+///
+/// 🔑 定宽是让它**两段对齐**：`共同享有` 段与 `订阅版专享` 段的行上下对得齐，
+///    否则「— vs ✓」的对比会因为列宽漂移而看不出来。
+///    62 是按最长的值文案「每月 10 次」（11px）定的。
+const double _kCmpValueCol = 62;
+
 class SubscribeScreen extends ConsumerStatefulWidget {
   const SubscribeScreen({super.key});
 
@@ -102,15 +130,17 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
   /// 🔴 **不预选**（§4.4.2「不得默认勾选」）—— 见文件头说明。
   String? _selectedProductId;
 
-  /// 「订阅详情」折叠区的展开态。
-  ///
-  /// 🔑 默认**收起** —— 它装的是补充说明，不是要点（见文件头）。
-  bool _detailOpen = false;
-
   @override
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
     final snap = iapSnapshotOf(ref);
+
+    // 🔴 2026-10-09：改用**全库唯一判据** `subscriptionActiveNow`（端侧 OR 服务端）。
+    //    此前这里直接读 `snap.isActive`（纯端侧）⇒ 在**没有 StoreKit 的载体**上
+    //    （安卓验证机 / 后台授予的订阅）永远显示「未订阅」—— 而服务端明明有效。
+    //    ⚠️ 下面的「购买成功提示」仍以**端侧跃迁**为准（那是 StoreKit 的事实，
+    //       与「这个账号有没有权益」是两回事）。
+    final isActive = subscriptionActiveNow(ref);
 
     // 商品还没查回来时用兜底档（价格会标「以 App Store 为准」）
     final plans = snap.plans.isEmpty ? defaultPlans() : snap.plans;
@@ -144,7 +174,7 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
                   CoSpacing.xxxxl,
                 ),
                 // ── 顺序即优先级（自上而下）────────────────────────────
-                children: snap.isActive
+                children: isActive
                     ? _activeChildren(t, snap)
                     : _purchaseChildren(t, snap, plans, selected),
               ),
@@ -155,12 +185,14 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
     );
   }
 
-  /// 已订阅态（§4.4.4）：状态 → 详情 → 恢复购买 → 法律链接。
+  /// 已订阅态（§4.4.4）：状态 → 恢复购买 → 法律链接。
+  ///
+  /// 🔴 2026-10-09（白哥定）：**不渲染「订阅权益」「订阅到期后」** ——
+  ///    这两块是给**未订阅 / 已到期**的人看的（见文件头「受众」那节）。
+  ///    已订阅的人看到自己的权益清单没有决策价值，白白占掉一屏。
   List<Widget> _activeChildren(CoEvoTokens t, IapSnapshot snap) => [
         _activeCard(t, snap),
         const SizedBox(height: CoSpacing.xl),
-        _detailFold(t),
-        const SizedBox(height: CoSpacing.lg),
         _restoreButton(t, snap),
         const SizedBox(height: CoSpacing.lg),
         _legalRows(),
@@ -168,7 +200,8 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
         _signInHint(t),
       ];
 
-  /// 未订阅态：**价格与按钮在首屏**，法定要点紧贴按钮，其余按需展开。
+  /// 未订阅态：**价格与按钮在首屏**，法定要点紧贴按钮，
+  /// 「订阅权益」与「订阅到期后」**常驻**（不折叠 —— 见文件头）。
   List<Widget> _purchaseChildren(
     CoEvoTokens t,
     IapSnapshot snap,
@@ -196,15 +229,17 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
         const SizedBox(height: CoSpacing.md),
         _keynote(t, selected),
 
-        // ⑤ 补充说明（可折叠）
-        const SizedBox(height: CoSpacing.lg),
-        _detailFold(t),
+        // ⑤ 🆕 「订阅权益」对照表 —— **常驻**
+        _benefitsSection(t),
 
-        // ⑥ 恢复购买（§4.4.3 Apple 强制项）
-        const SizedBox(height: CoSpacing.md),
+        // ⑥ 🆕 「订阅到期后」—— **常驻**（回答「退了会怎样」）
+        _expirySection(t, lapsed: subscriptionLapsedNow(ref, snap)),
+
+        // ⑦ 恢复购买（§4.4.3 Apple 强制项）
+        const SizedBox(height: CoSpacing.lg),
         _restoreButton(t, snap),
 
-        // ⑦ 法律链接（Apple 强制）
+        // ⑧ 法律链接（Apple 强制）
         const SizedBox(height: CoSpacing.md),
         _legalRows(),
 
@@ -257,13 +292,14 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
   // 🔑 为什么是**一句话 + 一行补充**，而不是原来的「权益卡」：
   //    ① §4.4.1 判据 3 只要求「主张**具体**」（不写「解锁全部功能」），
   //       **没有**要求做成卡片 —— 卡片是我们自己加的、还用满了视觉权重
-  //    ② 现在的权益只有 **1 条**（跨设备同步）⇒ 用卡片装一条，形式远大于内容
+  //    ② 权益清单已经由下方**常驻的「订阅权益」对照表**逐条承担
+  //       ⇒ 标题只该说**一句话**（三条权益拼起来是一段话，做标题就是文字墙）
   //    ③ §5.2 判据：权重靠位置与色彩表达即可，不必靠体积
   Widget _valueProp(CoEvoTokens t) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            SubscriptionLegalText.benefits.join(' · '),
+            SubscriptionLegalText.headline(),
             style: TextStyle(
               fontFamily: CoFonts.uiSans,
               fontSize: _kLead,
@@ -498,6 +534,10 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
   //
   // ⚠️ 未选档位时也必须显示（`autoRenewNoticeGeneric`）——
   //    §4.4.2 要求「**接受服务前**」就提示，不能等用户选完才告知。
+  //
+  // 🔴 2026-10-09：「续费与扣款」(`renewalCharge`) 从折叠区**并到这里** ——
+  //    整页去掉折叠后，它回到按钮正下方；它本身就是**法定披露**
+  //    （与「自动续期 / 取消路径」同族）⇒ 放这里**更符合「显著」**。
   Widget _keynote(CoEvoTokens t, IapPlanDisplay? selected) {
     final notice = selected == null
         ? SubscriptionLegalText.autoRenewNoticeGeneric()
@@ -507,125 +547,228 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
             priceLabel: selected.priceLabel,
           );
 
+    final style = TextStyle(
+      fontFamily: CoFonts.uiSans,
+      fontSize: _kCaption,
+      height: 1.62,
+      color: Color(t.ink2.argb32),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          notice,
-          style: TextStyle(
-            fontFamily: CoFonts.uiSans,
-            fontSize: _kCaption,
-            height: 1.62,
-            color: Color(t.ink2.argb32),
-          ),
-        ),
+        Text(notice, style: style),
         const SizedBox(height: CoSpacing.sm),
-        Text(
-          SubscriptionLegalText.howToCancel(),
-          style: TextStyle(
-            fontFamily: CoFonts.uiSans,
-            fontSize: _kCaption,
-            height: 1.62,
-            color: Color(t.ink2.argb32),
+        Text(SubscriptionLegalText.renewalCharge(), style: style),
+        const SizedBox(height: CoSpacing.sm),
+        Text(SubscriptionLegalText.howToCancel(), style: style),
+      ],
+    );
+  }
+
+  // ── ⑤ 订阅权益（三列对照表 · **常驻 · 不折叠**）──────────────────
+  //
+  // 🔴 受众是**未订阅 / 已到期**的人（见文件头「受众」）—— 已订阅态不渲染。
+  //
+  // 🔑 行数据**全部来自** `SubscriptionLegalText.comparison`（唯一事实清单）；
+  //    这一层只负责**画**，不参与「哪条算权益」的判断 ——
+  //    否则行数据与文案会各有一套（同一件事两个来源）。
+  Widget _benefitsSection(CoEvoTokens t) {
+    final rows = SubscriptionLegalText.comparison;
+    // 第一条专享行之前 = 「共同享有」段；之后 = 「订阅版专享」段。
+    final firstExclusive = rows.indexWhere((r) => r.exclusive);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(t, '订阅权益'),
+        Clay(
+          borderRadius: BorderRadius.circular(16),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Column(
+            children: [
+              _cmpHeaderRow(
+                t,
+                firstExclusive > 0 ? '共同享有' : '订阅版专享',
+              ),
+              for (var i = 0; i < rows.length; i++) ...[
+                if (i == firstExclusive && firstExclusive > 0)
+                  _cmpGroupRow(t, '订阅版专享'),
+                _cmpRow(t, rows[i]),
+              ],
+            ],
           ),
         ),
       ],
     );
   }
 
-  // ── ⑤ 订阅详情（折叠 · 只放**补充**）───────────────────────────────
-  //
-  // 🔑 折叠交互照项目既有范式（`widgets/order_history.dart`）：
-  //    `InkWell(onTap: toggle)` + `AnimatedRotation(turns: 0.5)` + `AnimatedCrossFade`。
-  //    ⇒ 复用既有模式而不是新发明（全站展开/收起的手感要一致）。
-  Widget _detailFold(CoEvoTokens t) => Column(
-        children: [
-          Divider(height: 1, color: Color(t.line.argb32)),
-          InkWell(
-            onTap: () => setState(() => _detailOpen = !_detailOpen),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '订阅详情与免费版说明',
-                      style: TextStyle(
-                        fontFamily: CoFonts.uiSans,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Color(t.ink2.argb32),
-                      ),
-                    ),
-                  ),
-                  AnimatedRotation(
-                    turns: _detailOpen ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 200),
-                    child: Icon(
-                      Icons.expand_more,
-                      size: 18,
-                      color: Color(t.ink3.argb32),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          AnimatedCrossFade(
-            firstChild: const SizedBox.shrink(),
-            secondChild: _detailBody(t),
-            crossFadeState: _detailOpen
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
-            duration: const Duration(milliseconds: 200),
-          ),
-        ],
-      );
-
-  Widget _detailBody(CoEvoTokens t) => Padding(
-        padding: const EdgeInsets.only(bottom: CoSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _detailHeading(t, '续费与扣款'),
-            _detailPara(t, SubscriptionLegalText.renewalCharge()),
-            _detailHeading(t, '免费版包含'),
-            for (final s in SubscriptionLegalText.freeIncludes)
-              _detailItem(t, s),
-            _detailHeading(t, '订阅到期后'),
-            for (final s in SubscriptionLegalText.afterExpiry)
-              _detailItem(t, s),
-            const SizedBox(height: CoSpacing.sm),
-            _downgradeNote(t),
-          ],
-        ),
-      );
-
-  Widget _detailHeading(CoEvoTokens t, String text) => Padding(
-        padding: const EdgeInsets.only(top: CoSpacing.md, bottom: 6),
+  /// 小标题 —— 与「我的」页的分组标签**同款**（11px/600/ink3/字距 0.06）。
+  ///
+  /// 🔑 复用同一套语汇：订阅页与「我的」页的分组看起来必须是**同一种东西**
+  ///    （判据：**统一的是外壳与层级**，不是「每页各发明一种小标题」）。
+  Widget _sectionTitle(CoEvoTokens t, String text) => Padding(
+        padding: const EdgeInsets.fromLTRB(2, CoSpacing.xl, 2, CoSpacing.sm),
         child: Text(
           text,
           style: TextStyle(
             fontFamily: CoFonts.uiSans,
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: FontWeight.w600,
-            letterSpacing: 12 * 0.05,
+            letterSpacing: 11 * 0.06,
             color: Color(t.ink3.argb32),
           ),
         ),
       );
 
-  Widget _detailPara(CoEvoTokens t, String text) => Text(
-        text,
-        style: TextStyle(
-          fontFamily: CoFonts.uiSans,
-          fontSize: _kCaption,
-          height: 1.68,
-          color: Color(t.ink2.argb32),
+  /// 对照表的表头行：`共同享有 | 免费版 | 订阅版`。
+  Widget _cmpHeaderRow(CoEvoTokens t, String left) => Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 2),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                left,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 11 * 0.05,
+                  color: Color(t.ink3.argb32),
+                ),
+              ),
+            ),
+            _cmpHeaderCell(t, '免费版'),
+            _cmpHeaderCell(t, '订阅版'),
+          ],
         ),
       );
 
-  Widget _detailItem(CoEvoTokens t, String text) => Padding(
+  Widget _cmpHeaderCell(CoEvoTokens t, String text) => SizedBox(
+        width: _kCmpValueCol,
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: CoFonts.uiSans,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 11 * 0.05,
+            color: Color(t.ink3.argb32),
+          ),
+        ),
+      );
+
+  /// 段落标题行（「订阅版专享」）—— 无右侧两列，靠**上间距 + 字重**分段。
+  Widget _cmpGroupRow(CoEvoTokens t, String text) => Padding(
+        padding: const EdgeInsets.only(top: 14, bottom: 2),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 11 * 0.05,
+                  color: Color(t.ink3.argb32),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  /// 对照表的一行。
+  ///
+  /// 🔑 专享行的区分**不靠底色块**，靠**字重 + 强调色对勾**
+  ///    （判据：**形状区分优于参数** —— 换底色会让表变「花」）。
+  Widget _cmpRow(CoEvoTokens t, BenefitRow r) {
+    final ex = r.exclusive;
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(t.line.argb32))),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              r.label,
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 12.5,
+                height: 1.35,
+                fontWeight: ex ? FontWeight.w600 : FontWeight.w400,
+                color: Color(t.ink.argb32),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: _kCmpValueCol,
+            child: Center(child: _cmpCell(t, r.free, emphasize: false)),
+          ),
+          SizedBox(
+            width: _kCmpValueCol,
+            child: Center(
+              child: _cmpCell(t, r.sub, emphasize: ex && r.sub != '—'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 对照表的值单元格（`✓` / `—` / 额度文案）。
+  Widget _cmpCell(CoEvoTokens t, String text, {required bool emphasize}) {
+    // 额度类文案（「每月 10 次」）比 `✓/—` 长 ⇒ 小一号字，避免撑破列宽。
+    final bool longText = text.length > 2;
+    final Color color = text == '—'
+        ? Color(t.ink3.argb32)
+        : (emphasize ? Color(t.accent.argb32) : Color(t.ink2.argb32));
+    return Text(
+      text,
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontFamily: CoFonts.uiSans,
+        fontSize: longText ? 11 : 12.5,
+        fontWeight: emphasize ? FontWeight.w600 : FontWeight.w400,
+        color: color,
+      ),
+    );
+  }
+
+  // ── ⑥ 订阅到期后会怎样（**常驻 · 不折叠**）────────────────────────
+  //
+  // 🔑 它回答「我订了再退会怎样」—— 对**未订阅 / 已到期**的人是关键
+  //    （白哥 2026-10-09：「没订阅、订阅到期的人看到才是关键」）⇒ 与权益一样常驻。
+  //
+  // 🔴 [lapsed]（**曾订阅、现已失效**）时先说一句降级说明
+  //    —— 此前那句写在折叠区里、**对所有人都显示**，包括从未订阅的人
+  //    （对他们说「会员已到期」是错的）。现在只在真·已到期时出现。
+  Widget _expirySection(CoEvoTokens t, {required bool lapsed}) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionTitle(t, '订阅到期后'),
+          Clay(
+            borderRadius: BorderRadius.circular(16),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (lapsed) ...[
+                  _downgradeNote(t),
+                  const SizedBox(height: CoSpacing.md),
+                ],
+                for (final s in SubscriptionLegalText.afterExpiry) _bullet(t, s),
+              ],
+            ),
+          ),
+        ],
+      );
+
+  /// 清单项（圆点 + 文字）。
+  Widget _bullet(CoEvoTokens t, String text) => Padding(
         padding: const EdgeInsets.only(bottom: 5),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -659,10 +802,13 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
 
   // ── 已订阅：状态卡（§4.4.4）────────────────────────────────────────
   Widget _activeCard(CoEvoTokens t, IapSnapshot snap) {
-    final expires = snap.expiresAtUtc;
-    final dateText = expires == null
-        ? ''
-        : ' · 到期日 ${expires.toLocal().toString().substring(0, 10)}';
+    // 🔑 到期日走**全库唯一换算点**（端侧精确时刻优先 → 退回服务端对账值）
+    //    —— 安卓上没有 StoreKit，端侧给不出日期，退回服务端才不会一片空白。
+    final expiry = subscriptionExpiryLabel(
+      iapExpiresAtUtc: snap.expiresAtUtc,
+      backendExpiresAt: ref.watch(subscriptionProvider).expiresAt,
+    );
+    final dateText = expiry == null ? '' : ' · 到期日 $expiry';
     return Clay(
       borderRadius: BorderRadius.circular(16),
       child: Column(
@@ -683,6 +829,10 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
                   ),
                 ),
               ),
+              // 🆕 2026-10-09：云端同步的**云朵状态标**（白哥定：「加云朵图标就行」）。
+              //    🔑 它自包含（自己判订阅 + 自己 watch 同步状态）⇒ 调用方一行。
+              //    未订阅时不渲染（见 `SyncCloudBadge` 的文件头）。
+              const SyncCloudBadge(),
             ],
           ),
           const SizedBox(height: CoSpacing.sm),
@@ -728,13 +878,18 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
       );
 
   // ── 降级说明（§4.4.4：不没收用户资产）────────────────────────────────
+  //
+  // 🔴 只在**曾订阅且已失效**时显示（[lapsed]）—— 对从未订阅的人说
+  //    「会员已到期」是错的（用户没订过，哪来的「到期」）。
+  //    ⚠️ 一稿把它放在折叠区里、对所有状态显示 —— 那是个**错误陈述**，
+  //       这次随重排一起修掉。
   Widget _downgradeNote(CoEvoTokens t) => Text(
         downgradeNotice(),
         style: TextStyle(
           fontFamily: CoFonts.uiSans,
           fontSize: _kCaption,
           height: 1.6,
-          color: Color(t.ink3.argb32),
+          color: Color(t.ink2.argb32),
         ),
       );
 

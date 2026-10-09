@@ -275,7 +275,7 @@ class _ChangeEmailDialogState extends ConsumerState<ChangeEmailDialog> {
             ),
           ],
 
-          // ── 次要出口（放在末尾，与 `ClaimDialog` / `ForgotPasswordDialog` 同一形态）──
+          // ── 次要出口（放在末尾，与 `AuthDialog` / `ForgotPasswordDialog` 同一形态）──
           // 🔑 屏② 必须有：码错了用户得有条路**回去改邮箱/密码**，
           //    否则只能关掉弹窗重来（「有提示、无出口」比没有提示更糟）。
           if (_step == 1) ...[

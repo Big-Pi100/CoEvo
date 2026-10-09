@@ -21,9 +21,11 @@ import '../services/iap_plan.dart';
 import '../services/iap_service.dart';
 import '../providers/achievement_notifier.dart';
 import '../providers/achievement_provider.dart';
+import '../providers/memory_settings_provider.dart';
+import '../services/memory_settings.dart';
 import '../widgets/stats_card.dart';
 import '../widgets/header_chip.dart';
-import '../widgets/claim_dialog.dart';
+import '../widgets/auth_dialog.dart';
 import '../widgets/change_email_dialog.dart';
 import '../widgets/change_password_dialog.dart';
 import '../widgets/clay_button.dart';
@@ -31,8 +33,10 @@ import '../widgets/clay_field.dart';
 import '../widgets/co_dialog.dart';
 import '../widgets/interest_filter_section.dart';
 import '../widgets/order_history.dart';
+import '../widgets/sync_cloud_badge.dart';
 import '../theme/clay.dart';
 import '../providers/sync_provider.dart';
+import '../providers/subscription_provider.dart';
 import '../theme/co_spacing.dart';
 import '../theme/tokens_ext.dart';
 import '../theme/coevo_tokens.dart';
@@ -61,6 +65,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _deletingAccount = false;
   ProviderSubscription? _authSub;
   int _unreadCount = 0;
+
+  /// 「账号」组的展开态 —— **默认收起**（白哥 2026-10-08 定）。
+  ///
+  /// # 🔴 形态变更（2026-10-08 · 白哥真机指令）
+  ///
+  /// > 「账号下第一个栏目 —— **账号登录状态**，现在不需要修改昵称，
+  /// >  点击**下拉**修改密码、退出账号、修改邮箱等。」
+  ///
+  /// 于是第一行从「**改昵称**的入口」变成「**状态的显示器** + 展开开关」，
+  /// 账号级操作全部收进下拉区。
+  ///
+  /// 🔑 纯 **UI 状态**：不持久化、不进 provider —— 与 `InterestFilterSection._expanded`
+  ///    同一条判据（它不是「用户偏好」，只是「这一刻面板开着」）。
+  /// 🔑 **默认收起**也同上：收起态信息量更大（一行就说完「我是谁、登录着没有」）。
+  bool _accountExpanded = false;
 
   // ── 🗑 2026-09-29 删除的状态（「我的」页重设计 · 白哥定）──
   // · `_hasShownClaimDialog` / `_realName` / `_phone` —— trial 认领与实名（已定不做）
@@ -256,7 +275,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     //    不能在这里补一行 `controller.dispose()` —— `Navigator.pop` 之后弹窗还有
     //    约 200ms 的关闭动画，期间 `TextField` 仍在渲染 → 立刻 dispose 会抛
     //    「used after being disposed」。正解是把弹窗本体做成 `StatefulWidget`，
-    //    在它的 `dispose()` 里释放（`ClaimDialog` 就是这个形态，它没有这个问题）。
+    //    在它的 `dispose()` 里释放（`AuthDialog` 就是这个形态，它没有这个问题）。
     final result = await CoDialog.show<String>(
       context,
       builder: (ctx) => CoDialog(
@@ -395,9 +414,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   ///    详见方案 §11.6.1b。
   Widget _buildTopBar(AuthState auth) {
     final t = CoEvoTokensExt.of(context);
-    // 版本标签用**端侧状态**（与订阅卡同源 —— 两处口径必须一致，
-    // 否则会出现「卡片说订阅中、副标题说免费版」这种自相矛盾）
-    final version = versionLabel(iapSnapshotOf(ref).isActive);
+    // 版本标签与订阅卡**同源** —— 两处口径必须一致，
+    // 否则会出现「卡片说订阅中、副标题说免费版」这种自相矛盾。
+    // 🔴 2026-10-09：来源由「纯端侧 `iapSnapshotOf`」改为**全库唯一判据**
+    //    `subscriptionActiveNow`（端侧 OR 服务端对账值）——
+    //    纯端侧在安卓验证机 / 后台授予的订阅上永远给 false（白哥真机踩到）。
+    final version = versionLabel(subscriptionActiveNow(ref));
     final subtitle = auth.isAuthenticated
         ? '${_displayName.isEmpty ? '用户' : _displayName} · $version'
         : version;
@@ -506,7 +528,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const InterestFilterSection(),
         const SizedBox(height: CoSpacing.lg),
 
-        // ── ④ 订阅 ──
+        // ── ④ 记忆（默写准确率）──
+        //    🔑 单独一个分组，**不塞进「其他」** —— 那里是「关于」之类的杂项，
+        //       学习行为的设置放进去会被埋掉。
+        //       放置依据是本项目那条既有判据：**语义归属 × 常驻成本**
+        //       （学习行为 + 低频 ⇒ 设置页）。
+        //    📌 依据：白哥 2026-10-07「让记忆准确率可调吧，在我的页面弄个设置的滑动条」。
+        _groupLabel('记忆'),
+        _buildMemoryTile(),
+        const SizedBox(height: CoSpacing.sm),
+        // 🆕 2026-10-07 记忆列表入口 —— 在设计稿 §8 定的：
+        //    **与「默写准确率」同组**（两者都属「记忆」这件事：一个调标准，一个看结果）。
+        //    ⚠️ 它**不是**「其他」那一族的杂项 —— 那是「关于」类。
+        // 🔄 2026-10-08：「我的划线」的入口**已删除** ——
+        //    白哥定案把它改名「笔记」并移入**「复习」tab**，与「复习」平级
+        //    （`ReviewTabScreen` 的标题行就是它的入口）。
+        //    🔴 为什么删而不是留着：**两个入口指向同一份数据**会让栈行为分叉
+        //       —— 生词本那次（`/home/words` 独立页）已经踩过，结论是
+        //       「**同一份数据只留一个入口**」。
+        //    ⚠️ 「阅读」tab 的书架段同理：它也没有一个「我的书架」的二级入口。
+        const SizedBox(height: CoSpacing.lg),
+
+        // ── ⑤ 订阅 ──
         //    🔴 登录态分流的**三处之一**（另两处：顶栏通知入口 · 账号组）。
         //
         //    未登录时**不隐藏订阅组**，而是换文案为「订阅完整版」入口 ——
@@ -517,6 +560,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         //    → 未登录 = 必然未订阅 ⇒ 应显示**入口**。**藏起来会切断订阅动机。**
         _groupLabel('订阅'),
         _buildSubscriptionCard(auth),
+        // 🆕 2026-10-09 云端同步的**独立胶囊**（白哥定：「还是在我的里弄个独立的胶囊吧」）。
+        //
+        // 🔑 为什么是**独立**的、而不是贴在上面那张订阅卡里：
+        //    那张卡说的是「**你订了什么**」（账号级、由服务端/StoreKit 决定），
+        //    这枚胶囊说的是「**云端数据走到哪了**」（一次同步的进行状态）——
+        //    两件事，只是同属「订阅」这个语义组。
+        //    贴在一起时它会被读成订阅卡的一个字段（而且图标形态说不出时间）。
+        //    📌 判据：**控件放哪 = 语义归属 × 常驻成本**（同 `interest_filter_section`）。
+        //
+        // 🔑 它**自包含**：自己判订阅（未订阅 ⇒ 零高）+ 自己 watch 同步状态
+        //    ⇒ 调用方一行。形态的取舍见 `widgets/sync_cloud_badge.dart` 的类文档。
+        const SyncCloudChip(),
         const SizedBox(height: CoSpacing.sm),
         // 🆕 「恢复购买」—— `ui-ux §4.4.3` 明确要求**两处**入口
         //    （订阅页 + 本页）。理由：**用户订阅后就不会再进订阅页了**，
@@ -539,7 +594,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ],
         const SizedBox(height: CoSpacing.lg),
 
-        // ── ⑤ 其他 ──
+        // ── ⑥ 其他 ──
         //    🔑 「我的成就」是**到成就墙的入口**（不是成就列表本身）。
         //      本页不再展示徽章/进度 —— 那两样都在 `/achievements`。
         //
@@ -570,27 +625,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           subtitle: '版本 $kCoEvoVersion',
           onTap: () => context.push('/about'),
         ),
-        const SizedBox(height: CoSpacing.xl),
 
-        // ── ⑥ 账号级操作（**仅已登录**）──
+        // 🔴 2026-10-09：本页**页尾原先还有一块「账号级操作」**（只剩「注销账号」）——
+        //    已随「退出账号」一起搬进「账号」组的下拉区（白哥：「注销账号也应该放进去」）。
         //
-        // 🔑 「注销账号」放在「退出账号」**正上方**：两者都是账号级操作，
-        //    而注销**更重**（不可逆）—— 放在下面会显得「顺手就能点」。
-        //    ⚠️ 但**不能藏起来**：Apple 明确要求「入口要显眼，别藏太深」
-        //       （它只禁止「仅靠邮件/客服才能注销」，不禁止放在设置区）。
-        //
-        // 🔴 未登录无账号可注销 —— 与 `_buildSignOutTile` 同一条理由
-        //    （未登录时看到一个「注销账号」，点了只会 401）。
-        if (auth.isAuthenticated) ...[
-          _navTile(
-            icon: Icons.delete_forever_outlined,
-            title: '注销账号',
-            subtitle: '永久删除账号与云端数据',
-            onTap: _showDeleteAccountDialog,
-          ),
-          const SizedBox(height: CoSpacing.sm),
-          _buildSignOutTile(),
-        ],
+        //    这里现在**什么都不留**（连它的间距也删了）：那一块原先靠
+        //    `if (auth.isAuthenticated)` 才渲染，而未登录时账号组本来就是一个单行入口
+        //    ⇒ 它是**有条件才出现的孤立卡**。搬走之后留着间距，会变成一块
+        //    「说不出用途的空白」。
+        //    📌 判据：**搬走一个入口后要问「它是不是这块地方唯一的住户」** ——
+        //       是的话，连容器/间距一起撤，而不是留个空壳。
+        //    ⚠️ 底部仍留了 `CoSpacing.tabBarClearance`（见 `ListView` 的 padding）——
+        //       那是给自绘 tabbar 让位的，与本次搬迁无关，**不要**顺手删。
       ],
     );
   }
@@ -631,9 +677,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   /// | Apple 登录 / 邮箱验证 | ❌ | ❌ **仍未做** —— 这一项是**唯一**还成立的 |
   /// | **注销** | ❌ 「后端 + SDK 全未做」 | ✅ **已完成** —— `POST /api/user/me/delete`（`user_purge.rs`）· 满足 Apple 5.1.1(v) 的**App 内自助真删**（软删/硬删两档） |
   ///
+  /// ### 🔴 2026-10-08 / 10-09 追加（第 3 次变更 · 上表**又有两格过时**）
+  ///
+  /// 白哥定：① **第一行改为「账号登录状态」**（点击 = 展开下拉，不再是改昵称）；
+  /// ② 账号级操作全部收进下拉区；③「修改邮箱」只留四个字的动作名；
+  /// ④ 次日追加：「**注销账号也应该放进去**」。
+  /// ⇒ 上表要读成：
+  /// · 「已登录：昵称（可改）」→ **昵称仍可改，但入口在下拉区的「修改昵称」项**
+  /// · 「**注销**」那一格的**入口位置**变了 —— 实现没变（仍是 `POST /api/user/me/delete`），
+  ///   但它从**页尾**搬进了**下拉区最末**（页尾那一小块卡连同间距一起删了）。
+  ///
   /// 📌 判据：**「本次只做 X」这类阶段说明必须带日期，且后续变更要回来改它** ——
   ///    否则它会**永久停格**在当时的时点，而读者会信它 ⇒ 比没有注释更糟。
   ///    🔑 与「改名后须扫旧名残留」同族：**状态变了，指着旧状态的文字也要变。**
+  ///    ⚠️ 注意这里过时的是「**位置**」而不是「做没做」—— 同一个位置字段被改过两次，
+  ///       说明**位置类描述最容易漂**（可发现性/形态类需求会反复调）。
   ///
   /// 🔑 当初「拆开做」的判断仍然成立（留档）：账号 UI 是**纯前端**
   ///    （现有 `authProvider` 就够），而 Apple 登录 / 邮箱验证要
@@ -666,62 +724,191 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
     }
 
-    // 🔴 2026-09-29：由 `isTrialAccount(auth.username)`（靠 `trial_` 前缀猜）改为
-    //    `!auth.isRegistered`（= 邮箱为空）。判据从「用户名长什么样」换成
-    //    「有没有完成注册」—— 后者才是真正要表达的东西，且不会被改名影响。
-    final trial = !auth.isRegistered;
+    // 🔴 2026-10-09：原先这里有 `final trial = !auth.isRegistered;`，用来在
+    //    下拉区给**匿名试用账号**额外挂一个「登录 / 注册」项（认领语义）。
+    //    试用账号机制整体退役 ⇒ 那一项连同这个局部变量一起删除。
+    //    📌 「未登录」时仍有登录入口 —— 就是本方法开头那一整行（未登录分支）。
     return Clay(
       borderRadius: radius,
       padding: EdgeInsets.zero,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _navTile(
-            icon: Icons.person_outline,
-            title: _displayName.isEmpty ? '用户' : _displayName,
-            subtitle: trial ? '已登录 · 试用账号' : '已登录',
+          // ══════════════════════════════════════════════════════════════
+          // ① 账号登录状态 —— **纯状态显示**（整行点击 = 展开 / 收起）
+          //
+          // 🔴 2026-10-08 白哥定：「账号下第一个栏目 —— 账号登录状态，
+          //    **现在不需要修改昵称**，点击下拉修改密码、退出账号、修改邮箱等。」
+          //    ⇒ 整行 `onTap` 由 `_editName`（改昵称）改为**切换展开态**。
+          //
+          // ⚠️ 改昵称**没有被删**，只是搬进了下拉区（见 ②）——
+          //    若只换整行的 `onTap` 而不管旧动作，`_editName` 就成了**零调用方**，
+          //    改昵称能力会**静默消失**（编译器不报：没人用不是错误）。
+          //    📌 与 `_navTile` 里那条「头像差点失去 `_uploadAvatar` 调用点」同族：
+          //       **换一个整行的点击目标时，先查原来那个动作还有没有别处能触发。**
+          //
+    // 🔑 副标题 = **登录状态**；顺带显示**登录用的邮箱**：
+    //    「修改邮箱」行改成四个字的动作名之后（白哥同批指令），邮箱地址会从
+    //    界面上消失，而 `ChangeEmailDialog` 里**也不显示当前邮箱**
+    //    ⇒ 用户再也看不到自己绑的是哪个邮箱。这里补上（超长截断）。
+    // 🔴 2026-10-09：删掉了 `trial ? '已登录 · 试用账号'` 那一支 ——
+    //    不再创建匿名试用账号（存量账号的 `email` 仍可能为 null ⇒ 显示「已登录」）。
+    _navTile(
+      icon: Icons.person_outline,
+      title: _displayName.isEmpty ? '用户' : _displayName,
+      subtitle: auth.email ?? '已登录',
             showAvatar: true,
-            onTap: _editName,
+            onTap: () => setState(() => _accountExpanded = !_accountExpanded),
+            // 展开指示：展开时转 180°（`▾` → `▴`）。
+            // 🔑 与 `InterestFilterSection` **逐参数一致**（18 · ink3 · 180ms · easeOutCubic）——
+            //    「同类元素共享版式」：两处展开控件长得不一样，用户会以为是两种机制。
+            trailing: AnimatedRotation(
+              turns: _accountExpanded ? 0.5 : 0,
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              child:
+                  Icon(Icons.expand_more, size: 18, color: Color(t.ink3.argb32)),
+            ),
             bare: true,
           ),
-          Divider(height: 1, thickness: 1, color: Color(t.line.argb32)),
-          // ── 邮箱：**显示已绑定的账号**，不再是「绑定」入口 ──
+          // ══════════════════════════════════════════════════════════════
+          // ② 下拉区 —— 账号级操作（**默认收起**）
           //
-          // 🔴 2026-09-29 语义变更：注册时就要求填邮箱 → 登录后**必然已有邮箱**，
-          //    所以这一行不再是「去绑定」的动作，而是「显示你用的是哪个邮箱」。
-          //    旧文案「绑定邮箱 / 用于找回账号 · 跨设备同步」在注册即绑邮箱之后
-          //    会让人以为「还没绑、要去绑一次」—— 那是错的。
-          //
-          // 🔴 2026-10-07 **已可修改** —— 此前这里写着「邮箱目前不可修改（后端无改邮箱端点）
-          //    → 点了给明确说明」，那句**已过时**：后端已加
-          //    `/api/auth/change-email/code` + `/api/auth/change-email` 两步端点。
-          // 🔑 它是**敏感操作**（邮箱正是找回密码的收信地址）⇒ 要「当前密码 +
-          //    发到新邮箱的验证码」两道凭据，见 `ChangeEmailDialog` 的文档。
-          _navTile(
-            icon: Icons.mail_outline,
-            title: auth.email ?? '未绑定邮箱',
-            subtitle: '登录账号 · 找回账号靠它',
-            onTap: _showChangeEmailDialog,
-            bare: true,
-          ),
-          Divider(height: 1, thickness: 1, color: Color(t.line.argb32)),
-          // ── 🆕 2026-10-05 修改密码 ──
-          //
-          // 位置（白哥定案 · 设计稿 §二 方案 A）：**账号组内、邮箱下方**。
-          // · 语义归属：它与「邮箱」「注销账号」同属**账号级**操作 ⇒ 同一组
-          // · 放在「邮箱」之后而不是最末：组内顺序 = 「看账号 → 改凭证」，
-          //   而**破坏性**操作（注销/退出）在页尾**独立成卡**，隔得很远 ✅
-          // · 判据：**控件放哪两维度缺一不可**（语义归属 × 常驻成本）——
-          //   它低频但不占地方（一行），且语义上必须与账号同组。
-          //
-          // 🔴 为什么和「忘记密码」是两件事（都缺就都做）：
-          //   只有「忘记密码」⇒ 记得密码的人**改不了**；
-          //   只有「修改密码」⇒ 忘了密码的人**进不去**。
-          _navTile(
-            icon: Icons.lock_outline,
-            title: '修改密码',
-            subtitle: '定期更换更安全',
-            onTap: _showChangePasswordDialog,
-            bare: true,
+          // 🔑 全是**动作** ⇒ **一律只有名称、不带说明**：
+          //    ① 白哥 2026-10-08 明确「『修改邮箱』只要这四个字」；
+          //    ② 下拉是动作菜单，每条都挂一句小字说明会让整列全是噪音；
+          //    ③ 与 `InterestFilterSection` 同一交互语汇（`AnimatedSize` 180ms 就地向下长）。
+          //    ⚠️ 旧说明「登录账号 · 找回账号靠它」已删（那是**状态说明**，
+          //       挂在一个动作项下面词不达意）—— 断言里加了反向项防它复活。
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            // ⚠️ 收起时用 `SizedBox(width: double.infinity)` 而不是 `SizedBox.shrink()`：
+            //    后者宽度为 0 ⇒ 展开时会**同时**从 0 宽长到全宽（横向拉伸感，很怪）。
+            //    （同一个坑，`InterestFilterSection` 里已记着一次。）
+            child: _accountExpanded
+                ? Column(
+                    children: [
+                      Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: Color(t.line.argb32)),
+                      // 🔴 2026-10-09：原先这里在 `if (trial)`（= 未完成注册）时
+                      //    额外挂一个「登录 / 注册」项 —— 因为当时 App **首次启动就会
+                      //    自动建匿名试用账号** ⇒ 用户几乎永远「已登录」⇒ 本页开头
+                      //    「未登录」那一行基本不出现 ⇒ 自动弹窗一取消，**登录入口会整条消失**。
+                      //    试用账号退役后**那个隐患消失了**：新用户初始就是「未登录」，
+                      //    本页账号组的第一行（未登录分支）**就是**登录 / 注册入口。
+                      //
+                      // 🔑 判据（仍然有效，别忘）：**删一个「入口」前，先查它是不是
+                      //    别的东西的唯一入口** —— 弹窗不该**自动**打扰，但入口必须**常驻**。
+                      //    ⚠️ 所以「未登录」那一条分支**不能**顺手动 —— 它现在承担全部入口职责。
+                      // ── 修改昵称：**从「第一行点击」搬来的**（能力保留，换了入口）──
+                      _navTile(
+                        icon: Icons.edit_outlined,
+                        title: '修改昵称',
+                        onTap: _editName,
+                        bare: true,
+                      ),
+                      Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: Color(t.line.argb32)),
+                      // ── 修改邮箱 ──
+                      //
+                      // 🔴 2026-09-29 语义变更：注册时就要求填邮箱
+                      //    ⇒ 登录后**必然已有邮箱**，这一行从来不是「去绑定」。
+                      // 🔴 2026-10-07 **已可修改**：后端加了
+                      //    `/api/auth/change-email/code` + `/api/auth/change-email` 两步端点。
+                      //    🔑 它是**敏感操作**（邮箱正是找回密码的收信地址）⇒ 要
+                      //    「当前密码 + 发到新邮箱的验证码」两道凭据，见 `ChangeEmailDialog`。
+                      // 🔴 2026-10-08 文案：`title` 由「邮箱地址」改为**动作名**（白哥：
+                      //    「只要『修改邮箱』四个字」），`subtitle` 整条删掉。
+                      //    当前邮箱改由 ① 的副标题显示（否则界面上看不到绑的是哪个）。
+                      _navTile(
+                        icon: Icons.mail_outline,
+                        title: '修改邮箱',
+                        onTap: _showChangeEmailDialog,
+                        bare: true,
+                      ),
+                      Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: Color(t.line.argb32)),
+                      // ── 修改密码 ──
+                      //
+                      // 🔴 为什么和「忘记密码」是两件事（都缺就都做）：
+                      //   只有「忘记密码」⇒ 记得密码的人**改不了**；
+                      //   只有「修改密码」⇒ 忘了密码的人**进不去**。
+                      _navTile(
+                        icon: Icons.lock_outline,
+                        title: '修改密码',
+                        onTap: _showChangePasswordDialog,
+                        bare: true,
+                      ),
+                      Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: Color(t.line.argb32)),
+                      // ── 退出账号 ──
+                      //
+                      // # 🔴 为什么在本组内（原先在「我的」页**最底部**）
+                      //
+                      // 它原先挂在页尾（「注销账号」正下方）。要看到它得**滚过六组**：
+                      // 统计卡 → 账号 → 兴趣 → 记忆 → 订阅 → 其他 —— 真机上表现为
+                      // **「App 里没有退出账号的入口」**（白哥 2026-10-08 原话）。
+                      // 📌 判据：**「入口存在」≠「入口找得到」** —— 可发现性是入口的一部分。
+                      //    同族：Apple 要求账号操作**显眼、别藏太深**（它只禁止
+                      //    「仅靠邮件 / 客服才能操作」，不禁止放在设置区）。
+                      //
+                      // 🔑 与注销账号的关系：两项现在**同在下拉区**，靠**顺序**分工 ——
+                      //    「退出」可逆（登出而已）在前，「注销」不可逆在**最末**
+                      //    （理由见下面那一条）。两者语义完全不同、**不能互相替代**：
+                      //    退出只清**本机**凭据 —— 学习记录在端侧 `user.db`、不受影响。
+                      _navTile(
+                        icon: Icons.logout,
+                        title: '退出账号',
+                        onTap: _confirmSignOut,
+                        bare: true,
+                      ),
+                      Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: Color(t.line.argb32)),
+                      // ── 注销账号（**最末**：本组唯一不可逆的一项）──
+                      //
+                      // 🔴 2026-10-09 白哥：「注销账号也应该放进去」——
+                      //    此前它在「我的」页**页尾**独立成一小块卡（本轮已删）。
+                      //
+                      // 🔑 为什么放**最末**：它上面那条「退出」是**可逆**的（登出而已），
+                      //    而「注销」不可逆 —— 相邻两项里，不可逆的那个要离日常项最远。
+                      //    列表是从上往下扫的 ⇒ 最末一项被误触的概率最低。
+                      //    ⚠️ 顺序反过来（销毁在前、登出在后）会把两者都放错位置。
+                      //
+                      // 🔴 风险提示**不写在这一行**（下拉项一律只有动作名，白哥定）——
+                      //    由**二次确认弹窗**承担，且那三条文案比一行小字完整得多：
+                      //    ① 账号与云端数据永久删除 ② 本机学习数据（生词/复习/电子书）不受影响
+                      //    ③ 不影响 Apple 订阅（要退订得去 Apple ID 设置）
+                      //    ⇒ 见 `_showDeleteAccountDialog`。**不要**因为少了这行小字
+                      //      就以为「警示不够」而把它加回来（那会破坏下拉的统一形态）。
+                      //
+                      // ✅ 合规：Apple 5.1.1(v) 要求「**App 内**能自助注销」（禁止只留邮件/客服），
+                      //    **不禁止**要点两下才到 ⇒ 收进下拉仍满足。
+                      //    `verify_iap_plan` 的断言查的就是「『我的』页里有这个入口」，
+                      //    **与它在页面的哪个位置无关** ⇒ 搬迁不会让它变红（这是对的：位置不是契约）。
+                      //
+                      // ⚠️ **「注销」≠「退出」**（不能互相替代）：
+                      //    注销会删**服务端**账号；退出只清本机凭据。
+                      _navTile(
+                        icon: Icons.delete_forever_outlined,
+                        title: '注销账号',
+                        onTap: _showDeleteAccountDialog,
+                        bare: true,
+                      ),
+                    ],
+                  )
+                : const SizedBox(width: double.infinity),
           ),
         ],
       ),
@@ -764,10 +951,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       child: Row(
         children: [
           if (showAvatar)
-            // 🔑 头像**单独可点**（= 换头像），与整行点击（= 改昵称）**分开**。
+            // 🔑 头像**单独可点**（= 换头像），与整行点击（**展开 / 收起**）**分开**。
             //    ⚠️ 改造时差点漏掉：只把整行 `onTap` 设成 `_editName`，
             //      头像的 `_uploadAvatar` 就**没有调用点**了
             //      （功能静默消失 —— 编译器不会报，因为「没人用」不是错误）。
+            //    🔴 2026-10-08 同一形状**又出现一次**（这次是 `_editName` 差点失去调用点）：
+            //       整行 `onTap` 由「改昵称」改成「切换展开」时，必须把改昵称
+            //       **搬进下拉区**（见 `_buildAccountGroup` ②）。
+            //       📌 判据：**换一个整行的点击目标时，先查原来那个动作还有没有别处能触发** ——
+            //          这个坑在这一个 widget 里已踩两次，不是偶发。
             GestureDetector(
               onTap: _uploadAvatar,
               child: CircleAvatar(
@@ -809,6 +1001,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
+                    // 🔴 2026-10-08：副标题现在可能承载**邮箱地址**（账号状态行）——
+                    //    没有 `maxLines` 时它会**折成两行**（`Expanded` 里宽度受限但高度不限），
+                    //    把行高撑起来、与相邻行对不齐。截断比折行好：
+                    //    完整值在「修改邮箱」弹层里仍然可用。
+                    // 📌 判据：**可变的、用户产生的文本进布局时要给上界**
+                    //    （同「界面换算值须与判定层核对」那一族：长内容不能撑破版式）。
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontFamily: CoFonts.uiSans,
                       fontSize: 11.5,
@@ -840,38 +1040,135 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  /// 退出账号（页尾独立项 · **带文字** + 二次确认）。
+  /// 「记忆」分组：**默写准确率**（滑动条）。
   ///
-  /// 🔑 **为什么不放顶栏图标**：
-  ///    ① 顶栏改用 `HeaderChip` 放通知后，原来的 `IconButton` 槽位没有了；
-  ///    ② 更重要的是 —— **Apple 审核要求账号操作可见**（应用内需有账号通道）。
-  ///       一个没有文字的图标不合格。
-  /// ⚠️ **「退出」≠「注销」**：退出只清本地凭证（学习记录在端侧 `user.db`，不受影响）；
-  ///    **注销要删服务端账号**（Apple 指南 5.1.1(v)）→ 需后端接口，属独立一批。
-  Widget _buildSignOutTile() {
+  /// # 🔴 为什么这个设置存在（而不是我替用户定一个数）
+  ///
+  /// 划线卡的复习是**默写**（白哥 2026-10-07 定「考默写，和单词一样」），
+  /// 判据是「**错词比例**」。但「多准算记住」本来就不是一个客观正确的数字 ——
+  /// 它是**用户对自己要求的差别**：有人要逐字不差，有人抓到大意就够。
+  /// ⇒ **交还给用户**，而不是我猜死一个阈值。
+  ///
+  /// # 🔑 显示「最多错几个」，而不是「15%」
+  ///
+  /// 「15%」用户看不懂；「**20 个词的句子最多错 3 个**」他立刻懂。
+  /// 而且数字是**实时算**的（`maxWrongWordsFor`）—— 不是写死的文案：
+  /// 写死的话，将来改了判定口径，设置页的说明会与判定**静默不符**。
+  /// 📌 先例：复习结果页的「下次复习：X 天」同样是实算值。
+  ///
+  /// # 🔴 作用范围必须写明（不是可选的提示）
+  ///
+  /// **只影响划线卡的默写**。单词卡的答案是**唯一**的（`scale` 就是 `scale`），
+  /// 「多准算对」在它上面**没有意义** —— 拼错一个字母就是拼错了。
+  /// ⚠️ 不写这句，用户会以为它把所有判定都放宽了
+  /// （而如果真去放宽单词卡，**复习信号就被弄脏了**）。
+  ///
+  /// # ⚠️ 刻度用 5% 步进（`divisions: 6`）
+  ///
+  /// 1% 的差别在判定上**没有意义**（20 词的句子错 1 个就是 5%），
+  /// 而 30 档会让轨道上挤满刻度线。
+  /// 📌 **真机目视**：`Slider` 的默认内边距可能让两端与卡片边缘不齐 ——
+  /// 本机验不了渲染，看到不齐再套 `SliderTheme` 收窄。
+  Widget _buildMemoryTile() {
     final t = CoEvoTokensExt.of(context);
+    final v = ref.watch(memorySettingsProvider).maxWrongPercent;
+
+    // 🔑 实时算「这意味着什么」—— 两个长度各给一个具体后果
+    final longAllow = maxWrongWordsFor(expectedWords: 20, percent: v);
+    final shortAllow = maxWrongWordsFor(expectedWords: 7, percent: v);
+
     return Clay(
       borderRadius: BorderRadius.circular(16),
       padding: EdgeInsets.zero,
-      onTap: _confirmSignOut,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 15),
-        child: Center(
-          child: Text(
-            '退出账号',
-            style: TextStyle(
-              fontFamily: CoFonts.uiSans,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Color(t.accent.argb32),
+        padding: const EdgeInsets.fromLTRB(15, 14, 15, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                SizedBox(
+                  width: 21,
+                  child: Icon(Icons.spellcheck,
+                      size: 17, color: Color(t.ink3.argb32)),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Text(
+                    '默写准确率',
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Color(t.ink.argb32),
+                    ),
+                  ),
+                ),
+                // 🔑 当前值放**行尾**（同 `_navTile` 的副标题位置）——
+                //    不新造版式，本页所有「标题 + 值」都是这个布局
+                Text(
+                  '$v%',
+                  style: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(t.accent.argb32),
+                  ),
+                ),
+              ],
             ),
-          ),
+            const SizedBox(height: 3),
+            Padding(
+              // 与标题文字左对齐（图标 21 + 间距 11）
+              padding: const EdgeInsets.only(left: 32),
+              child: Text(
+                '只影响划线记忆的默写 · 单词卡的拼写判定不受影响',
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 11.5,
+                  color: Color(t.ink3.argb32),
+                ),
+              ),
+            ),
+            Slider(
+              value: v.toDouble(),
+              min: kMemoryMaxWrongPercentMin.toDouble(),
+              max: kMemoryMaxWrongPercentMax.toDouble(),
+              divisions: 6, // ⇒ 步进 5%（0/5/10/15/20/25/30）
+              label: '$v%',
+              // 🔑 拖一次可能写库数次 —— 可接受：provider 在「值没变」时提前返回，
+              //    且步进是 5% ⇒ 一次拖动最多落几个档。
+              //    📌 不为它单开一条「松手才存」的路径：那会让「写端」有两处
+              //    （判据：同一件事的口径只能一处权威）。
+              onChanged: (x) =>
+                  ref.read(memorySettingsProvider.notifier).setMaxWrongPercent(x),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 32, right: 8, bottom: 10),
+              child: Text(
+                '当前标准：20 个词的句子最多错 $longAllow 个 · '
+                '7 个词的短句最多错 $shortAllow 个',
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 11.5,
+                  height: 1.5,
+                  color: Color(t.ink2.argb32),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
   /// 退出前二次确认。
+  ///
+  /// 🔴 2026-10-08：入口**已从页尾移进「账号」组**（见 `_buildAccountGroup`）——
+  ///    原先那个「页尾独立项」的 `_buildSignOutTile` 因此成了死代码，已删除。
+  ///    🔑 版式随之改用组内统一的 `_navTile`：它**同样带文字**
+  ///       （Apple 要求账号操作可见，一个没有文字的图标不合格），
+  ///       但不再自造第六种行样式（判据：**同类元素共享版式**）。
   ///
   /// 🔑 必须确认：退出会清掉本地凭证（下次要重新登录）——
   ///    不可逆且用户可能误触，属于「该拦一下」的操作。
@@ -901,8 +1198,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           // 🆕 2026-10-06：原文案只说「保存在本机」——
           //    云端同步上线后它**不完整**了（同步过的数据在服务端也有一份，
           //    且退出登录**不会**删除它）。按「声明要与配置一致」补齐。
+          //
+          // 🆕 2026-10-09（**归属账号**）：再补最后一句。
+          //    本机数据是**账号维度**（`local_data_owner.dart`）⇒ 用**别的账号**登录时
+          //    本机数据会被清空。这是**不可逆**的（旧账号若从未同步过，云端没有副本），
+          //    所以必须在**用户做决定的这一刻**说清 ——
+          //    判据：**「后果不可见 + 恢复路径远」的动作要在决策点告知**
+          //    （等换账号时再提示已经晚了：那时凭据已换、数据已走）。
           '退出后将清除本机登录状态。你的学习记录仍保留在本机；'
-          '已同步到云端的数据也仍保留，重新登录后可继续同步。',
+          '已同步到云端的数据也仍保留，重新登录后可继续同步。\n'
+          '⚠️ 若改用其它账号登录，本机学习数据会被清空'
+          '（本机数据只属于一个账号）。',
           style: TextStyle(
             fontFamily: CoFonts.uiSans,
             fontSize: 12.5,
@@ -928,12 +1234,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   /// 🔴 2026-09-29 接回：此前三处（账号行 / 订阅卡整块 / 订阅卡「查看」按钮）
   ///    都指向 `_comingSoon('登录')`（点开提示「即将开放」）。根因是重排那批
   ///    把「trial 认领弹窗」当作旧功能删掉了 —— 而**它同时也是登录的唯一入口**。
-  ///    📄 详见 [ClaimDialog] 的类文档 · 判据：「删一个元素前先查它还承担什么职责」。
+  ///    📄 详见 [AuthDialog] 的类文档 · 判据：「删一个元素前先查它还承担什么职责」。
   ///
   /// 🔑 登录成功后**不必**在这里刷数据：`initState` 的 `listenManual` 已监听
   ///    「未登录 → 已登录」并调用 `_load()`（一处权威，别写两遍）。
   void _showLoginDialog() {
-    ClaimDialog.show(context);
+    AuthDialog.show(context);
   }
 
   /// 打开「修改邮箱」弹层；成功则提示。
@@ -1183,29 +1489,44 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     //    ⚠️ 删掉的两句「未激活 — 请联系服务人员**开通**」/「已到期 — 请联系服务人员**续费**」
     //       是**微信 Native 扫码时代**的残留（原注释已标注「待支付批次改」）——
     //       IAP 下开通/续费都由 Apple 自动处理，**没有「找服务人员」这一环**。
+    //
+    // 🔴 2026-10-09：状态来源由「纯端侧 `snap.isActive`」改为**全库唯一判据**
+    //    `subscriptionActiveNow`（端侧 **或** 服务端对账值）。
+    //    理由见 `iap_plan.subscriptionActive` 的文档：端侧是**权威**但不是**独占** ——
+    //    安卓没有 StoreKit、后台授予的订阅端侧也无从知道，只看端侧就会出现
+    //    「服务端明明有效，界面显示未订阅」（白哥 2026-10-09 真机）。
     final snap = iapSnapshotOf(ref);
-    final bool isActivated = snap.isActive;
+    final bool isActivated = subscriptionActiveNow(ref);
 
     String statusText;
     Color statusColor;
     IconData statusIcon;
 
     if (isActivated) {
-      final expires = snap.expiresAtUtc;
-      statusText = expires == null
-          ? '订阅中'
-          : '订阅中 · 到期日 ${expires.toLocal().toString().substring(0, 10)}';
+      // 🔑 到期日走全库唯一换算点（端侧精确时刻优先 → 退回服务端对账值）
+      final expiry = subscriptionExpiryLabel(
+        iapExpiresAtUtc: snap.expiresAtUtc,
+        backendExpiresAt: ref.watch(subscriptionProvider).expiresAt,
+      );
+      statusText = expiry == null ? '订阅中' : '订阅中 · 到期日 $expiry';
       statusColor = _cs.primary;
       statusIcon = Icons.verified;
-    } else if (snap.entitlement == IapEntitlementStatus.expired) {
+    } else if (subscriptionLapsedNow(ref, snap)) {
       // 🔑 到期**不没收资产**（§4.4.4）—— 文案只说「续订后继续」，
-      //    不说「已锁定」（生词仍可读可复习，只是不能新增/朗读）
+      //    不说「已锁定」（生词仍可读可复习；到期后少的是同步/云端书架/翻译额度）
       statusText = '会员已到期 · 续订后继续';
       statusColor = _cs.error;
       statusIcon = Icons.lock_clock;
     } else {
-      // 🔑 价值主张要具体（§4.4.1 判据 3）—— 不写「解锁全部功能」
-      statusText = '无限生词本 · 文章朗读';
+      // 🔑 价值主张要具体（§4.4.1 判据 3）—— 不写「解锁全部功能」。
+      //
+      // 🔴 2026-10-09 修掉一句**虚假陈述**：原文案是
+      //    「无限生词本 · 文章朗读」—— 这两个能力**早已免费**
+      //    （2026-10-01 取消生词上限；朗读已免费全量，见 `iap_plan.benefits` 的留档表），
+      //    把它们说成订阅权益是**方向相反的错**（不是漏写，是错写）。
+      //    ⇒ 改为引用 `SubscriptionLegalText.shortPitch()`（与权益清单同源，
+      //      断言锁着「短标语里的每一项都能在 benefits 里找到」）。
+      statusText = SubscriptionLegalText.shortPitch();
       statusColor = _cs.tertiary;
       statusIcon = Icons.workspace_premium_outlined;
     }
@@ -1246,6 +1567,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ],
               ),
             ),
+            // 🆕 2026-10-09：云端同步的**云朵状态标**。
+            //    🔴 它**不在这张卡上** —— 白哥同日定：「还是在我的里弄个独立的胶囊吧」。
+            //       原先是把一枚图标**贴在**这行里（副标题右侧、按钮左侧）；
+            //       贴着会被读成「订阅状态的一部分」，而且图标形态说不出「上次同步是几点」。
+            //    ⇒ 现在它是**独立胶囊**，挂在「订阅」组内、本卡**下方**
+            //       （见 `_groupLabel('订阅')` 那一段的 `SyncCloudChip`）。
+            //       📌 判据：**控件放哪 = 语义归属 × 常驻成本** —— 语义上它属于「订阅」组，
+            //          但它不是这张卡的一个字段（那张卡说的是「你订了什么」，
+            //          胶囊说的是「云端数据走到哪了」）。
             // 🔑 用**粘土按钮**而非 Material `FilledButton.tonal` ——
             //    规格 §6.1 把「主/次按钮」列在**粘土**元素里。
             //    两者不是「换个皮肤」：Material 那套没有 `accentOut` 外阴影、
@@ -1360,7 +1690,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               icon: Icons.phone_iphone,
               // 🔑 与《用户协议》§三.5 的措辞一致 ——
               //    不写清这一条，用户会以为生词也一起没了（那是不必要的流失）
-              text: '你设备上的学习数据（生词、复习记录、已导入的电子书）不会被删除。',
+              //
+              // 🆕 2026-10-09（**归属账号**）：补后半句。
+              //    本机数据现在**属于账号**（`local_data_owner.dart`）⇒
+              //    「注销不会删本机数据」这句仍成立，但**再用别的账号登录会清空它** ——
+              //    不写出来，用户注销后注册新号会发现数据没了，而**那时才被告知**已经晚了。
+              //    📌 判据同登出弹窗：**后果不可见 + 恢复路径远 ⇒ 在决策点告知**。
+              text: '你设备上的学习数据（生词、复习记录、已导入的电子书）不会被删除；'
+                  '但若改用其它账号登录，本机学习数据会被清空（本机数据只属于一个账号）。',
             ),
             const SizedBox(height: CoSpacing.md),
             _deleteDialogLine(

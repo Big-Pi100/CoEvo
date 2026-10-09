@@ -72,6 +72,29 @@
 //    判据若在两处各写一份，会出现「同一个词在 A 处标了、B 处没标」这种最难查的不一致
 //    —— 不报错，只是少画一处底色。
 //
+// # 🆕 2026-10-07：**划线**也走这条路径（但匹配方式不同）
+//
+// 划线与痕迹是**同一条链上的两种标记**，共用「插标记 → `InlinePattern` 渲染」这个机制，
+// 差别只在**怎么找到要标的那段文字**：
+//
+// | | 怎么找 | 为什么 |
+// |---|---|---|
+// | 痕迹 | **按词匹配**（`\b词\b`）| 已查词只有「哪些词」，**没有位置** |
+// | **划线** | **按字符区间（offset）** | 用户拖动**选中**了它 ⇒ `highlight` 表存了 `start/end` |
+//
+// 🔴 **注入顺序是硬约束**（错了就静默画错位置）：
+// ```
+// 原始 markdown ──① 划线（按 offset）──▶ ──② unescape ──▶ ──③ 痕迹（按词）──▶ 渲染
+// ```
+// · ① 必须在 ② **之前**：unescape 会**删反斜杠**（`\.` → `.`）⇒ 之后偏移全错位
+// · ② 必须在 ③ 之前：这是**既有**顺序（痕迹标记描述的是「消化后要渲染的那段文本里的词」）
+// · ③ 会自动**跳过** ① 插入的标记（见 [injectTraceMarkers] 的 ④ 分支）——
+//   划线**优先**：划过的片段里那些已查词**不再有底色**（两者都是高亮，叠加会互相干扰）
+//
+// ⚠️ 两处「使用同一批跳过区」：`_noMarkRanges`（划线用）与主循环 ①②③（痕迹用）
+//    共用 [_atFence] / [_skipFence] / [_skipBacktick] / [_skipParen]，
+//    但**入口条件各写一份** ⇒ 改一处必须看另一处。
+//
 // # 🔴 词匹配唯一的难点：词边界（`\b`）
 //
 // 若用朴素的 `text.indexOf(word)`，则查过 `art` 会把 `start` / `part` /
@@ -116,6 +139,252 @@ final RegExp kTraceMarkerPattern = RegExp(
 /// 档位 → 标记字符。**只在这一个地方做这个映射**（见文件头说明）。
 String traceMarkerOf(int tier) =>
     tier == 0 ? kTraceFreshOpen : kTraceReviewingOpen;
+
+// ───────────────────────────────────────────────────────────────────────
+// 划线：另一种「正文上的标记」（2026-10-07）
+// ───────────────────────────────────────────────────────────────────────
+
+/// **划线**标记的控制字符。
+///
+/// 与痕迹同族（`\u0001` / `\u0002`），取下一个可用值 —— 理由完全相同：
+/// **正文不可能包含 C0 控制码**（见文件头那张候选对照表）。
+///
+/// 🔑 用**第三个**字符而不是复用 `\u0001`：痕迹与划线是**两种语义**
+/// （「系统记的已查词」vs「我划的」），要渲染成**两种样式**
+/// （底色浸透 vs 下划线）—— 复用字符就区分不出来了。
+const String kHighlightOpen = '\u0003';
+
+/// 匹配一段划线标记：`\u0003内容\u0003`。
+///
+/// 同 [kTraceMarkerPattern]：**同字符开闭** ⇒ 半截标记不会被吞掉。
+final RegExp kHighlightMarkerPattern = RegExp('\u0003([^\u0003]*?)\u0003');
+
+/// 把**划线**包成标记（**按字符区间**，在**原始 markdown** 上做）。
+///
+/// # 🔴 为什么划线可以按 offset，而痕迹必须按词匹配
+///
+/// 这是两者最关键的区别，也是本函数与 [injectTraceMarkers] 分开的原因：
+///
+/// | | 输入是什么 | 能不能用偏移 |
+/// |---|---|---|
+/// | 痕迹 | 「哪些词已查过」——**没有位置信息** | ❌ 只能按词匹配 |
+/// | **划线** | 用户拖动**选中的区间** ⇒ 存了 `start/end` | ✅ **有偏移，且是准的** |
+///
+/// 🔑 而偏移之所以准，是因为**顺序**：
+/// ```
+/// 原始 markdown ──① 本函数（按 offset 插划线标记）──▶ ──② unescape ──▶ ──③ 痕迹（按词）──▶ 渲染
+/// ```
+/// ③ 必须在 ① 之后（痕迹不看偏移）；而 ① 必须在 **② 之前** ——
+/// 因为 unescape 会**删反斜杠**（`\.` → `.`），② 之后偏移就全错位了。
+///
+/// ⚠️ 划线**不含它自己的位置以外的信息**：本函数只收 `(start, end)`，
+///    不收 id —— 因为渲染层此刻不需要「点它打开哪条」（那要等划线清单页）。
+///    将来若要做可点击，是**给这条 record 加字段**，不是另写一份注入。
+///
+/// # 🔴 与三个「禁插区」的关系：**做差集，不是整条丢弃**
+///
+/// 代码块 / 行内代码 / 链接 URL 里**不能**插控制字符（插了会污染代码、破坏链接）。
+/// 若一条划线**跨**过它们：
+///
+/// | 做法 | 后果 |
+/// |---|---|
+/// | 整条不画 | 用户划了一大段，其中只有一个行内代码 ⇒ **整段都看不到下划线** |
+/// | **做差集（本函数）** | 划线在禁插处**断开**，两侧照画 ⇒ 视觉上正确（代码本就不该有下划线）|
+///
+/// 📌 判据：**「局部无效」不该让「整体失效」** —— 能保住的部分就保住。
+///
+/// # ⚠️ 幂等性：本函数**要求输入是未插过标记的原始 markdown**
+///
+/// 检测到 [kHighlightOpen] 就**原样返回**（不做任何事）——
+/// 因为一旦已有标记，长度就变了，**偏移全部失配**，再插一次会把标记插错位置。
+/// 🔑 与其静默插错，不如**什么都不做**（渲染出来是「划线没画」，而不是「线画到别处」）。
+/// ⚠️ 调用方（`TraceMarkdown`）保证只在渲染前调一次。
+String injectHighlightMarkers({
+  required String markdown,
+  required List<({int start, int end})> ranges,
+}) {
+  if (markdown.isEmpty || ranges.isEmpty) return markdown;
+  // 已插过 ⇒ 偏移已失配 ⇒ 不做（见上文「幂等性」）
+  if (markdown.contains(kHighlightOpen)) return markdown;
+
+  // ── ① 过滤 + 钳制 + 排序 + 合并重叠 ──
+  //
+  // 🔴 口径必须与 `highlight_span.buildTextSegments`（书架页的切分）**一致** ——
+  //    同一个文本在两页渲染成不同数量的下划线，是最难查的一类不一致。
+  //    ⚠️ 但**不共用代码**：那边产出的是 `TextSegment`（含 id、供点击），
+  //       这边产出的是 String（供 Markdown 解析）。共用的应该是**口径**，不是函数。
+  final usable = <({int start, int end})>[];
+  for (final r in ranges) {
+    if (r.start < 0 || r.end <= r.start) continue;
+    if (r.start >= markdown.length) continue;
+    usable.add((
+      start: r.start,
+      end: r.end > markdown.length ? markdown.length : r.end,
+    ));
+  }
+  if (usable.isEmpty) return markdown;
+  usable.sort((a, b) => a.start.compareTo(b.start));
+  final merged = <({int start, int end})>[];
+  for (final r in usable) {
+    if (merged.isEmpty) {
+      merged.add(r);
+      continue;
+    }
+    final last = merged.last;
+    if (r.start < last.end) {
+      merged[merged.length - 1] = (
+        start: last.start,
+        end: r.end > last.end ? r.end : last.end,
+      );
+    } else {
+      merged.add(r);
+    }
+  }
+
+  // ── ② 不可包标记的区间（代码 / URL / 行内语法）──
+  final noMark = _noMarkRanges(markdown);
+
+  // ── ③ 逐条插标记（与禁插区做差集）──
+  final out = StringBuffer();
+  var cursor = 0;
+  for (final r in merged) {
+    for (final seg in _subtract(noMark, r.start, r.end)) {
+      // 🔴 防御：`_subtract` 保证 `seg` 落在 `[r.start, r.end]` 内，
+      //    且按序返回 ⇒ `seg.start >= cursor` 恒成立。
+      //    写出来是**为了不改坏时立刻暴露**（若哪天 `_subtract` 改了行为，
+      //    这里会跳过而不是产出乱序文本 —— 静默产出错序文本比少画一条线糟得多）。
+      if (seg.start < cursor || seg.end <= seg.start) continue;
+      out.write(markdown.substring(cursor, seg.start));
+      out.write(kHighlightOpen);
+      out.write(markdown.substring(seg.start, seg.end));
+      out.write(kHighlightOpen);
+      cursor = seg.end;
+    }
+  }
+  out.write(markdown.substring(cursor));
+  return out.toString();
+}
+
+/// 扫描出**禁止包标记**的区间。
+///
+/// # 两类来源（判据不同，但后果同一条：那里不能出现控制字符）
+///
+/// | 类 | 区间 | 不排除的后果 |
+/// |---|---|---|
+/// | **① 结构区**（顺序扫描）| 围栏代码块 · 行内代码 · 链接 URL | 污染代码内容 / 🔴 **链接失效** |
+/// | **② 行内语法定界符**（逐字符）| `*` `~` `[` `]` | 🔴 **整条划线不显示**（见下）|
+///
+/// # 🔴 ② 是**探针实测**逼出来的，不是推理出来的
+///
+/// 探针：`app/tool/highlight_marker_probe.dart`（注入 → **真实解析器** `plusparse` → 匹配）。
+/// 结论：**标记一旦跨过会改变节点结构的字符，就会被拆到不同节点** ⇒
+/// 渲染层的 `InlinePattern`（它匹配的是「**解析产出的文本**」，见 `gpt_markdown` 文档）
+/// 匹配不上 ⇒ 划线**整条不显示**。
+///
+/// ```
+/// 源　：A ⟦ great **best** moment⟦ today.      ← 标记跨过 `**`
+/// 解析：T「A ⟦ great 」 + B(T「best」) + T「 moment⟦ today.」   ← 一对标记被拆开 ⇒ 匹配不上
+/// ```
+///
+/// ✅ **好消息**：最坏情况是「少画一条线」，**不是**「把 `**` 当字面文本显示」——
+///    控制字符本身不会被渲染出来（探针确认）。
+/// ❌ 但它**静默**（用户划了一整句，因为句里有个粗体词 ⇒ 整句都没有下划线）。
+///
+/// # 🔴 所以排除的是**定界符本身**，不是整个语法单元
+///
+/// ⚠️ 这里踩过一次：**首版把 `**bold**` 整段排除**，探针立刻报出回归 ——
+///    那会让「**划线整个落在粗体里**」也变成「不画」（本该正常工作的情形）。
+///    📌 判据：**排除的范围要精确到「真的会拆节点的那几个字符」**，
+///       过宽会把能工作的情形一起排除掉（同 `markdown_unescape` 里
+///       「保留的面必须精确到真的会构成列表那些位置」那一族）。
+///
+/// 排除定界符之后，标记在它们**两侧断开**，各自成对：
+/// ```
+/// 注入：A ⟦A ⟦**⟦great⟦**⟦ b⟦     （示意）
+/// 解析：T(A…两个标记) + B(T(great…成对)) + T( b…成对)  ⇒ 都匹配 ✅
+/// ```
+/// 视觉上：下划线在粗体词处**断开**（粗体词自身也有下划线，只是被 `**` 隔成独立 span
+/// —— 相邻 span 的下划线在视觉上仍是连着的）。**可以接受**。
+///
+/// 📌 判据：**「局部无效」不该让「整体失效」** —— 与「跨代码块」是同一条。
+List<({int start, int end})> _noMarkRanges(String s) {
+  final out = <({int start, int end})>[];
+
+  // ── ① 结构区：顺序扫描（与 `injectTraceMarkers` 主循环的 ①②③ 同判据）──
+  var i = 0;
+  while (i < s.length) {
+    if (_atFence(s, i)) {
+      final e = _skipFence(s, i);
+      out.add((start: i, end: e));
+      i = e;
+      continue;
+    }
+    if (s[i] == '`') {
+      final e = _skipBacktick(s, i);
+      out.add((start: i, end: e));
+      i = e;
+      continue;
+    }
+    if (s[i] == ']' && i + 1 < s.length && s[i + 1] == '(') {
+      // ⚠️ 只跳括号（URL）——`[文字]` 那部分由 ② 的 `[` `]` 覆盖
+      final e = _skipParen(s, i + 1);
+      out.add((start: i, end: e));
+      i = e;
+      continue;
+    }
+    i++;
+  }
+
+  // ── ② 行内语法定界符：逐字符（只排字符本身，不排内容）──
+  for (var k = 0; k < s.length; k++) {
+    if (_kInlineDelimiters.contains(s[k])) {
+      out.add((start: k, end: k + 1));
+    }
+  }
+
+  return out;
+}
+
+/// 行内**语法定界符**字符 —— 它们会改变解析出的节点结构。
+///
+/// ⚠️ 只放「**确实会拆节点**」的（探针实测）：
+/// · `*` —— 强调 / 粗体（`**` 由两个 `*` 自然覆盖）
+/// · `~` —— 删除线（`~~`）
+/// · `[` `]` —— 链接文字的边界
+///
+/// 🔴 **不放** `` ` ``：行内代码由 ① 整段跳过（连内容一起），逐字符排除是多余的。
+/// 🔴 **不放** `_`：`plusparse` **不支持** `_` 强调（`ast_probe.dart` 实测）⇒
+///    它不拆节点，排除了反而白断。
+/// 🔴 **不放** `(` `)`：单独出现是普通括号；而真正的 URL 已由 ① 跳过。
+const Set<String> _kInlineDelimiters = {'*', '~', '[', ']'};
+
+/// `[a, b)` 减去 [forbidden] 里的所有区间，返回剩下的若干**保序不重叠**子区间。
+///
+/// 纯区间运算（同一份 `forbidden` 用于所有划线 ⇒ 由调用方算一次）。
+/// 返回的子区间**按位置升序**，且两两不重叠 —— 调用方依赖这两条性质。
+List<({int start, int end})> _subtract(
+  List<({int start, int end})> forbidden,
+  int a,
+  int b,
+) {
+  var segs = <({int start, int end})>[(start: a, end: b)];
+  for (final f in forbidden) {
+    if (segs.isEmpty) break;
+    final next = <({int start, int end})>[];
+    for (final s in segs) {
+      // 不相交 ⇒ 原样留下
+      if (f.end <= s.start || f.start >= s.end) {
+        next.add(s);
+        continue;
+      }
+      // 相交 ⇒ 切掉中间那段（两侧若有剩余则各自成为一段）
+      if (f.start > s.start) next.add((start: s.start, end: f.start));
+      if (f.end < s.end) next.add((start: f.end, end: s.end));
+    }
+    segs = next;
+  }
+  return segs;
+}
 
 /// 把已查词包成痕迹标记（纯函数，可独立断言）。
 ///
@@ -162,15 +431,29 @@ String injectTraceMarkers({
       continue;
     }
 
-    // ── ④ 🔑 已有痕迹标记 → 原样跳过（**保证幂等**）──
+    // ── ④ 🔑 已有标记（痕迹 或 🆕划线）→ 原样跳过（**保证幂等**）──
     //    为什么需要：控制字符不是「单词字符」，所以 `\bword\b` 在
     //    `\u0001word\u0001` 里**仍然匹配** word → 若不跳过，重复调用会变成
     //    `\u0001\u0001word\u0001\u0001`（双层标记 → 渲染出一层多余的控制字符）。
     //    📌 判据：**幂等不是「顺便做到的」，要么显式保证、要么显式声明非幂等** ——
     //       这里的代价只有几行，而「被调用两次」在生产代码里太容易发生
     //       （换渲染器的重构、重试、状态变化都会重新走一遍）。
+    //
+    // 🆕 2026-10-07：**划线标记也一并跳过**。
+    //    🔴 这不只是「避免双层标记」，而是一次**有意的语义取舍**：
+    //       划线区间**整段**跳过 ⇒ 划过的片段里那些「已查过的词」**不再有痕迹底色**，
+    //       只显示下划线。
+    //    🔑 为什么这样取舍：两者都是「高亮」，叠加会**互相干扰**
+    //       （下划线 + 底色同时出现在一个词上，用户分不清哪个是谁留的）。
+    //       ⇒ 按项目既有判据「**形状区分优于参数**」，这里让它们**互斥**：
+    //          **用户自己的动作（划线）优先于系统的记录（痕迹）**。
+    //    ⚠️ 顺序上这也是必然的：划线按 offset 注入（必须先做），
+    //       痕迹按词注入（后做）—— 后做的那个必然遇到先做的标记。
+    //    📌 若要改成「共存」，动的是这里（要渲染嵌套 span），**不是加个开关**。
     final c = markdown[i];
-    if (c == kTraceFreshOpen || c == kTraceReviewingOpen) {
+    if (c == kTraceFreshOpen ||
+        c == kTraceReviewingOpen ||
+        c == kHighlightOpen) {
       final end = _skipMarker(markdown, i);
       out.write(markdown.substring(i, end));
       i = end;
@@ -206,14 +489,22 @@ String injectTraceMarkers({
 }
 
 /// 从 [from] 起，下一个需要特殊处理的位置
-/// （围栏 / 反引号 / `](` / **已有的痕迹标记**）。
+/// （围栏 / 反引号 / `](` / **已有的痕迹或划线标记**）。
 ///
 /// 找不到则返回 `length`（走到结尾）。
+///
+/// ⚠️ 这里的条件与 [injectTraceMarkers] 主循环的 ①②③④ 分支**必须永远一致** ——
+///    不一致的后果是死循环（见主循环里那段 `next == i` 的防御）。
+/// 🆕 2026-10-07：加 `\u0003`（划线标记）—— 与主循环 ④ 同步改，**不能只改一处**。
 int _nextSpecial(String s, int from) {
   for (var i = from; i < s.length; i++) {
     final c = s[i];
     if (c == '`') return i;
-    if (c == kTraceFreshOpen || c == kTraceReviewingOpen) return i;
+    if (c == kTraceFreshOpen ||
+        c == kTraceReviewingOpen ||
+        c == kHighlightOpen) {
+      return i;
+    }
     if (c == '~' && _atFence(s, i)) return i;
     if (c == ']' && i + 1 < s.length && s[i + 1] == '(') return i;
   }

@@ -8,13 +8,16 @@ import '../api/content_client.dart';
 import '../models/feed_item.dart';
 import '../providers/feed_provider.dart';
 import '../services/article_text.dart';
+import '../services/markdown_unescape.dart';
 import '../models/article.dart';
 import '../providers/bookmark_provider.dart';
+import '../providers/highlight_provider.dart';
 import '../providers/reading_settings_provider.dart';
 import '../providers/user_db_provider.dart';
 import '../providers/user_word_provider.dart';
 import '../providers/word_db_provider.dart';
 import '../services/article_read_repository.dart';
+import '../services/highlight_repository.dart';
 import '../services/reading_completion.dart';
 import '../services/tts_service.dart';
 import '../theme/coevo_tokens.dart';
@@ -440,6 +443,34 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   //    ⚠️ 只在「无选区」时生效 —— 有选区时这一次点击让给「清空选区」
                   //       （否则用户取消不掉选区，见 `onTap` 的长说明）。
                   onTap: () => showReadingSettingsPanel(context),
+                  // 🆕 2026-10-07 划线来源 —— 传了它，菜单里才出现「划线」项。
+                  //    ⚠️ `plainText` 用**渲染用的那一份**（`body`）。
+                  //    文章正文是 Markdown ⇒ 定位出的 offset 落在 Markdown 空间里；
+                  //    这是**如实接受的近似**（复习内容仍然正确 —— 划线存的是全文）。
+                  highlightSource: HighlightSource(
+                    type: HighlightSourceType.article,
+                    sourceId: '${widget.articleId}',
+                    // 🔴🔴 `plainText` 必须是**用户真正看到的那一份正文**（2026-10-08 修）
+                    //
+                    // 用户选中并划线的文本来自**渲染后**的正文，而渲染前
+                    // `TraceMarkdown` 会用 `unescapeRedundantMarkdown` 删掉后端
+                    // 过度转义的反斜杠（`\.` → `.`）⇒ 文本**变短**。
+                    // 若这里传**未 unescape** 的 `body`，`locateSelection` 的
+                    // 朴素 `indexOf` 就会**找不到** ⇒ `start = -1` ⇒
+                    // `highlightRangesOf` 过滤掉（「只复习，不高亮」）⇒
+                    // **划线存下来了、笔记页也有，但正文不画线**（且不报错）。
+                    //
+                    // 📊 探针实测（6 篇真实正文 · 72 句）：未 unescape ⇒ **4%** 成功；
+                    //    已 unescape ⇒ **100%**。
+                    //
+                    // 🔑 用的是与 `trace_markdown.dart` **同一个函数**（口径一处权威）——
+                    //    断言 `verify_highlight_locate` 守着「两处必须是同一个」。
+                    plainText: unescapeRedundantMarkdown(markdown: body),
+                    // 🆕 2026-10-08：译文浮层顶栏的「来自 XXX」。
+                    //    🔑 用**文章标题**（用户认得出「我在读哪篇」），
+                    //    不是 id —— 把 `articleId` 显示出来等于给用户看一串数字。
+                    title: item.title,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -469,6 +500,25 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                         bodyFontSize: rs.fontSize.toDouble(),
                         // 🆕 痕迹开关（面板内控制；值已由 provider 钳过）
                         traceEnabled: rs.traceEnabled,
+                        // 🆕 2026-10-07 本文的**划线区间** —— 正文里画下划线。
+                        //
+                        // 🔑 用 `articleId`（**转成字符串**）而不是别的键：
+                        //    必须与 `WordLookupSelection.highlightSource.sourceId`
+                        //    **逐字一致**（那里写的是 `'${widget.articleId}'`），
+                        //    否则「划完线正文不出现下划线」—— 且**不报错**。
+                        //
+                        // ⚠️ `chapterIdx` 不传（文章是单页，与入库时一致）。
+                        //
+                        // 🔑 失败 / 加载中 ⇒ 空列表 ⇒ 正文照常渲染（只是没下划线）——
+                        //    「不把易失败的外部依赖放在内容渲染的前置条件上」。
+                        highlights: highlightRangesOf(
+                          ref.watch(highlightsForSourceProvider(
+                            HighlightSourceKey(
+                              type: HighlightSourceType.article,
+                              sourceId: '${widget.articleId}',
+                            ),
+                          )),
+                        ),
                         // ⚠️ 2026-10-03：`onLinkFailed` 已移除 ——
                         //    正文里的链接现在**不可点**（白哥定），
                         //    所以「打不开链接」这个失败路径**不存在了**。

@@ -90,6 +90,25 @@ class ReviewListArgs {
   int get hashCode => Object.hash(sort, search, dueOnly);
 }
 
+/// 复习列表的「只看已到期」筛选 —— 🆕 2026-10-08 **从页面提到 provider**。
+///
+/// # 为什么它不留在页面的 `ReviewListArgs` 里
+///
+/// `ReviewListArgs` 的其它字段（搜索 / 排序）的**控件都在复习页内部**；
+/// 而「全部 / 已到期」这个 chip 的位置在**容器标题行**
+/// （与「复习 ｜ 笔记」两个标题**同一行** —— 与阅读 tab 的「收藏 N / 导入」同构）。
+///
+/// 🔑 **控件在谁手里，状态就该在谁手里** —— 否则要跨层传回调
+///    （页面 → 容器），而「靠人记得通知」正是本项目反复踩的形态
+///    （见 `user_db_provider.dart` 的 `bump()` 反转依赖那条）。
+///
+/// ⚠️ `ReviewListArgs.dueOnly` **保留**：它仍是 `reviewListProvider` 的
+///    **family 缓存键**的一部分（少了它，切筛选时不会重查）。
+///    只是它的**值**改由本 provider 提供 —— 页面构造参数时读它。
+///
+/// 📌 判据：**「控件放哪」与「状态存哪」必须同一个所有者**（同族：`ui-control-placement`）。
+final reviewDueOnlyProvider = StateProvider<bool>((ref) => false);
+
 /// 复习列表 —— 单一列表（全部生词，含未到期的）。
 ///
 /// # 🔑 为什么 `watch(userDbProvider)` 而不是 `read`

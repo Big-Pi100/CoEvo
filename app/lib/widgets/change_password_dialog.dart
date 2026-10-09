@@ -21,12 +21,12 @@
 //
 // # 为什么用 `CoDialog` 而不是另写一个弹层
 //
-// 登录/注册（`ClaimDialog`）、导入失败提示都用它 ⇒ **同一套弹窗观感**。
+// 登录/注册（`AuthDialog`）、导入失败提示都用它 ⇒ **同一套弹窗观感**。
 // 若各写一份，标题字号、按钮形态、圆角会静默漂移（本项目已有此类教训）。
 //
-// # 与 `ClaimDialog` 的两处**有意差异**（不是不一致）
+// # 与 `AuthDialog` 的两处**有意差异**（不是不一致）
 //
-// | | ClaimDialog（登录/注册） | 本弹层 |
+// | | AuthDialog（登录/注册） | 本弹层 |
 // |---|---|---|
 // | 密码字段 | 1 个 | **3 个** —— 改密码是「设一个看不见且不能弄错的值」，需二次确认 |
 // | 错误文案 | 客户端校验 + 服务端错误**同一位置** | 同样同一位置 ✅（这条**保持一致**） |
@@ -152,7 +152,7 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
   ///
   /// 🔑 用裸 `GestureDetector` + `Icon` 而非 `IconButton`：
   ///    后者的 48px 最小点击区会把凹陷框**撑高**，且带 Material 水波纹
-  ///    （在「平面 + 凹陷」的弹窗里混入第三套交互观感 —— 同 `ClaimDialog` 的取舍）。
+  ///    （在「平面 + 凹陷」的弹窗里混入第三套交互观感 —— 同 `AuthDialog` 的取舍）。
   Widget _eye({required bool shown, required VoidCallback onTap}) {
     final t = CoEvoTokensExt.of(context);
     return GestureDetector(
@@ -243,7 +243,7 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
           ),
 
           // ── ③ 错误提示（客户端校验与服务端错误**同一位置、同一式样**）──
-          // 🔑 与 `ClaimDialog` 保持一致的取舍：分两处显示会让用户
+          // 🔑 与 `AuthDialog` 保持一致的取舍：分两处显示会让用户
           //    以为是两个不同的问题。
           if (_error != null || _mismatch) ...[
             const SizedBox(height: CoSpacing.md),
@@ -268,7 +268,7 @@ class _ChangePasswordDialogState extends ConsumerState<ChangePasswordDialog> {
           //    `CoDialog.actions` 是**横向 Row + Expanded 平分**（见 `co_dialog.dart`），
           //    放进去会变成「确认修改 | 找回密码」两个并排按钮，语义完全不同。
           //
-          // ⚠️ 形态照 **`ClaimDialog` 底部的「没有账号？注册」**（同一个弹层家族里
+          // ⚠️ 形态照 **`AuthDialog` 底部的「没有账号？注册」**（同一个弹层家族里
           //    已有的先例），而不是新造一种链接样式。
           //    📌 2026-10-05 更正：原注释写「照 `subscribe_screen` 的次要链接」——
           //      实测那处是 `ClayButton(variant: secondary)`（一个**按钮**，不是文字链接）

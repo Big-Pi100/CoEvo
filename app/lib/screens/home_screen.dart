@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 
 import '../api/content_client.dart';
 import '../models/feed_item.dart';
-import '../providers/auth_provider.dart';
 import '../providers/bookmark_provider.dart';
 import '../providers/feed_provider.dart';
 import '../providers/interest_provider.dart';
@@ -15,7 +14,6 @@ import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
 import '../widgets/bookmark_toggle.dart';
-import '../widgets/claim_dialog.dart';
 import '../widgets/feed_card.dart';
 
 /// 首页 —— **信息流**（导航第一个 tab「阅读」）。
@@ -58,12 +56,23 @@ import '../widgets/feed_card.dart';
 ///   这仍然符合原意：原则要防的是「**静默失败 + 无出口**」，
 ///   而不是「假装数据不需要网络」。
 ///
-/// # 🔑 本页保留的是「启动引导」，不是「首页内容」
-/// [_initAuth] 那一整块（试用账户创建 / 推广码与活动 / 注册弹窗）是**产品必需**的
-/// 进入路径 —— 换 UI 时**必须原样保留**，否则新用户无法完成注册。
-/// 但它现在是 [initState] 里 `addPostFrameCallback` 触发的**后台副作用**：
-/// - 成功 → 照旧创建试用 / 弹注册引导
-/// - 失败 → **静默**，阅读不受任何影响
+/// # 🔴 本页**没有**任何「启动引导」
+///
+/// 2026-10-09（白哥定「不需要试用账号，未登录本来就可以直接用」）：
+/// 原先 `_initAuth` 里那一整块（自动建匿名试用账号 / 已登录但无邮箱时引导注册 /
+/// 试用名额用完后弹登录）**全部删除**。
+///
+/// | 原分支 | 现在 |
+/// |---|---|
+/// | 已登录 ⇒ 什么都不做 | 保留（但已无分支可言）|
+/// | 未登录 + 用过试用 ⇒ 弹登录弹窗 | 🔴 **删除** —— 启动不再有任何自动弹窗 |
+/// | 未登录 + 没用过试用 ⇒ 自动建试用账号 | 🔴 **删除**（该机制整体退役）|
+///
+/// 🔑 判据：**「未登录」是一等状态** —— 阅读 / 划词 / 生词本 / 朗读 / 复习
+///    全都不需要登录（`_initAuth` 时代的那道首屏门早已拆掉），
+///    所以启动时既不需要建账号，也不需要拦一道「请登录」。
+///    登录入口 =「我的」页账号组的**常驻**入口。
+/// 📄 退役记录 → `docs/review/trial-account-removal-2026-10-09.md`
 ///
 /// ⚠️ 它**曾经**是一道首屏门（`if (!_authReady) return <转圈>`）——
 /// 后果是「任何网络抖动 → 首页永久转圈 + 零提示 + 无重试」。
@@ -81,16 +90,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  bool _authInitBusy = false;
-
-  /// `_initAuth` 等待 auth 恢复的重试计数。
-  ///
-  /// 🔑 **必须有上限**：原实现是「没恢复就 300ms 后再调自己」的**无界递归** ——
-  /// 一旦 `isRestored` 迟迟不置位，它会每 300ms 无限重试。
-  /// （改为后台副作用后它不再阻塞 UI，但仍会一直空转 → 仍要封顶。）
-  /// 20 次 ≈ 6 秒，超过则放弃本次启动引导（下次有用户交互时另有机会）。
-  int _authRestoreTries = 0;
-  static const int _kMaxAuthRestoreTries = 20;
 
   /// 🆕 2026-10-03：信息流列表的滚动控制器 —— 用于**触底加载更多**。
   ///
@@ -127,9 +126,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // 🔑 启动引导跑在 `addPostFrameCallback` 里（**不阻塞 build**）——
-    //    这样首屏立刻渲染信息流，引导成功与否都不影响「能不能读」。
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initAuth());
+    // 🔴 2026-10-09：原先这里挂 `addPostFrameCallback((_) => _initAuth())`
+    //    （启动引导：自动建试用账号 / 弹登录）。
+    //    试用账号机制退役后**本页不再有任何启动副作用** ⇒ 该回调一并删除。
+    //    ⚠️ 会话恢复（`authProvider.tryRestore()`）与这里**无关** ——
+    //       它由 `app.dart` 在启动时调用，不依赖本页。
     _feedScroll.addListener(_onFeedScroll);
   }
 
@@ -261,77 +262,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return const SizedBox(height: 8);
   }
 
-  /// 启动引导 —— **后台副作用，不阻塞首屏**（见类文档「不验证登录态」）。
-  ///
-  /// 🔒 **失败不是错误**：它只决定「试用账户是否已创建 / 是否弹注册引导」，
-  /// 与「能不能读文章」无关 → 因此**不向用户报错，也不无限重试**。
-  Future<void> _initAuth() async {
-    // 防止并发调用
-    if (_authInitBusy) return;
-    _authInitBusy = true;
-    try {
-      // 🔴 2026-10-06：原「读 URL 推广码（?ref=）+ 上报 `/api/referral/click`」整段已删
-      //    —— 分销/营销链整体退役，后端 `/api/referral/*` 与 `/api/campaign*` 路由已不存在。
-      //    见 `docs/review/backend-dead-route-cleanup-2026-10-06.md`
-
-      final auth = ref.read(authProvider);
-      if (!auth.isRestored) {
-        if (_authRestoreTries >= _kMaxAuthRestoreTries) {
-          debugPrint(
-              '_initAuth: auth 恢复超时（已试 $_kMaxAuthRestoreTries 次 ≈6s），放弃本次启动引导');
-          return;
-        }
-        _authRestoreTries++;
-        await Future.delayed(const Duration(milliseconds: 300));
-        if (mounted) {
-          _authInitBusy = false;
-          _initAuth();
-        }
-        return;
-      }
-      if (auth.isAuthenticated) {
-        // 🔴 2026-10-06：原「加入活动 `_joinCampaign`」与「活动推送检查
-        //    `_checkLoginCampaignPush`」两次调用已删（分销/营销链整体退役）。
-        // 已登录但还没完善资料 → 引导注册（**只是弹窗，不挡内容**）
-        // 🔴 判据换成 `auth.isRegistered`（= 邮箱非空）—— 它取代了原来的 `realName`。
-        //    语义完全相同：「这个账号还没完成注册 → 引导注册」。
-        //    匿名试用账号的 `email` 为 null（而 `isAuthenticated` 仍为 true）→ 会走到这里 ✅
-        if (!auth.isRegistered) {
-          if (mounted) _showAuthDialog();
-        }
-        return;
-      }
-      if (await AuthNotifier.hasUsedTrial()) {
-        if (mounted) _showAuthDialog();
-        return;
-      }
-      debugPrint('_initAuth trialStart');
-      await ref.read(authProvider.notifier).trialStart();
-      // trial 完成后重新读取 auth 状态，继续流程
-      final auth2 = ref.read(authProvider);
-      if (auth2.isAuthenticated && mounted) {
-        // 同上：用 `isRegistered`（邮箱）判断是否还需引导注册
-        if (!auth2.isRegistered) {
-          _showAuthDialog();
-        }
-      }
-    } finally {
-      _authInitBusy = false;
-    }
-  }
-
-  void _showAuthDialog() {
-    debugPrint('_showAuthDialog: 开始显示登录 / 注册对话框');
-    // 🔑 走 `ClaimDialog.show()` 而不是在这里自己写 `showDialog` ——
-    //    弹窗的**弹出方式**（遮罩浓度 · insetPadding…）只该有一处定义；
-    //    两个调用方各写一遍，迟早在某个参数上走偏
-    //    （同 `HeaderChip` 被抽成公共组件的理由）。
-    ClaimDialog.show(context).then((result) {
-      debugPrint('_showAuthDialog: 对话框关闭 result=$result');
-    }).catchError((e) {
-      debugPrint('_showAuthDialog: 异常 $e');
-    });
-  }
+  // 🔴 2026-10-09 已删 `_initAuth()`（连同 `_authInitBusy` / `_authRestoreTries`
+  //    / `_kMaxAuthRestoreTries` / `_showAuthDialog()`）。
+  //
+  //    它做过三件事，**三件都随试用账号机制一起消失**：
+  //    | 原分支 | 现在 |
+  //    |---|---|
+  //    | 已登录 ⇒ 什么都不做 | 无需判断（本页不再关心登录态）|
+  //    | 未登录 + 用过试用 ⇒ 弹登录弹窗 | 🔴 删除 —— 启动不再有任何自动弹窗 |
+  //    | 未登录 + 没用过试用 ⇒ 自动建试用账号 | 🔴 删除（机制整体退役）|
+  //
+  //    ⚠️ 其中还藏着一条**待机中的 backdoor**：那个「等待 `isRestored`，
+  //       最多 20 次 × 300ms」的重试循环。今天它只为上面三条分支服务；
+  //       留着一条**没有任何消费者**的循环，等于给将来留一个「不知道谁在跑」的东西。
+  //
+  //    🔑 会话恢复（`tryRestore`）**不在这里** —— 它在 `app.dart` 启动时调用，
+  //       与本页无关。删掉本方法**不影响**「重开 App 还是登录着」。
+  //    📄 退役记录 → `docs/review/trial-account-removal-2026-10-09.md`
 
   @override
   Widget build(BuildContext context) {
@@ -361,7 +308,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     //   → 现在是「**完全不验证登录态**」，没有任何功能需要登录。
     //
     // ⚠️ 这里**曾经**是一道 `if (!_authReady) return <转圈>;` 的门（K12 时代的写法）：
-    //   一旦 `_initAuth()` 的 `trialStart` 请求失败（如早前 `flutter run` 默认连
+    //   一旦启动引导里的 `trialStart` 请求失败（如早前 `flutter run` 默认连
     //   `localhost:8080`，本地没有后端），`isAuthenticated` 就一直是 false
     //   → `_authReady` 永远不置位 → **首页永久转圈，且无提示、无重试入口**。
     //   而 tabbar 在外层 `_ShellScaffold`、loading 在内层 Scaffold → 表现为
@@ -369,8 +316,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     //
     //   → 教训：**把「网络/身份」这类易失败的外部依赖，放在「内容渲染」的前置条件上**
     //     ＝ 让内容可用性绑定在一个与内容无关的开关上。
-    //     现在 `_initAuth` 降级为 `addPostFrameCallback` 里的后台副作用：
-    //     成功 → 照旧创建试用 / 弹注册引导；失败 → 静默，阅读不受影响。
+    //     📌 2026-10-09 该隐患**彻底消失**：启动引导整块已删（见类文档），
+    //        本页不再依赖登录态做任何事。
     return Scaffold(
       backgroundColor: Color(t.page.argb32),
       body: SafeArea(

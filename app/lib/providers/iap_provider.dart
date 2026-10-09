@@ -10,11 +10,14 @@
 // | ② | **登录后补报** | 覆盖「未登录时购买」—— 只报积压，**不自动 restore**（理由见 `iap_service` 的 `reportEntitlementsIfSignedIn`）|
 // | ③ | **启动商店监听** | 商店可能在**启动瞬间**投递上次未完成的事务；晚监听 = 漏掉它们 |
 //
-// # 🔴 权益判定以端侧为准
+// # 🔴 权益判定：端侧**权威** + 服务端**兜底**（2026-10-09 更正口径）
 //
-// `iapSnapshotProvider` 是**权益的唯一判据**（离线也能判）。
-// 后端的 `subscriptionProvider` 只用于**对账展示**（见后端 `iap_handlers` 模块文档）。
-// ⇒ 上报失败**不得**影响解锁 —— 否则「网络差就白买了」。
+// `iapSnapshotProvider` 仍然是**权威**（StoreKit 说有效就是有效，离线也判得了）。
+// 但「权威」≠「独占」：**端侧答不上来的场合必须有人兜底** ——
+// 安卓验证机没有 StoreKit、后台授予/优惠赠送端侧无从知道 ⇒ 只看端侧会出现
+// 「权益明明有，界面显示未订阅」（2026-10-09 白哥真机踩到）。
+// ⇒ 判据统一走 [subscriptionActiveNow]（端侧 OR 服务端），**不要各处自己写**。
+// ⚠️ 上报失败**仍不得**影响解锁 —— 否则「网络差就白买了」。
 //
 // # ⚠️ 本 provider 是**懒加载**的
 //
@@ -28,6 +31,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
 import '../api/api_config.dart';
+import '../services/iap_plan.dart';
 import '../services/iap_service.dart';
 import 'auth_provider.dart';
 import 'subscription_provider.dart';
@@ -130,5 +134,45 @@ IapSnapshot iapSnapshotOf(WidgetRef ref) {
   return async.maybeWhen(
     data: (s) => s,
     orElse: () => ref.read(iapServiceProvider).snapshot,
+  );
+}
+
+/// 🆕 2026-10-09：**「当前订阅是否有效」的唯一判据**（端侧 OR 服务端对账值）。
+///
+/// # 为什么必须有一处统一的函数
+///
+/// 判据要读**两个**来源，而它们各自有「读不到」的情形
+/// （端侧无 StoreKit / 后端还没 fetch 过）。若两处 UI 各写一遍 OR，
+/// 迟早在某个页面上漏读一侧 —— 表现是「这个页面说订阅中、那个页面说免费版」
+/// （`profile_screen` 的订阅卡与副标题**已经**踩过同类问题，那次是靠注释约定同源的）。
+/// 📌 判据：**同一件事的口径只能一处权威** —— 这里就是那处。
+///
+/// ⚠️ 必须在 **build 期间**调用（它内部 `ref.watch`）——
+///    回调里请改用 `ref.read(...)` 自己取两个值。
+///
+/// 🔑 服务端那一侧在**未登录**时必然为 false（`_checkSubscription` 不 fetch）
+///    ⇒ 未登录用户显示「未订阅」—— 正确：他没有订阅。
+bool subscriptionActiveNow(WidgetRef ref) {
+  return subscriptionActive(
+    iapActive: iapSnapshotOf(ref).isActive,
+    backendActive: ref.watch(subscriptionProvider).isActive,
+  );
+}
+
+/// 🆕 2026-10-09：**「曾经订阅过、现在已失效」的唯一判据**。
+///
+/// 🔴 它**不是** `!subscriptionActiveNow(ref)` —— 那是把「从未订阅」也算进「已到期」，
+///    会给所有免费用户显示「你的会员已到期」。判据与理由见
+///    [subscriptionLapsed] 的文档（服务端的 `expired` 含 NULL）。
+///
+/// ⚠️ 必须在 **build 期间**调用（内部 `ref.watch`）。
+bool subscriptionLapsedNow(WidgetRef ref, IapSnapshot snap) {
+  final backend = ref.watch(subscriptionProvider);
+  return subscriptionLapsed(
+    // 端侧语义已经是「有购买记录且已过期」（从未购买给的是 `none`）
+    iapExpired: snap.entitlement == IapEntitlementStatus.expired,
+    // 服务端「有过记录」= 有效期字段非空（NULL 才是「从未订阅」）
+    backendHasRecord: (backend.expiresAt ?? '').trim().isNotEmpty,
+    backendExpired: backend.isExpired,
   );
 }
