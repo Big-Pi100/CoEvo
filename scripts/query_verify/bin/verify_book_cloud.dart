@@ -170,7 +170,13 @@ Future<void> main() async {
       presence['h2'] == CloudPresence.synced);
   check('本地有、云端没有 ⇒ localOnly',
       presence['h-local-only'] == CloudPresence.localOnly);
-  await CloudBookRepository.mergeCloudBooks(db, [cb('h-cloud-only', '只在云端')]);
+  // 🔴 2026-10-09：**夹具必须显式给 `blob`** —— `cb()` 的默认值是 0，
+  //    而 `presenceByHash` 自 2026-10-09 起**只认 `blob_size > 0`**
+  //    （「云端有没有这本书」的**唯一依据**；配套后端「到期满 30 天清文件、**保留行**」）。
+  //    ⇒ 漏传 `blob:` 会造出「行在、文件不在」的**假**云端书 ⇒ 断言必然红（**假红**）。
+  //    📌 判据：**夹具也要跟「口径变更」走** —— 口径改了，夹具的默认值可能就失效了。
+  await CloudBookRepository.mergeCloudBooks(
+      db, [cb('h-cloud-only', '只在云端', blob: 300)]);
   final p2 = await CloudBookRepository.presenceByHash(db);
   check('只有云端 ⇒ cloudOnly（界面给云图标）',
       p2['h-cloud-only'] == CloudPresence.cloudOnly);
@@ -179,6 +185,39 @@ Future<void> main() async {
   check('待上传 = 本地有、云端没有 ⇒ 只有 h-local-only',
       pending.length == 1 && pending.first == 'h-local-only',
       pending.join(','));
+
+  // ── 🆕🔴🔴 2026-10-09：**云端文件被清理**（`blob_size = 0`、行还在）────────────────
+  //
+  // 🔴 本节守的是那次口径改动的**唯一目的**，此前**一条断言都没有** ——
+  //    即「改完等于没有防线」：出问题时**没有任何东西**会红。
+  //
+  // 实况：订阅到期满 30 天后，服务端清掉云端文件、把 `blob_size` 归零、**保留行**
+  //      （行是「云端记录」，端侧还要靠它认书）。
+  // 📄 `docs/review/blob-retention-after-expiry-2026-10-09.md`
+  //      · 后端 `maintenance::purge_expired_blobs`
+  //
+  // 若仍按「行存在」判 ⇒ **静默失败**：书架照旧显示「云备份」→ 点下载 →
+  //      `404 这本书在云端没有文件`（用户看到「云端有」却下不下来，**全程无报错**）。
+  await db.insert('book', {
+    'id': 'local-3',
+    'title': '云端已被清理（本地还在）',
+    'source_format': 'epub',
+    'chapter_count': 1,
+    'char_count': 1,
+    'added_at': '2026-10-08T00:00:00Z',
+    'content_hash': 'h-purged',
+  });
+  await CloudBookRepository.mergeCloudBooks(
+      db, [cb('h-purged', '已被清理', blob: 0)]);
+  final p3 = await CloudBookRepository.presenceByHash(db);
+  check('🔴 `blob_size = 0`（文件已清、行还在）⇒ **不给云图标**（不是 synced / cloudOnly）',
+      p3['h-purged'] == CloudPresence.localOnly,
+      '实得 ${p3['h-purged']}');
+  final pending2 = await CloudBookRepository.pendingUploadHashes(db);
+  check('🔴 …且**重新进待上传**（否则用户续订后备份**再也回不来**）',
+      pending2.contains('h-purged'), pending2.join(','));
+  check('…原有待传项仍在（新增一条不影响既有判定）',
+      pending2.contains('h-local-only'), pending2.join(','));
 
   // ══════════════════════════════════════════════════════════
   section('【4】上传队列：串行 · 退避 · 跳过（注入 mock，不碰网络）');

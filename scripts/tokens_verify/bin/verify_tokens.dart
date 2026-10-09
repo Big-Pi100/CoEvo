@@ -1672,6 +1672,26 @@ void _s17ReviewList() {
   }
 
   final page = src('screens/review_screen.dart');
+  // 🔴🔴 2026-10-09：「复习页」自 10-08 起是**一族文件**（白哥定案的「复习 tab 双段结构」）：
+  //    `review_tab_screen.dart`（容器：双标题 + 两段切换 · 筛选药丸归它）·
+  //    `review_section.dart`（两段定义）· 本文件（复习段列表本体）。
+  //
+  //    判据：**凡「复习页不该有的东西」都必须在这一族里都成立** ⇒
+  //    「K12 残留 / 登录态 / 自写筛选药丸」这类**反向断言一律读整族**；
+  //    只读 `review_screen.dart` 的话，新容器里把 `authProvider` 加回来
+  //    **不会被任何断言发现**（已知盲区 —— 不能靠「应该不会出现」兜）。
+  //
+  //    ⚠️ **但切片类断言（`_braceBody(page, …)`）仍只读 `page`**：
+  //      `review_tab_screen.dart` 里**也有** `_header(` ⇒ 拼起来会让切片
+  //      **抓错文件**（假红，「切片函数本身也会漏」的又一面）。
+  //    📌 判据：**扩面要按「被测对象的边界」扩，不是越大越好**。
+  //      反例：`!page.contains('Colors.')` **不能**扩 —— `Colors.transparent`
+  //      是全库 18 处共用的惯例写法（不需要 token），扩了就是**假红**。
+  final reviewFamily = [
+    page,
+    src('screens/review_tab_screen.dart'),
+    src('screens/review_section.dart'),
+  ].join('\n');
   final prov = src('providers/review_list_provider.dart');
   final q = src('services/review_list_query.dart');
   final home = src('screens/home_screen.dart');
@@ -1683,22 +1703,54 @@ void _s17ReviewList() {
   check('查询主表是 card_review_state', q.contains('FROM card_review_state'));
 
   // ② 🔴 K12 残留必须清干净 —— 这些都是「编译能过、运行才发现」的
-  check('复习页不再读后端 plans（K12 遗留）', !page.contains('planProvider'));
+  //    🔴 2026-10-09：改读**整族**（容器 + 段定义 + 本页）——
+  //      这些「不该有」的东西只要出现在**族的任何一处**就是问题。
+  check('复习页不再读后端 plans（K12 遗留）', !reviewFamily.contains('planProvider'));
   check('复习页不再用 DueCard / ChatClient（K12 遗留）',
-      !page.contains('DueCard') && !page.contains('ChatClient'));
+      !reviewFamily.contains('DueCard') && !reviewFamily.contains('ChatClient'));
   check('复习页不再含 AI 出题测验（_isAiQuiz / VerifyQuestion）',
-      !page.contains('_isAiQuiz') && !page.contains('VerifyQuestion'));
+      !reviewFamily.contains('_isAiQuiz') && !reviewFamily.contains('VerifyQuestion'));
   //    产品原则：除生词表上限外不验证登录态
-  check('复习页不依赖登录态（无 authProvider）', !page.contains('authProvider'));
+  check('复习页不依赖登录态（无 authProvider）', !reviewFamily.contains('authProvider'));
 
-  // ③ 🔴 暂停过滤：**三条查询都必须** JOIN + 过滤
+  // ③ 🔴 暂停过滤：**三条查询都必须** JOIN + 过滤「已暂停」
   //    这是「单一列表」的数据基础（§6.2.1：「一个词离开视野，是它的状态变了」）
   //    🔑 少一条就会出现「列表与计数对不上」
-  final joins = RegExp(r'LEFT JOIN user_word uw').allMatches(q).length;
-  check('list / count / dueCount 三条都 LEFT JOIN user_word（应 ≥3）',
-      joins >= 3, '实得 $joins');
-  final paused = RegExp(r'COALESCE\(uw\.deleted, 0\) = 0').allMatches(q).length;
-  check('三条都过滤「已暂停」（应 ≥3）', paused >= 3, '实得 $paused');
+  //
+  //    🔴🔴 2026-10-09：**判据换代**（旧判据「字面量应 ≥3」方向是错的）
+  //      旧写法数的是「`LEFT JOIN user_word uw` 在文件里出现几次」⇒
+  //      它**要求三份重复的 SQL**。而实现已把 JOIN 与可见性判据抽成
+  //      `_joins` / `_visibilityWheres`（**一处定义、三处引用** ——
+  //      这正是本文件的设计原则：三处各写一遍会出现「列表 3 条但顶部写 5 个」）
+  //      ⇒ 旧判据**必然红**；更糟的是它会**反向驱动实现**：
+  //        为了让断言变绿，最省事的做法是把常量**展开回三份**。
+  //      📌 判据：**「要求重复」的断言方向就是错的** —— 该锁「一处定义 + N 处引用」。
+  //
+  //    🔑 新判据两段（都对着**意图**，不锁拼写）：
+  //      ① 定义各 **1 处** —— 唯一权威，不允许第二份
+  //      ② 三条查询**各自的方法体**里都引用 —— 切到方法体而不是数全文件
+  //         （数全文件的话，将来第四条查询也引用会把计数抬高 ⇒ 判据失真）
+  final joinsDef = RegExp(r'static const String _joins =').allMatches(q).length;
+  final wheresDef =
+      RegExp(r'static const List<String> _visibilityWheres =').allMatches(q).length;
+  check('🔴 `_joins` 只定义一处（唯一权威 —— 不是「抄三份」）',
+      joinsDef == 1, '实得 $joinsDef');
+  check('🔴 `_visibilityWheres` 只定义一处（唯一权威）',
+      wheresDef == 1, '实得 $wheresDef');
+  // 🔑 同时锁「意图本身没丢」—— 一处定义的也可能是错的东西
+  check('🔴 定义里确实含 `user_word` 的 LEFT JOIN（意图未丢）',
+      q.contains('LEFT JOIN user_word uw'));
+  check('🔴 定义里确实含「已暂停」过滤 `COALESCE(uw.deleted, 0) = 0`（意图未丢）',
+      q.contains('COALESCE(uw.deleted, 0) = 0'));
+  for (final fn in ['list', 'count', 'dueCount']) {
+    final fnBody = _braceBody(q, fn);
+    // ⚠️ 切片非空是下面两条断言的前提（切不出 ⇒ 它们会「空串通关」= 假绿）
+    check('能切出 `$fn` 方法体（下面两条断言的前提）', fnBody.isNotEmpty);
+    check('🔴 `$fn` 引用 `\$_joins`（JOIN 一处定义、三条共用）',
+        fnBody.contains(r'$_joins'));
+    check('🔴 `$fn` 引用 `_visibilityWheres`（可见性判据同源）',
+        fnBody.contains('_visibilityWheres'));
+  }
 
   // ④ 三档排序齐全，且**都带 `crs.` 前缀**
   //    🔴 不加限定：JOIN 后 `spelling` / `updated_at` 两表同名 →
@@ -1720,17 +1772,40 @@ void _s17ReviewList() {
   //       抄参数会在下次只改一处时**静默走偏**（编译器看不出来，
   //       往往到真机才被发现）。同 `toggleBookmarkWithToast` 的判据。
   //    ⚠️ 反向：复习页**不许**再自写一份筛选药丸。
+  //    🔴 2026-10-09：读取对象 `review_screen.dart` → **整族**
+  //       （10-08 起筛选药丸随标题栏一起上移至容器 `review_tab_screen.dart`）。
+  //       **判据一字未改** —— 同 10-04 那次「标题栏上移至 reading_tab_screen」的处理。
   check('🔴 筛选用公共组件 HeaderChip（与收藏入口同一处定义）',
-      page.contains('HeaderChip('));
+      reviewFamily.contains('HeaderChip('));
   check('🔴 复习页不再自写筛选药丸（`_FilterChip` 已删）',
-      !page.contains('_FilterChip'));
+      !reviewFamily.contains('_FilterChip'));
 
   // ⑥ 分组走**数据层**静态方法（不在 UI 里重算「是否到期」）
   check('分组走 ReviewListQuery.group（不在 UI 重算到期）',
       page.contains('ReviewListQuery.group'));
 
   // ⑦ 暂停 = 软删（`pause` → `deleted = 1`）+ 刷新，**不是 DELETE**
-  check('暂停走仓储的 pause（软删）', page.contains('repo.pause('));
+  //
+  //    🔴 2026-10-09：**判据换代**（旧写法锁字面量 `repo.pause(` ⇒ 假红）。
+  //      10-08 起暂停改为经**分派器** `pauseReviewCard(...)`：两条支路分别落到
+  //      `user_word` / `highlight` 两张表（分派判据在 `services/review_pause.dart`）。
+  //      ⇒ `repo.pause(` 在 `review_screen.dart` 里**只剩注释**（`_codeOnly` 滤掉）⇒ 必然红。
+  //    🔑 新判据锁**语义形状**（两条支路都调仓储的 `pause(`、且不是 DELETE），
+  //      **不锁**「由谁调 / 写成哪个表达式」—— 那正是会随重构漂的部分。
+  final pauseAt = page.indexOf('pauseReviewCard(');
+  final pauseCall =
+      pauseAt < 0 ? '' : page.substring(pauseAt, page.indexOf(');', pauseAt) + 2);
+  // ⚠️ 切片非空是下面三条的前提（切不出 ⇒ 「不得含 DELETE」会空串通关 = 假绿）
+  check('能切出「暂停分派调用」片段（下面三条断言的前提）',
+      pauseCall.isNotEmpty,
+      pauseCall.isEmpty ? '切不出：确认 pauseReviewCard 是否改名' : '');
+  check('🔴 两条支路都调**仓储的 pause**（软删，不是 DELETE）',
+      RegExp(r'\.pause\(').allMatches(pauseCall).length == 2,
+      '实得 ${RegExp(r'\.pause\(').allMatches(pauseCall).length} 处');
+  check('🔴 且**不是** DELETE（暂停 ≠ 删数据）', !pauseCall.contains('DELETE'));
+  check('🔴 两条支路分别落在 `user_word` / `highlight` 两个仓储上',
+      pauseCall.contains('userWordProvider') &&
+          pauseCall.contains('HighlightRepository'));
   //    🔴 **2026-09-28 机制反转**：刷新不再靠「写端点名 invalidate 每个读端」，
   //       改为「**写端 bump 修订号，读端自己 watch**」——
   //       见「【18】库修订号」一节（那里锁全貌）。
@@ -2237,7 +2312,11 @@ void _s17ReviewList() {
   {
     final chip = src('widgets/header_chip.dart');
     final chipBody = _braceBody(chip, 'HeaderChip');
-    final review = src('screens/review_screen.dart');
+    // ⚠️ 2026-10-09：读取对象 `screens/review_screen.dart` → `screens/review_tab_screen.dart`
+    //    （10-08 起筛选药丸随标题栏一起上移至**容器**）。**判据一字未改** ——
+    //    与 10-04 那次「标题栏上移至 `reading_tab_screen`」的处理完全相同
+    //    （见本块末尾那两条注释与断言）。
+    final review = src('screens/review_tab_screen.dart');
 
     check('HeaderChip 断言切片非空', chipBody.isNotEmpty && review.isNotEmpty,
         'chip=${chipBody.length} review=${review.length}');
@@ -2327,8 +2406,13 @@ void _s17ReviewList() {
 
     // 调用处：复习页必须**真的传了**这两项（只加参数不接线 = 白加）
     // 🔑 断调用处的**特有形态**（带实参），不是方法名 —— 否则「删掉传参」照样为绿
-    check('🔴 复习页传了 `active:`（筛选生效时浮起）',
-        review.contains('active: _args.dueOnly'));
+    // 🔴 2026-10-09：`active:` 的**实参形态**随重构变了
+    //    （`active: _args.dueOnly` → 直接 `ref.watch(复习筛选态)`）。
+    //    判据仍是「**必须真的传了**、且**绑到筛选状态**」——
+    //    锁的是「这个实参依赖 dueOnly 筛选态」，**不是**「写成哪个表达式」
+    //    （后者会随重构漂，属于「太死=假红」）。
+    check('🔴 复习页传了 `active:`（筛选生效时浮起 —— 且绑到 dueOnly 筛选态）',
+        RegExp(r'active:\s*[^,\n]*[Dd]ueOnly').hasMatch(review));
     check('🔴 复习页传了 `labelReserve: _filterChipReserveLabel`',
         review.contains('labelReserve: _filterChipReserveLabel'));
     check('🔴 参照文案 = `已到期`（**必须是「最长的那个」** —— 传短了会溢出）',
@@ -2866,19 +2950,30 @@ void _s18DbRevision() {
       readerAdd >= 0 && readerBump > readerAdd,
       'add@$readerAdd bump@$readerBump');
   // ⚠️ 下面两处（评级 / 暂停）保持**全文件**定位：实测这两个文件里
-  //    `revision.bump()` 各只 **1 处**（`review_screen` 里 `await repo.pause(`
-  //    看似 2 处，但其中 1 处在注释行、已被 `_codeOnly` 滤掉）→ 无此洞。
+  //    `revision.bump()` 各只 **1 处** ⇒ 没有「`indexOf` 只取首次」那个洞。
   //    🔑 但**若将来这两处新增第二个 bump，必须同步改成 `_braceBody`**。
+  //    ⚠️ 2026-10-09 修掉一条**语义残留**：此处原写「`review_screen` 里
+  //       `await repo.pause(` 看似 2 处」——暂停已改走分派器，该字面量不复存在，
+  //       留着会让下一个人去数一个已经不在的东西。
   final sessWrite = sess.indexOf('await q.logReview(');
   final sessBump = sess.indexOf('revision.bump()');
   check('🔑 评级：bump 在写两张表之后',
       sessWrite >= 0 && sessBump > sessWrite,
       'logReview@$sessWrite bump@$sessBump');
-  final pauseWrite = page.indexOf('await repo.pause(');
+  //    🔴 2026-10-09：判据换代 —— 旧写法比的是字面量 `await repo.pause(`，
+  //      而暂停已改为经分派器 `pauseReviewCard(...)`（见 §17 ⑦ 的说明）⇒ 必然红。
+  //    🔑 新判据锁**数据依赖**（不是拼写、也不是位置字符串）：
+  //      `pauseReviewCard(` → **必须**先过 `if (!changed) return;` → **才** `revision.bump()`。
+  //      中间那道 `changed` 守卫是**实质**的（`changed == false` = 库里没变 ⇒ 不该刷）；
+  //      去掉它，暂停一个本来已暂停的卡也会 bump ⇒ 列表白刷一次。
+  //      📌 「文本顺序 ≠ 求值顺序」在这里**不适用**：三条都是**顺序执行的语句**，
+  //        先后正是数据依赖（守卫读的是上一条的返回值）。
+  final pauseWrite = page.indexOf('pauseReviewCard(');
+  final pauseGuard = page.indexOf('if (!changed) return;');
   final pauseBump = page.indexOf('revision.bump()');
-  check('🔑 暂停：bump 在 `repo.pause` 之后',
-      pauseWrite >= 0 && pauseBump > pauseWrite,
-      'pause@$pauseWrite bump@$pauseBump');
+  check('🔑 暂停：先过 `changed` 守卫，再 bump 修订号',
+      pauseWrite >= 0 && pauseGuard > pauseWrite && pauseBump > pauseGuard,
+      'pause@$pauseWrite guard@$pauseGuard bump@$pauseBump');
 
   // ⑤ 🔴 **只在真的写库后**才刷（白哥 2026-09-28 定）
   //
