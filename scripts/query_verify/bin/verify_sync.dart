@@ -835,6 +835,93 @@ void main() {
           false,
       '否则下次同步开始后旧提示还挂着');
 
+  // ═══════════════════════════════════════════════════════════════════════
+  section('【16】🔴 同步的「读端跟随」与「触发时机」（2026-10-10 真机两处）');
+  //
+  // 📄 `docs/review/sync-ui-not-refreshing-and-device-state-mismatch-2026-10-10.md`
+  //   §二：成就快照不订阅 revision ⇒ 同步后 UI 不刷新、重开才对
+  //   §三：自动时机里只有「登录后」会 pull ⇒ 两端永远看不到对方的改动
+
+  // ── ① 成就快照**必须**订阅修订号 ──
+  //
+  // 🔴 这条断言的存在理由本身就值得记：**上一轮的报告写着「P0 = 1 行（加 watch）」并标「已实施」，
+  //    而 `git log -S` 证明该标识符从未出现在那个文件里。**
+  //    ⇒ 判据：**凡是「X 已修」，都要落成一条能被 CI 跑的断言**，否则它只是一句话。
+  final achProv = readFile('../../app/lib/providers/achievement_provider.dart');
+  // 🔑 同样**切片**：按「下一个 provider 定义」为界，不用字符数当上界
+  //    （字符数当上界 = 猜一个够大的数 ⇒ 迟早越过边界，本文件刚踩过一次）。
+  final snapBody = between(
+      achProv, 'final achievementSnapshotProvider =',
+      'final achievementUnlockTimesProvider =');
+  final timesBody = between(achProv, 'final achievementUnlockTimesProvider =',
+      'checkAndRefreshAchievements');
+  check('🔴 切片有效（两个 provider 的函数体都截到了，**上界也真的截住了**）',
+      snapBody.isNotEmpty &&
+          timesBody.isNotEmpty &&
+          snapBody.contains('AchievementSnapshot') &&
+          !snapBody.contains('achievementUnlockTimesProvider') &&
+          !timesBody.contains('checkAndRefreshAchievements'),
+      'snap ${snapBody.length} · times ${timesBody.length} —— '
+          '未截住上界 ⇒ 切片跑到文件尾 ⇒ 下面的断言会被**下一个 provider** 兜住（假绿）');
+  check('🔴 成就快照 provider 订阅修订号（否则同步写库后**永不重算**）',
+      snapBody.contains('ref.watch(userDbRevisionProvider)'));
+  check('🔴 解锁时间 provider 也订阅（只改一处 ⇒ 成就墙仍显示旧日期）',
+      timesBody.contains('ref.watch(userDbRevisionProvider)'));
+  check('🔑 订阅写在 `await` **之前**（async gap 后 `ref` 不再安全）',
+      snapBody.indexOf('ref.watch(userDbRevisionProvider)') >= 0 &&
+          snapBody.indexOf('ref.watch(userDbRevisionProvider)') <
+              snapBody.indexOf('await ref.watch(userDbProvider'),
+      '放在 await 之后 ⇒ 可能撞上 provider 已销毁');
+
+  // ── ② 回前台（`resumed`）必须**完整同步** ──
+  final appSrc = readFile('../../app/lib/app.dart');
+  check('🔴 `didChangeAppLifecycleState` 处理 `resumed`',
+      RegExp(r'state\s*==\s*AppLifecycleState\.resumed')
+          .hasMatch(appSrc));
+  check('🔴 `resumed` 走的是**完整同步**（`syncWhenAppResumed`），不是只推',
+      appSrc.contains('syncWhenAppResumed(ref)'));
+  check('🔑 `paused`（进后台）仍保持**只推**（要快，不拖住退出）',
+      appSrc.contains('pushWhenAppPaused(ref)'));
+  final syncProvSrc3 = syncProvider;
+  // 🔴 **必须切片**，不能用「函数名 + 大窗口正则」——
+  //    第一版写成 `RegExp(r"void syncWhenAppResumed[\s\S]{0,320}?pushOnly: false")`，
+  //    **证伪时没抓住**：把该函数里的 `false` 改成 `true`，正则**越过了函数边界**、
+  //    匹配到紧接着的 `syncNowFromUi` 里的 `pushOnly: false` ⇒ **假绿**。
+  //    📌 判据（本文件家族已记）：**子串断言会被别处兜住**；能切片就切片。
+  //    🔑 切片的边界用「**下一个函数定义**」而不是「若干字符」——
+  //       上界由结构给出，而不是猜一个够大的数字。
+  final resumedBody =
+      between(syncProvSrc3, 'void syncWhenAppResumed(', 'Future<void> syncNowFromUi(');
+  check('🔴 切片有效（**上界真的截住了** —— 不含下一个函数的名字）',
+      resumedBody.isNotEmpty &&
+          resumedBody.contains('_runSync') &&
+          !resumedBody.contains('syncNowFromUi'),
+      '长 ${resumedBody.length} —— 🔴 未截住上界 ⇒ 切片跑到文件尾 ⇒ 下面的断言会被'
+          '**下一处同名串兜住**（假绿）。⚠️ 边界串必须与真实签名逐字一致'
+          '（本文件已在这上面栽过两次）');
+  check('🔴 `syncWhenAppResumed` 用 `pushOnly: false`（**会拉** —— 本条的要点）',
+      resumedBody.contains('pushOnly: false'),
+      '写成 true ⇒ 回前台只推不拉 ⇒ 两端永远看不见对方的改动（本条的原始症状）');
+
+  // ── ③ 复习页下拉刷新：**先拉云端**再重算本地 ──
+  final reviewSrc = readFile('../../app/lib/screens/review_screen.dart');
+  check('🔴 复习页有 `RefreshIndicator`（白哥要求：「下拉应该可以手动刷新才对」）',
+      reviewSrc.contains('RefreshIndicator('));
+  // 🔑 切片（同上）：`_pullToRefresh` 的函数体 = 从定义到下一个 `Widget ` 方法
+  final pullBody = between(
+      reviewSrc, 'Future<void> _pullToRefresh(', 'Widget _alwaysScrollable(');
+  check('🔴 切片有效（**上界真的截住了**）',
+      pullBody.isNotEmpty &&
+          pullBody.contains('reviewListProvider') &&
+          !pullBody.contains('_alwaysScrollable('),
+      '长 ${pullBody.length} —— 未截住上界 ⇒ 切片跑到文件尾 ⇒ 会被别处兜住（假绿）');
+  check('🔴 下拉**先调同步**（`syncNowFromUi`）—— 只重算本地是「骗人的仪式」',
+      pullBody.contains('await syncNowFromUi(ref)'));
+  check('🔑 空态/错误态也**可下拉**（否则「没有待复习」那一屏下拉失效）',
+      reviewSrc.contains('_alwaysScrollable') &&
+          reviewSrc.contains('AlwaysScrollableScrollPhysics'),
+      '内容不满一屏时不可滚动 ⇒ RefreshIndicator 不响应');
+
   _report();
 }
 

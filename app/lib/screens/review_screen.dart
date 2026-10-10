@@ -48,6 +48,9 @@ import 'package:go_router/go_router.dart';
 
 import '../providers/review_list_provider.dart';
 import '../providers/review_session_provider.dart';
+// 🆕 2026-10-10：下拉刷新要**先拉云端**（`syncNowFromUi` = push + pull），
+// 不只是重算本地 —— 见 `_pullToRefresh` 的说明。
+import '../providers/sync_provider.dart';
 import '../providers/user_db_provider.dart';
 import '../providers/user_word_provider.dart';
 import '../services/highlight_repository.dart';
@@ -275,14 +278,31 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             _sortBar(t),
             const SizedBox(height: 14),
             Expanded(
-              child: list.when(
-                // 首次加载 → **什么都不画**（画空状态会在有词时先闪一下「还没有生词」，是谎报）
-                loading: () => const SizedBox.shrink(),
-                // 读失败 → 给**准确**的话，不冒充「还没有生词」
-                error: (e, st) => const _Unavailable(),
-                data: (rows) => rows.isEmpty
-                    ? _EmptyState(filtered: _isFiltering(dueOnly))
-                    : _list(rows),
+              // 🔴 2026-10-10（白哥真机要求）：
+              //   「复习页面没有手动刷新，**下拉应该可以手动刷新才对**」
+              //
+              // # 🔑 下拉**不只是重读本地** —— 它必须**先拉一次云端**
+              //
+              // 只重算本地 provider 是**骗人的仪式**：用户下拉后看到的还是同一份数据。
+              // 真实场景（真机复现）：A 端复习完，切到 B 端下拉 —— 期望看到 A 的改动，
+              // 而那要求**先 pull**。⇒ 这里调 `syncNowFromUi`（= push + pull）。
+              //
+              // ⚠️ 必须 `await` 到**同步完成**再收起转圈 —— 否则「圈停了但数据还没到」，
+              //    用户会以为刷新无效（同 `syncCloudOnTap` 那条「等条件成立」的取向）。
+              // ⚠️ 并**吞掉异常**：刷新失败不该在复习页再弹一个错误 ——
+              //    页面上已有 `_Unavailable` / 空态在表达状态。
+              child: RefreshIndicator(
+                onRefresh: () => _pullToRefresh(dueOnly),
+                child: list.when(
+                  // 首次加载 → **什么都不画**（画空状态会在有词时先闪一下「还没有生词」，是谎报）
+                  loading: () => const SizedBox.shrink(),
+                  // 读失败 → 给**准确**的话，不冒充「还没有生词」
+                  error: (e, st) => _alwaysScrollable(const _Unavailable()),
+                  data: (rows) => rows.isEmpty
+                      ? _alwaysScrollable(
+                          _EmptyState(filtered: _isFiltering(dueOnly)))
+                      : _list(rows),
+                ),
               ),
             ),
           ],
@@ -291,8 +311,52 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     );
   }
 
-  /// 当前是否处于「筛选 / 搜索」状态 —— 决定空状态该说什么。
+  /// 下拉刷新：**先拉云端，再等本地读端重算**。
   ///
+  /// 🔑 顺序不能反 —— 先 `syncNowFromUi`（push + pull，内部会 `bump()` revision），
+  ///    再 `await` 读端 ⇒ 转圈收起时列表**已经是新的**。
+  ///
+  /// ⚠️ `syncNowFromUi` 在「未登录 / user.db 不可用」时**静默跳过**
+  ///    （`SyncPhase.skipped`）—— 此时下拉仍会重算本地，**不该**报错。
+  /// ⚠️ 读端 `.future` 在出错时会抛 ⇒ **吞掉**：页面已有 `_Unavailable` 表达它，
+  ///    再弹一个 SnackBar 只会重复告警。
+  Future<void> _pullToRefresh(bool dueOnly) async {
+    try {
+      await syncNowFromUi(ref);
+    } catch (_) {
+      // 同步失败**不阻塞**下拉：至少把本地重算一次（失败原因由同步状态胶囊表达）
+    }
+    try {
+      await ref
+          .read(reviewListProvider(_args.copyWith(dueOnly: dueOnly)).future);
+    } catch (_) {
+      // 读失败由 build 的 `error:` 分支渲染，这里不重复报
+    }
+  }
+
+  /// 把「非列表」的内容（空态 / 错误态）包成**始终可滚动**的。
+  ///
+  /// # 🔴 为什么必须这么做
+  ///
+  /// `RefreshIndicator` 只在**子节点可滚动**时才响应下拉。而空态/错误态是 `Center`
+  /// ⇒ 在「**没有待复习**」时下拉**完全失效** —— 而这恰恰是用户最想下拉试试的场景
+  /// （真机上就是「今天没有要复习的」那一屏）。
+  ///
+  /// 🔑 两个必需件：`AlwaysScrollableScrollPhysics`（内容不满一屏也能拖）
+  ///    + `minHeight = 可视高度`（让 `Center` 仍能垂直居中，而不是挤在顶部）。
+  Widget _alwaysScrollable(Widget child) {
+    return LayoutBuilder(
+      builder: (context, c) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: c.maxHeight),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  /// 当前是否处于「筛选 / 搜索」状态 —— 决定空状态该说什么。  ///
   /// 🔑 两种空状态**必须分开**：
   /// · 真的没有词 → 教用户「词从哪来」
   /// · 有词但被筛掉了 → 告诉用户「换个条件」
@@ -505,6 +569,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     }
 
     return ListView.separated(
+      // 🔑 `AlwaysScrollableScrollPhysics`：**内容不满一屏时也要能下拉**
+      //    （默认 physics 在内容不足时不可滚动 ⇒ 下拉刷新失效）。
+      //    这一条与 `_alwaysScrollable` 是同一个理由的两种落点：列表态 / 空态。
+      physics: const AlwaysScrollableScrollPhysics(),
       // 底部留出 tabbar 高度 —— `_ShellScaffold` 开了 `extendBody: true`
       padding: const EdgeInsets.fromLTRB(18, 0, 18, CoSpacing.tabBarClearance),
       itemCount: out.length,

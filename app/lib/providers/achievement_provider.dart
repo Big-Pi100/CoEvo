@@ -26,6 +26,26 @@ import 'user_db_provider.dart';
 /// · `now` 用 `DateTime.now()`（**本地时间**）—— 口径要求见 `achievement_rules.dart` 文件头 ②。
 final achievementSnapshotProvider =
     FutureProvider<AchievementSnapshot>((ref) async {
+  // 🔴🔴 2026-10-10：**必须订阅修订号** —— 否则同步写库后本快照**永不重算**。
+  //
+  // # 不同订阅的后果（真机踩到）
+  //
+  // 同步把别端的复习/生词/阅读写进 `user.db` 之后，本 provider **不会重算**
+  // ⇒ 「我的」页的学习记录卡与成就墙一直显示「**进入 App 那一刻**」的值
+  // ⇒ 用户看到「**同步成功了但界面没变，重开 App 才对**」，
+  //   并把两端各显示不同时刻的陈旧快照理解成「**两端数据不一致**」。
+  //
+  // 🔑 口径与 `review_list_provider.dart` / `reviewDueCountProvider` **完全一致**：
+  //    **写端不必点名读端** —— 只要写库成功后 `bump()` 一次 `userDbRevisionProvider`，
+  //    读端一 watch 就自动重算（根因与判据见 `user_db_provider.dart` 的 `UserDbRevision`）。
+  //    ⚠️ 手动 `ref.invalidate` 是**反面做法**：那又回到「写端逐个点名读端」的必漏结构。
+  //
+  // ⚠️ 放在 `await` **之前** —— async body 里 `await` 之后再 watch 可能撞上
+  //    provider 已被销毁（Riverpod 的 `ref` 在 async gap 后不再安全）。
+  //    同 `reviewListProvider` 的既有注释。
+  //
+  // 📄 `docs/review/sync-ui-not-refreshing-and-device-state-mismatch-2026-10-10.md` §二
+  ref.watch(userDbRevisionProvider);
   final db = await ref.watch(userDbProvider.future);
   return AchievementService(db).snapshot(now: DateTime.now());
 });
@@ -38,6 +58,9 @@ final achievementSnapshotProvider =
 /// · 两者**必须一起失效**（见 `checkAndRefreshAchievements`），否则成就墙会显示旧日期
 final achievementUnlockTimesProvider =
     FutureProvider<Map<String, DateTime>>((ref) async {
+  // 🔴 2026-10-10：同 `achievementSnapshotProvider` —— **必须订阅修订号**，
+  //    否则同步拉回别端的解锁记录后，成就墙显示的还是旧日期（两处口径必须一起改）。
+  ref.watch(userDbRevisionProvider);
   final db = await ref.watch(userDbProvider.future);
   return AchievementService(db).loadUnlocks();
 });

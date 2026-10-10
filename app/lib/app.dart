@@ -680,14 +680,32 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp>
     super.dispose();
   }
 
-  /// App 生命周期变化 —— 只管一件事：**进后台时推一次同步**。
+  /// App 生命周期变化 —— 两个时机，**覆盖范围刻意不同**：
   ///
-  /// ⚠️ 只处理 `paused`（**不处理 `inactive`**）：后者在「来电 / 拉控制中心 /
-  ///    切 App 切换器」时都会触发 ⇒ 过频；`paused` 才是「真的退到后台」。
-  /// ⚠️ 没有本地改动时 `pushOnce` **不发请求**（空批次直接返回）⇒ 平时零成本。
+  /// | 时机 | 动作 | 为什么 |
+  /// |---|---|---|
+  /// | **`paused`（进后台）** | **只推**（`pushWhenAppPaused`）| 把本地改动送上去；要**快**，不能拖住退出 |
+  /// | **`resumed`（回前台）** 🆕 | **push + pull**（`syncWhenAppResumed`）| 🔴 **用户切回来就是想看最新的** ⇒ 必须**拉** |
+  ///
+  /// ⚠️ 只处理 `paused` / `resumed`（**不处理 `inactive`**）：后者在
+  ///    「来电 / 拉控制中心 / 切 App 切换器」时都会触发 ⇒ 过频。
+  ///
+  /// 🔴🔴 **2026-10-10 补上 `resumed` 分支的理由（真机踩到）**：
+  ///    此前只有 `paused` 且它是 `pushOnly` ⇒ 自动同步里**只有「登录后」会拉**
+  ///    ⇒ 日常「切来切去」**从不拉** ⇒ **两端的复习/学习记录/成就长期不一致**，
+  ///    而「**重开 App 就对了**」（重开恰好走「登录后同步」）。
+  ///    📄 `docs/review/sync-ui-not-refreshing-and-device-state-mismatch-2026-10-10.md`
+  ///
+  /// ⚠️ 没有本地改动时 `pushOnce` **不发请求**（空批次直接返回）；
+  ///    `pull` 会发一次请求，这正是本钩子的目的（代价可接受）。
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused && mounted) {
+    if (!mounted) return;
+    if (state == AppLifecycleState.resumed) {
+      syncWhenAppResumed(ref);
+      return;
+    }
+    if (state == AppLifecycleState.paused) {
       pushWhenAppPaused(ref);
     }
   }
