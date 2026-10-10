@@ -1041,6 +1041,110 @@ void main() {
   check('🔑 已在同步时**忽略重复点击**（不叠加第二个请求）',
       s17BadgeSrc.contains('SyncPhase.syncing) return'));
 
+  // ══════════════════════════════════════════════════════════════════
+  section('【18】🔴 pull 之后必须**补建缺失的排期行**（2026-10-11 · 划线卡跨设备不同步）');
+  // ══════════════════════════════════════════════════════════════════
+  //
+  // # 缺陷（白哥真机：安卓有、iOS 没有的划线卡）
+  //
+  // 本地「进复习队列」= **两张表一起写**（`highlight`/`user_word` + `card_review_state`），
+  // 而**同步只覆盖数据表** ⇒ `card_review_state` 是派生态、**不在同步表里**。
+  // `pull` 的 apply 只写数据表 ⇒ 别端拉回划线后**没有排期行** ⇒
+  // 复习页以 `crs` 为主表 ⇒ **卡根本不出现**（静默）。
+  // 🔑 `review_log` 重放救不了：「新加入、从未复习」的卡**没有 event**。
+
+  final s18Backfill = stripComments(
+      readFile('../../app/lib/services/card_backfill.dart'));
+  check('🔴 `services/card_backfill.dart` 存在（补建逻辑的落点）',
+      s18Backfill.isNotEmpty);
+  check('🔴 它是**纯 Dart**（不 import Flutter）—— 否则 `sync_service` 用不了它',
+      !RegExp(r"import\s+'package:flutter/").hasMatch(s18Backfill),
+      'sync_service 是纯逻辑层 ⇒ 混入 Flutter 依赖会让它无法被脚本驱动');
+
+  // ── 🔴🔴 最重要的一条：**只补不覆盖** ──
+  final s18Rlq = readFile('../../app/lib/services/review_list_query.dart');
+  // 🔑 用**函数体切片**，不用整文件 `contains` ——
+  //    整文件里可能还有别的 `INSERT OR IGNORE`（别的表）
+  //    ⇒ 证伪时实测：把本方法的 `OR IGNORE` 改成 `OR REPLACE`，整文件判据**仍然绿**（假绿）。
+  final s18InsertBody = between(s18Rlq, 'Future<bool> insertStateIfAbsent(',
+      'Future<ReviewListItem?> stateOf(');
+  check('🔑 切片有效（`insertStateIfAbsent` 函数体 · **上界真的截住** —— 下面两条的前提）',
+      s18InsertBody.isNotEmpty &&
+          s18InsertBody.contains('card_review_state') &&
+          !s18InsertBody.contains('stateOf'),
+      '长 ${s18InsertBody.length}');
+  check('🔴🔴 `insertStateIfAbsent` 用 `INSERT OR IGNORE`（**只补不覆盖**）',
+      s18InsertBody.contains('INSERT OR IGNORE'),
+      '用 REPLACE ⇒ 把本地已有的 FSRS 进度**整行覆盖清零**（静默、不可逆）');
+  check('🔴 且该函数体**不含** `INSERT OR REPLACE`（防"顺手"改成覆盖语义）',
+      !s18InsertBody.contains('INSERT OR REPLACE'));
+  check('🔑 补建走它（`card_backfill` 出现 `insertStateIfAbsent`）',
+      s18Backfill.contains('insertStateIfAbsent'));
+  check('🔴 补建路径**不出现** `INSERT OR REPLACE` / `upsertState`（防绕过）',
+      !s18Backfill.contains('INSERT OR REPLACE') &&
+          !s18Backfill.contains('upsertState'),
+      '复用 `upsertState` = 覆盖已有排期（它就是 OR REPLACE）');
+
+  // ── 排期取**源记录的时间**，不是 `now` ──
+  //
+  // ⚠️ 用**正则锁读的是哪一列**，不用 `contains('created_at')` ——
+  //    后者会被 `columns: [... 'created_at' ...]` 兜住（**假绿**，证伪时实测）。
+  check('🔴 划线的排期读**列** `created_at`（`DateTime.tryParse(r[...])`）',
+      RegExp(r"DateTime\.tryParse\(\s*r\['created_at'\]").hasMatch(s18Backfill),
+      '用 now ⇒ 每次新机/重装都「从今天重新开始」，历史到期日全丢');
+  check('🔴 生词的排期读**列** `added_at`',
+      RegExp(r"DateTime\.tryParse\(\s*r\['added_at'\]").hasMatch(s18Backfill));
+  check('🔴 补建路径里**不得**出现 `DateTime.now()` 当排期源',
+      !s18Backfill.contains('DateTime.now()'),
+      '`now` 只能忽略（源时间解析失败就跳过），不能作主路径');
+
+  // ── 跳过已删除的（**两处都要**）──
+  final s18SkipCount =
+      RegExp(r"\['deleted'\]\s*as\s*num").allMatches(s18Backfill).length;
+  check('🔴 **两处**（划线 / 生词）都跳过 `deleted = 1`',
+      s18SkipCount >= 2,
+      '实得 $s18SkipCount 处（应为 2）—— 用计数锁：只锁"文件里出现过 deleted"'
+      '会被 `columns:[...]` 或另一处兜住（假绿）');
+  check('🔑 `paused = 1` 的划线**仍要补**（列表里显示「暂停」，不是隐藏）',
+      !s18Backfill.contains('paused'),
+      '若按 paused 过滤 ⇒ 两端显示不一致（一边有一边没有那行）');
+
+  // ── 不回声 ──
+  check('🔴 补建行写 `pending_push = 0`（从别端拉来的，不该再推回去）',
+      // 实现在 `card_backfill` 走 `insertStateIfAbsent` 的**默认参数**（不显式传）
+      s18Backfill.contains('insertStateIfAbsent') &&
+          !RegExp(r'pendingPush:\s*1').hasMatch(s18Backfill) &&
+          RegExp(r'int pendingPush = 0').hasMatch(s18Rlq),
+      '写 1 ⇒ 每次 pull 都把自己刚补的行又推回服务端（回声 + 无谓请求）');
+
+  // ── 接线：pull 之后必须真的调用 ──
+  final s18PullBody = between(syncService, 'Future<SyncReport> pullOnce(',
+      'Future<int> _applyCloudBooks(');
+  check('🔑 切片有效（截到了 `pullOnce` 函数体 · **上界真的截住** —— 下面三条的前提）',
+      s18PullBody.isNotEmpty &&
+          s18PullBody.contains('_readCursor') &&
+          // 🔴 判「上界截住」必须用**定义形态**（带返回类型）：
+          //    只写函数名 `_applyCloudBooks` 会命中**函数体内的调用**
+          //    （`r.pulledBooks = await _applyCloudBooks(books);`）⇒ 恒为 true ⇒ **假红**。
+          !s18PullBody.contains('Future<int> _applyCloudBooks('),
+      '长 ${s18PullBody.length}');
+  // 🔴 用**切片**判（不用整文件 `contains`）：证伪时实测 —— 把条件改成
+  //    `if (false && …)`（**调用还在、但永远不跑**）时，整文件判据**仍然绿**（假绿）。
+  check('🔴 `pullOnce` 真的调用补建（且不在**恒假**条件下）',
+      s18PullBody.contains('backfillCardsAfterPull(') &&
+          !s18PullBody.contains('if (false'),
+      '「写了没人跑」= 迟早失效（本项目已记的判据）');
+  final s18ApplyIdx = s18PullBody.indexOf('_applyHighlights');
+  final s18BackfillIdx = s18PullBody.indexOf('backfillCardsAfterPull');
+  check('🔴 补建发生在**应用数据之后**（顺序不可反）',
+      s18ApplyIdx >= 0 && s18BackfillIdx > s18ApplyIdx,
+      '在 apply 之前补 ⇒ 那时 highlight 还没落库 ⇒ 查不到源 ⇒ 补建空转');
+  check('🔑 划线卡的显示名走**同一处口径**（`highlightCardDisplayName`）',
+      readFile('../../app/lib/services/highlight_enqueue.dart')
+          .contains('highlightCardDisplayName') &&
+          s18Backfill.contains('highlightCardDisplayName'),
+      '两处各写一份 ⇒ 两端同一张卡的显示名不同（40 字符截断 vs 60 字符 excerpt）');
+
   _report();
 }
 

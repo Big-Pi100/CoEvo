@@ -105,9 +105,11 @@ class ReviewListQuery {
   ///
   /// ## 根因（两层，都是既有的设计事实）
   ///
-  /// ① `highlight`（划线本体）**从不参与同步** —— 服务端连 `sync_highlight` 表都没有
-  ///    （6 张 `sync_*` 表：review_log / user_word / article_read / bookmark /
-  ///     book_progress / book）。端侧 push/pull 也不含它。
+  /// ① ~~`highlight`（划线本体）**从不参与同步**~~ ——
+  ///    🔴 **该事实已过时（2026-10-11 订正）**：10-09 起 `highlight` **已纳入同步**
+  ///    （服务端有 `sync_highlight` 表；现共 **11** 张 `sync_*` 表），端侧 push/pull 都含它。
+  ///    ⚠️ 原文写「6 张表 · 从未同步」—— 它按**当时**的事实写，现在会**误导**：
+  ///       照它判断会得出「划线不会从别端回来」的错误结论（2026-10-11 真机排查时正是这个坑）。
   /// ② 而 `review_log`（复习事件）**参与同步**，`hl:<uuid>` 的复习事件照常上云。
   ///
   /// ⇒ 一旦本机的 `highlight` 行没了而服务端的复习事件还在（**重装 / 换机 / 清数据**），
@@ -115,6 +117,8 @@ class ReviewListQuery {
   ///    而它引用的划线**在本机不存在** —— 这就是「无主卡」。
   ///    🔴 直查线上确认：`sync_review_log` 里确有 `hl:8613b24d-…` 的事件，
   ///       而该设备的 `highlight` 表里没有它（`user.db` 被重装清掉）。
+  ///    ✅ 现在「划线本身」也会从别端同步回来 ⇒ 无主卡的成因**已收窄**为
+  ///       「重装后尚未拉到那条划线」；拉到之后卡片即可用。
   ///
   /// ## 🔴 为什么修在**判据层**（而不是在「暂停」按钮上补一段）
   ///
@@ -132,8 +136,13 @@ class ReviewListQuery {
   ///    `paused` 那条注释的判据：**「会被重建的表」不能存用户意图**，
   ///    反过来也一样 —— 从它上面删东西，别端一重放就回来了）。
   /// 2. **留着是可恢复的前提**：`paused` 列那条注释记着同族结论 ——
-  ///    待「划线纳入同步」上线后，只要那条划线从别端同步回来，
-  ///    卡片就会**自动恢复可用**（排期还在）。删掉这一行就把这条恢复路径**永久切断**了。
+  ///    划线从别端同步回来后，卡片就会**自动恢复可用**（排期还在）。
+  ///    🔴 **2026-10-11 订正**：这个「排期还在」的前提**只对「复习过的卡」成立**。
+  ///       「**新加入、从未复习**」的卡，本地**从来没有过那一行**
+  ///       （重放只还原有 `review_log` event 的卡）⇒ 划线同步回来了、**卡片仍不出现**。
+  ///       ⇒ 已由 `services/card_backfill.dart` 在 pull 之后**补建**那一行兜底。
+  ///       📄 `docs/review/card-not-synced-cross-device-2026-10-11.md`
+  ///    删掉这一行就把这条恢复路径**永久切断**了。
   /// 3. 它在「不可见」之后**没有任何副作用**（不占屏、不进计数、不影响任何查询）。
   /// ⇒ 📌 判据：**「不显示」是可逆的，「删除」不是** —— 能用前者解决就不要用后者。
   ///
@@ -305,6 +314,43 @@ class ReviewListQuery {
         pendingPush,
       ],
     );
+  }
+
+  /// 🆕 2026-10-11：**只在缺失时**插入一行复习状态（`INSERT OR IGNORE`）。
+  ///
+  /// # 🔴 它与 [upsertState] 的差别，是**本方法存在的唯一理由**
+  ///
+  /// [upsertState] 用的是 `INSERT OR REPLACE` ⇒ **会整行覆盖**。
+  /// 对「本机新加入的卡」那是对的（本来就是新行），但对
+  /// 「**从别端拉回来的划线 / 生词**」**是灾难**：
+  /// 本地可能**早就有那一行**（用户在本机复习过它）⇒ 覆盖 = **把学习进度清零**，
+  /// 且**静默、不可逆**（`stability` / `reps` / `last_review_at` 全丢，而两端都不报错）。
+  ///
+  /// ⇒ 补建必须用 `OR IGNORE`：**有则不动，无则补上**。
+  ///
+  /// [pendingPush] 默认 **0** —— 补建的行是**从别端拉来的**，
+  /// 不该再推回服务端（否则每次 pull 都产生一批回声请求）。
+  ///
+  /// 返回 `true` = 本次**真的插入了**（供计数 / 日志）；`false` = 本地已有（未改动）。
+  Future<bool> insertStateIfAbsent({
+    required String wordId,
+    required String spelling,
+    required DateTime nextReviewAt,
+    int pendingPush = 0,
+  }) async {
+    // ⚠️ 用 `rawUpdate`（返回**受影响行数**）而**不是** `rawInsert`：
+    //    `rawInsert` 返回的是 `last_insert_rowid`，而 `OR IGNORE` 冲突时
+    //    SQLite **不更新**它 ⇒ 会返回**上一次插入的 rowid**（非 0）
+    //    ⇒ `> 0` 会**误判成「插入了」**（静默，且只在表非空时发生）。
+    //    📌 判据：**「这条语句会返回什么」要按它的实际定义用，不按名字猜。**
+    final changed = await _db.rawUpdate(
+      'INSERT OR IGNORE INTO card_review_state '
+      '(word_id, spelling, state, step, stability, difficulty, reps, lapses, '
+      ' last_review_at, next_review_at, pending_push, updated_at) '
+      "VALUES (?,?,0,NULL,NULL,NULL,0,0,NULL,?,?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+      [wordId, spelling, _iso(nextReviewAt), pendingPush],
+    );
+    return changed > 0;
   }
 
   /// 取某一词的复习状态（查词后决定「已在生词本」还是「新增」）

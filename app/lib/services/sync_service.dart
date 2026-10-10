@@ -56,6 +56,7 @@ import 'package:sqflite_common/sqlite_api.dart';
 import 'achievement_service.dart';
 import 'article_read_repository.dart';
 import 'bookmark_repository.dart';
+import 'card_backfill.dart';
 import 'ebook/book_marker_sync.dart';
 import 'ebook/book_progress_sync.dart';
 import 'ebook/cloud_book_repository.dart';
@@ -738,6 +739,38 @@ class SyncService {
       r.pulledAchievementUnlocks = await _applyAchievementUnlocks(unlocks);
       r.pulledSettings = await _applySettings(settings);
 
+      // 🔴🔴 2026-10-11：**补建缺失的排期行**（必须排在全部 apply **之后**）。
+      //
+      // # 为什么（白哥真机：安卓复习页有一张划线卡、iOS 没有）
+      //
+      // 本地「进复习队列」= **两张表一起写**（`highlight`/`user_word` + `card_review_state`），
+      // 而**同步只覆盖数据表** ⇒ 别端拉回划线后**没有排期行** ⇒
+      // 复习页以 `card_review_state` 为主表 ⇒ **这张卡根本不出现**（静默，不报错）。
+      // 🔑 `review_log` 重放救不了：「**新加入、从未复习**」的卡**没有 event**。
+      //
+      // ⚠️ **顺序**：必须在 `_applyHighlights` / `_applyUserWords` **之后** ——
+      //    补建要读刚落库的 `highlight.text` / `user_word.spelling`；
+      //    排在前面 ⇒ 查不到源 ⇒ **空转**（而且不报错）。
+      // ⚠️ 只在「本次真的拉回了划线/生词」时才做（零成本优化）。
+      // ⚠️ 失败**不影响本轮 pull**：数据本身已经落库，下次 pull 会再补
+      //    （补建是幂等的 —— 底层 `INSERT OR IGNORE`）。
+      try {
+        final hlIds = _idsOf(highlights, 'id');
+        final wIds = _idsOf(words, 'word_id');
+        if (hlIds.isNotEmpty || wIds.isNotEmpty) {
+          final n = await backfillCardsAfterPull(
+            db: _userDb,
+            highlightIds: hlIds,
+            wordIds: wIds,
+          );
+          if (n > 0) {
+            _say('sync.pull: 补建排期行 $n 条（别端新加入、本地还没有排期的卡）');
+          }
+        }
+      } catch (e) {
+        _say('sync.pull: 补建排期行失败（数据已落库，下次 pull 会再补）：$e');
+      }
+
       // 🔴🔴 **pull 之后必须认领一次** —— 否则对**已导入**的书，
       //    别端刚推来的进度会被写进交换区却**永远不被应用**
       //    （用户在新设备上仍看到旧章节，且**没有任何提示**）。
@@ -822,6 +855,17 @@ class SyncService {
         if (e is Map) e.cast<String, dynamic>()
     ];
   }
+
+  /// 🆕 2026-10-11：从 pull 返回的行里取出某键的**非空**字符串值。
+  ///
+  /// 用途：把「本次拉回的划线 id / 生词 word_id」交给
+  /// [backfillCardsAfterPull] 去补建排期行。
+  /// ⚠️ 必须滤掉空串 —— 补建时用空串当 id 会去查一条**不存在**的行（无害但无意义），
+  ///    更重要的是它会**掩盖**「服务端给的行缺 id」这种协议破损。
+  static List<String> _idsOf(List<Map<String, dynamic>> rows, String key) => rows
+      .map((j) => j[key] as String? ?? '')
+      .where((s) => s.isNotEmpty)
+      .toList();
 
   /// **复习事件**：写进 `review_log`（`synced = 1`）后**重放**派生状态。
   ///

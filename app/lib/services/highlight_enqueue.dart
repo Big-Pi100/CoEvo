@@ -75,7 +75,7 @@ Future<HighlightEnqueueResult> enqueueHighlight({
   final review = ReviewListQuery(db);
   await review.upsertState(
     wordId: highlightWordId(uuid),
-    spelling: _displayName(text),
+    spelling: highlightCardDisplayName(text),
     state: 0, // 未学
     nextReviewAt: (now ?? DateTime.now()).toUtc(),
   );
@@ -88,7 +88,12 @@ Future<HighlightEnqueueResult> enqueueHighlight({
 /// ⚠️ 与 `Highlight.excerpt`（60 字符）**不是同一个口径**，也**刻意不去复用**：
 /// 那个是「划线清单」里给人认的，这个是「复习队列」里的一行 —— 宽度不同。
 /// 📌 若将来两处要统一，改的是**同一处**（这里），不是各改各的。
-String _displayName(String text) {
+///
+/// 🆕 2026-10-11：**改为公开**（原 `_displayName`）——
+/// `services/card_backfill.dart` 的补建要用它。
+/// 🔴 必须复用：否则 **本机入队的卡用 40 字符、从别端补建的卡用别的口径**
+/// ⇒ 同一张划线卡在两端显示**不同的标题**（且不报错）。
+String highlightCardDisplayName(String text) {
   final oneLine = text.replaceAll(RegExp(r'\s+'), ' ').trim();
   return oneLine.length <= 40 ? oneLine : '${oneLine.substring(0, 40)}…';
 }

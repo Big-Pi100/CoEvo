@@ -154,3 +154,61 @@ sync_review_log 里 hl: 事件共 2 条，**全部**是 hl:8613b24d-…（另一
 | 2 | 补建的**范围** | 划线 + 生词**都补**（同族，一次性改全 —— 判据「补丁 ≠ 修法」）|
 | 3 | 那两处**过时注释**是否顺手改 | ✅ 建议改（否则下一个人会照它做判断，这正是本轮的坑）|
 | 4 | 是否**顺带**把「无主卡」的可见性判据也复核 | 建议复核一次（`8613b24d` 那条就是无主卡）|
+
+---
+
+## 七、✅ 实施（白哥 2026-10-11 00:43「同意」→ 方案 A）
+
+| # | 文件 | 改动 |
+|---|---|---|
+| 1 | 🆕 `services/card_backfill.dart` | **纯 Dart**：`backfillCardsAfterPull({db, highlightIds, wordIds})` |
+| 2 | `services/review_list_query.dart` | 🆕 `insertStateIfAbsent`（`INSERT OR IGNORE` ⇒ **只补不覆盖**）|
+| 3 | `services/highlight_enqueue.dart` | `_displayName` → **公开** `highlightCardDisplayName`（口径一处）|
+| 4 | `services/sync_service.dart` | `pullOnce` 在**全部 apply 之后**调用补建；🆕 `_idsOf` 辅助 |
+| 5 | `services/review_list_query.dart` | 订正 §五 那两处**过时注释** |
+
+### 几个关键决定（都已写进代码注释）
+
+| 决定 | 理由 |
+|---|---|
+| 用 `insertStateIfAbsent`（**OR IGNORE**）而**不是** `upsertState`（OR REPLACE）| 后者会把本地**已有的 FSRS 进度整行清零**（静默、不可逆）|
+| ⚠️ 用 **`rawUpdate`** 判「是否真的插入」| `rawInsert` 返回 `last_insert_rowid`，而 `OR IGNORE` 冲突时 SQLite **不更新它** ⇒ 会拿到上次的 rowid ⇒ **误判「插入了」** |
+| 排期取源的 `created_at` / `added_at`，**不用 `now`** | 用 `now` ⇒ 每次新机 / 重装都「从今天重新开始」，历史到期日全丢 |
+| 时间解析失败就**跳过**（**不**用 `now` 兜底）| 同上；宁可这一张不补，也不要一个**错的时间** |
+| `deleted=1` **跳过**；`paused=1` **要补** | 前者 = 别端已删（补回来是「复活」）；后者在列表里显示「暂停」而**不是隐藏**（不补 ⇒ 两端差一行）|
+| 补建行 `pending_push = 0` | 拉来的不该再推回去（防回声）|
+| 排在**全部 apply 之后** | 要读刚落库的 `highlight.text` / `user_word.spelling`；排前面 ⇒ 查不到源 ⇒ **空转且不报错** |
+| 失败**不影响**本轮 pull | 数据已落库；补建**幂等**，下次 pull 会再补 |
+
+### 🔴 证伪：首版断言**全是假绿**（本轮最有价值的发现）
+
+**改坏 5 处**（`INSERT OR IGNORE`→`OR REPLACE` · `created_at`→`now` · 两处 `deleted` 跳过 ·
+`if (false && …)`）⇒ 首版断言**只红了 1 项**。
+
+| 被兜住的断言 | 兜住来源 |
+|---|---|
+| `contains('INSERT OR IGNORE')` | 文件里**别的表**也有同类语句 |
+| `contains('deleted')` / `contains('continue')` | `columns: […'deleted'…]` 与别处的 `continue` |
+| `contains(函数名)` | **函数体内的调用**（`r.pulledBooks = await _applyCloudBooks(books);`）|
+
+⇒ 改成三件套：**函数体切片** + **正则锁列/实参** + **计数**。
+改后同样 5 处 ⇒ **红 6 项** ✅
+
+> 🔑 判据：**证伪的强度 = 「改坏处数」与「变红项数」是否相称**。
+>    改 5 处只红 1 项 ⇒ **断言覆盖不足**，而不是「实现没问题」。
+
+**另一条教训**：改坏时的 `old_string` **多含了一行注释** ⇒ 复原失败
+（`String to replace not found`），文件停在**半改坏**状态 —— 而它**能跑、不报错**。
+⇒ 改坏只改那一行；复原后**必须再跑一次断言** + `grep 证伪用临时改动` 扫残留。
+
+### 验证
+
+`analyze_inproc`（`app/lib`）**error = 0** · **50 个 query_verify 脚本全 EXIT=0**
+（`verify_sync` **220** 项，本轮 **+17**）
+
+### ⏳ 未做
+
+- **出包**（端侧改动，需白哥指令）—— ⚠️ 本批**服务端无改动**，**不用部署**
+- 真机验证：两端的复习列表应**逐条一致**（含那张「Beyond the ReAct Loop」）
+- §五 的「无主卡可见性判据」复核（建议项，未做）
+
