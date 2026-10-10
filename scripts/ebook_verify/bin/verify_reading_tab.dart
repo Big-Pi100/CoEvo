@@ -77,6 +77,19 @@ String? _read(String relPath) {
 String _stripComments(String src) =>
     src.split('\n').where((l) => !l.trimLeft().startsWith('//')).join('\n');
 
+/// `HeaderChip(` 的**某一次调用**里是否带指定的 `label:`（**限距**，防跨调用误命中）。
+///
+/// 🔑 为什么不用 `contains("label: '导入'")`：那个字符串**假绿** ——
+///    退回纯文字 `Text('导入')` 时它**照样在**。
+///    ⇒ 必须锁「**在 `HeaderChip(` 的调用里**」这一形态。
+/// ⚠️ 距离上限取 160 字符：够容纳 `label` + `count` + `onTap` 等挨着的参数，
+///    又不至于跨到下一个 `HeaderChip(`（本文件的调用都在 10 行内）。
+///    📌 判据：**能切片就切片**（这里是「限距切片」——比全文 `contains` 强、
+///       比「解析 AST」便宜）。
+bool _chipForLabel(String src, String label) => RegExp(
+      "HeaderChip\\([\\s\\S]{0,160}?label: '" + label + "'",
+    ).hasMatch(src);
+
 /// 取 `from` 与 `to` 之间的片段（`from` 找不到 ⇒ 空串；`to` 找不到 ⇒ 切到文件尾）。
 ///
 /// 🔴 **切片必须自带前提断言**（本文件里每个调用点都跟着一条 `切片有效` 检查）：
@@ -204,12 +217,28 @@ void main() {
         '出现了 Flexible(');
     check('标题行用 Expanded 占满剩余宽度（右侧动作才能贴右）', container.contains('Expanded('));
 
-    // 🔴 **计数式**：两段动作**都是 `HeaderChip` 药丸**（同一行、同一形态）。
-    //    ⚠️ 用「包含」会**假绿** —— 「导入退回纯文字、只剩收藏一个」时照样通过。
-    //    📌 判据：一处定义 / 数量约束 ⇒ 用**计数**，不用 `contains`。
+    // 🔴 **语义式**（2026-10-10 换代：原写法锁「计数 == 2」）
+    //
+    //    原意图是「两段动作**都是** `HeaderChip` 药丸（同一行、同一形态）」，
+    //    用「计数 == 2」当**代理**。问题是 —— **动作多一个就假红**：
+    //    2026-10-10 书架加了第三枚「未上云」药丸（上云失败的重试入口，
+    //    见 `docs/review/cloud-sync-ios-first-install-audit-2026-10-10.md`），
+    //    它同样是 `HeaderChip`、同样合格，却把这条判据打红。
+    //    📌 判据：**别锁「条数」这类易变维度**（本项目反复记过）——
+    //    要锁**语义**：「**每个动作都用同一个组件**」，而不是「恰好有几个」。
+    //    🔑 改法两半：
+    //      ① **逐动作**锁「`HeaderChip(` 调用里带该 label」（退化成纯文字就断）
+    //      ② 一条**反向**断言：文件里**不得自写药丸实现**（反向断言天然免疫数量腐坏）
+    for (final label in ['收藏', '导入', '未上云']) {
+      check("🔴 「$label」动作用公共组件 HeaderChip（调用里带该 label）",
+          _chipForLabel(container, label),
+          "未见 HeaderChip(… label: '$label') —— 退回纯文字或自写药丸都会断");
+    }
     final chipCalls = RegExp(r'HeaderChip\(').allMatches(container).length;
-    check('🔴 两段动作都用 HeaderChip（计数 = 2：收藏 + 导入）', chipCalls == 2,
-        '实得 $chipCalls 处');
+    check('🔴 且**没有自写的药丸实现**（一律走 HeaderChip —— 一处定义）',
+        !RegExp(r'class _\w*Chip\b').hasMatch(container) &&
+            !RegExp(r'class _\w*Pill\b').hasMatch(container),
+        '实得 HeaderChip $chipCalls 处');
     // 锁「导入」那处的**特有形态**
     //
     // 🔴 **2026-10-05 白哥定改版**：**去掉加号、去掉忙碌态**。
