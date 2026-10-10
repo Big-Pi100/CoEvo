@@ -108,17 +108,22 @@ Future<void> _wipeForNewAccount(
     debugPrint('[owner] 清电子书原始文件跳过：$e');
   }
 
-  // ── ④ 🔴 删掉**这个新账号**的 pull 游标 ──
+  // ── ④ 🆕 2026-10-10：清理**旧版**的 pull 游标键（prefs）──
   //
-  // 为什么必须删：游标是「这台设备已经拉到哪了」。本地数据刚被清空，
-  // 若留着旧游标，新账号第一次 pull 只会拿到「游标之后」的增量
-  // ⇒ **绝大多数数据永远拉不回来**，而用户看到的是「同步正常，只是东西少了很多」。
-  // （游标本身是按 `userId` 分键的 ⇒ 删的是**同一个账号**上次留下的那个。）
+  // 🔴 **本步不再承担「保证下次全量拉取」的职责** —— 那件事现在由**结构**保证：
+  //    游标已搬进 `user.db` 的 `sync_cursor` 表，而它属于 `kUserOwnedTables`
+  //    ⇒ 上面的 `clearUserOwnedData(userDb)` **已经把它清掉了**。
+  //    （旧写法是一把 prefs 键 + 这里一道「记得删」的流程 ⇒ 新增清数据路径就会漏。）
+  //
+  // ⚠️ 现在这里的唯一作用是：删掉**升级前遗留**的 `coevo_sync_since.<userId>`
+  //    —— 它已不会被读取，留着只会误导后来 grep 的人。
+  //    所以**它失败也不影响正确性**（真正的游标在库里、已被清）。
+  // 📄 `docs/review/device-sync-and-profile-failure-2026-10-10.md` §四 D
   try {
-    await clearSyncCursorFor(ref, userId);
-    debugPrint('[owner] 已删 $userId 的 pull 游标（下次全量拉取）');
+    await clearLegacySyncCursorPrefs(ref, userId);
+    debugPrint('[owner] 已清理旧版游标键（v11 起游标在 user.db，随数据一起清）');
   } catch (e) {
-    debugPrint('[owner] 删游标失败（下次全量拉取的保证会弱一点）：$e');
+    debugPrint('[owner] 清理旧版游标键失败（不影响增量正确性）：$e');
   }
 
   // ── ④b 🆕 2026-10-10：复位**同步过的设置 prefs** ──

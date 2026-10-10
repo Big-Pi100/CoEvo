@@ -56,7 +56,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   TextTheme get _tt => Theme.of(context).textTheme;
 
   bool _isLoading = true;
-  String? _error;
+
+  /// 🔴 **只表示「账号资料（`getProfile`）没取到」**，**不再**决定整页渲染。
+  ///
+  /// # 为什么从「整页错误」降级为「局部错误」（2026-10-10 · 真机踩到）
+  ///
+  /// 旧实现：`getProfile()` 失败 ⇒ `_error != null` ⇒ `build()` 走 `_buildErrorView()`
+  /// ⇒ **整页被替换** ⇒ 本页的 `StatsCard()`（学习记录）**以及所有入口一起消失**。
+  ///
+  /// 🔴 而 `StatsCard` 是**纯端侧**数据（`widgets/stats_card.dart` 里**零**网络调用）——
+  ///    它**根本不需要登录**，却被一个**需要登录**的后端接口的失败**连带抹掉**。
+  ///    ⇒ 用户看到「我的」页一片「加载失败」，进而以为**数据没同步/丢了**
+  ///    （真实案例：iOS 上就是这样，而数据其实一直在本机）。
+  ///
+  /// 🔑 判据（正是本文件 `_buildTopBar` 里早就写下的那条）：
+  ///    **数据在后端 → 必须登录；数据在端侧 → 不需要。**
+  ///    ⇒ 一个页面里**不同数据源的失败必须分层降级**，不能「一起死」。
+  ///
+  /// 📄 `docs/review/device-sync-and-profile-failure-2026-10-10.md`
+  String? _profileError;
+
+  /// `_profileError` 是否由 **401（登录态失效）** 引起 —— 决定给不给「重新登录」出口。
+  ///
+  /// 🔑 区分这两者很重要：网络错误**重试有意义**；401 是**终态**，
+  ///    「重试」永远失败 ⇒ 只给重试等于**没给出口**（真机上这正是用户卡住的原因）。
+  bool _profileAuthExpired = false;
+
   String? _avatarUrl;
   String _displayName = '';
   bool _isUploading = false;
@@ -172,6 +197,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     setState(() {
       _displayName = prefs.getString('display_name') ?? auth.username ?? '用户';
+      // 重试 / 下拉刷新时先清掉上一次的错误态，否则成功也会显示旧错误。
+      _profileError = null;
+      _profileAuthExpired = false;
     });
 
     if (auth.userId == null || auth.token == null) {
@@ -217,11 +245,44 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // 异步加载未读通知数（不阻塞主流程）
       _loadUnreadCount();
     } catch (e) {
-      if (mounted)
+      // 🔴 只降级「账号资料」这一块，**不整页失败**（见 `_profileError` 的类文档）。
+      //    `isUnauthorized` 用**类型**判别（`ApiStatusException`），不靠字符串匹配 ——
+      //    否则改一次文案就会静默失去「重新登录」入口。
+      final expired = e is ApiStatusException && e.isUnauthorized;
+      if (mounted) {
         setState(() {
           _isLoading = false;
-          _error = '加载失败，请检查网络连接';
+          _profileAuthExpired = expired;
+          _profileError = expired
+              ? '登录状态已失效（可能在本账号的其它设备上重新登录过）'
+              : '资料加载失败，请检查网络连接';
         });
+      }
+    }
+  }
+
+  /// 🔑 **401 的出口**（2026-10-10 新增）。
+  ///
+  /// 旧实现只有「重试」——而 401 是**终态**：重试用的还是 `authProvider` 里**同一个**
+  /// 失效 token ⇒ **必然再 401** ⇒ 用户被卡在「加载失败」上，
+  /// **唯一出路是杀掉 App 重开**（真机复现）。
+  ///
+  /// 这里先调 `tryRestore()`：它会**在服务端校验**该 token，
+  /// 失效则清掉本地凭据（⇒ 本页回到「登录 / 注册」入口）；
+  /// 若只是**网络抖动**，它刻意宽松（`verifyToken` 网络失败时返回 `valid:true`）⇒ 不会误清。
+  Future<void> _reloginAfterTokenInvalid() async {
+    await ref.read(authProvider.notifier).tryRestore();
+    if (!mounted) return;
+    if (!ref.read(authProvider).isAuthenticated) {
+      _showLoginDialog();
+    } else {
+      // 校验其实仍有效（例如 401 来自瞬时抖动）⇒ 直接重取即可
+      setState(() {
+        _isLoading = true;
+        _profileError = null;
+        _profileAuthExpired = false;
+      });
+      await _load();
     }
   }
 
@@ -327,34 +388,57 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-  Widget _buildErrorView() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(CoSpacing.xxxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_rounded, size: 48, color: _cs.outline),
-            const SizedBox(height: CoSpacing.lg),
-            Text('加载失败', style: _tt.titleLarge?.copyWith(color: _cs.onSurface)),
-            const SizedBox(height: CoSpacing.sm),
-            Text(_error ?? '请检查网络连接后重试',
-                style: _tt.bodyMedium?.copyWith(color: _cs.onSurfaceVariant),
-                textAlign: TextAlign.center),
-            const SizedBox(height: CoSpacing.xl),
-            FilledButton.icon(
-              onPressed: () {
-                setState(() {
-                  _isLoading = true;
-                  _error = null;
-                });
-                _load();
-              },
-              icon: const Icon(Icons.refresh),
-              label: Tw('重新加载'),
+  /// 账号资料区的**局部**降级提示（2026-10-10 新增，取代原 `_buildErrorView`）。
+  ///
+  /// # 与原 `_buildErrorView` 的区别（本质区别，不是样式微调）
+  ///
+  /// | | 原实现 | 本实现 |
+  /// |---|---|---|
+  /// | 渲染位置 | **整页**（`body` 三选一）| **「账号」组内**一行 |
+  /// | 影响范围 | 🔴 学习记录 / 各入口**一起消失** | ✅ 本页其余内容**照常** |
+  /// | 出口 | 只有「重新加载」 | 网络错误给「重试」；**401 给「重新登录」** |
+  ///
+  /// 🔑 「网络错误」与「401」必须给**不同的动作** —— 前者重试有意义，
+  ///    后者是终态（重试必然再失败）⇒ 只给重试等于**没有出口**。
+  Widget _buildProfileErrorNotice() {
+    final expired = _profileAuthExpired;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(CoSpacing.lg, 0, CoSpacing.lg, CoSpacing.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            expired ? Icons.lock_outline_rounded : Icons.cloud_off_rounded,
+            size: 18,
+            color: Color(CoEvoTokensExt.of(context).ink3.argb32),
+          ),
+          const SizedBox(width: CoSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _profileError ?? '资料暂不可用',
+                  style: _tt.bodySmall?.copyWith(color: _cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: CoSpacing.xs),
+                // 🔴 401 ⇒ 「重新登录」（唯一有效出口）；其余 ⇒ 「重试」
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: expired ? _reloginAfterTokenInvalid : _load,
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Tw(expired ? '重新登录' : '重试'),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -374,11 +458,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       //      （19px / w500 + 默认阴影），而另外两个 tab 早就换成了自绘顶栏。
       //    🔑 「统一」不是抽象要求 —— 它意味着**同一组数值**（字号/字重/字距/内边距）。
       backgroundColor: Color(CoEvoTokensExt.of(context).page.argb32),
+      // 🔴 2026-10-10：**删掉了「整页错误」分支**（原为 `_error != null ? _buildErrorView() : …`）。
+      //
+      //    原实现的后果（真机复现）：`getProfile()`（**需要登录**）失败
+      //    ⇒ **整页**被替换成「加载失败」⇒ 本页的 `StatsCard()`（学习记录，
+      //    **纯端侧、零网络**）与所有入口一起消失 ⇒ 用户以为数据丢了/没同步。
+      //
+      //    🔑 判据：**一个页面里不同数据源的失败必须分层降级**（局部提示），
+      //      不能「一起死」。详见 `_profileError` 的类文档。
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? _buildErrorView()
-              : SafeArea(
+          : SafeArea(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -388,7 +478,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           onRefresh: () async {
                             setState(() {
                               _isLoading = true;
-                              _error = null;
+                              _profileError = null;
+                              _profileAuthExpired = false;
                             });
                             await _load();
                           },
@@ -771,6 +862,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
             bare: true,
           ),
+          // 🆕 2026-10-10：**账号资料取不到时的「局部」降级提示**。
+          //
+          // 🔴 它必须挂在这里（账号组内），**不能**再回到「整页替换」——
+          //    否则一个需要登录的接口失败，会连带抹掉本页**纯端侧**的学习记录
+          //    （真机复现；详见 `_profileError` 的类文档）。
+          // 🔑 401 与网络错误给**不同的动作**（重新登录 / 重试）——
+          //    401 是终态，只给「重试」等于没有出口。
+          if (_profileError != null) _buildProfileErrorNotice(),
           // ══════════════════════════════════════════════════════════════
           // ② 下拉区 —— 账号级操作（**默认收起**）
           //

@@ -319,9 +319,19 @@ Future<void> main() async {
   check('🔴 清空失败时**不写归属**（`return` 在 catch 里）',
       RegExp(r'清空 user\.db 失败[\s\S]{0,600}?return;').hasMatch(wipeBody),
       '否则「归属已换、数据还在」⇒ 新账号看到旧数据（静默）');
-  check('🔴 清空后删该账号的 pull 游标（否则全量拉回被增量挡住）',
-      ownerProv.contains('clearSyncCursorFor(ref, userId)'),
-      '不删 ⇒ 新账号只会拿到游标之后的增量 ⇒「同步正常但东西少了很多」');
+  // 🔴 2026-10-10（v11）：**游标已从 prefs 搬进 `user.db`**（`sync_cursor` 单行表）。
+  //    判据随之**改口径**（但意图不变：换账号后游标必须失效）：
+  //      · 旧：断言 owner provider 里**调用**了 `clearSyncCursorFor`（**一道流程**）
+  //      · 新：断言 `sync_cursor` ∈ `kUserOwnedTables`（**结构保证**）
+  //    🔑 新写法更强 —— 它不依赖「某处记得调」：`clearUserOwnedData` 会按清单清，
+  //       将来**新增任何一条清数据路径**都自动覆盖。
+  //    ⚠️ 旧写法正是那条判据的反例：「用流程清理」一定有人忘。
+  check('🔴 游标表 `sync_cursor` ∈ `kUserOwnedTables`'
+      '（⇒ 换账号/清数据时**随数据一起被清**，不靠「记得调」）',
+      kUserOwnedTables.contains('sync_cursor'),
+      '不在清单里 ⇒ 库被清而游标留存 ⇒ pull 只取增量 ⇒ 历史永远拉不回且不报错');
+  check('🔴 换账号时仍清掉**旧版** prefs 游标键（v11 前遗留，留着会误导 grep）',
+      ownerProv.contains('clearLegacySyncCursorPrefs(ref, userId)'));
   check('🔴 清空后 bump 两个 revision（否则界面还显示已删的数据）',
       ownerProv.contains('userDbRevisionProvider.notifier).bump()') &&
           ownerProv.contains('bookDbRevisionProvider.notifier).bump()'));
@@ -343,8 +353,14 @@ Future<void> main() async {
 
   final syncProv =
       File(repoPath('app/lib/providers/sync_provider.dart')).readAsStringSync();
-  check('游标键带 userId（换账号天然隔离 —— 与「删游标」是两件不同的事）',
-      syncProv.contains(r"prefs.remove('$kSyncCursorPrefsKeyPrefix$userId')"));
+  // 🔴 2026-10-10（v11）：旧断言是「游标键带 userId（换账号天然隔离）」——
+  //    口径已变：游标进 `user.db` 后**连「带 userId」都不需要了**（库本身就按账号清）。
+  //    ⇒ 新判据 = **旧 prefs 键只许删、不许读写**（否则「库里的游标」与「prefs 的游标」
+  //      会成为两个真值源，迟早分叉，且**不报错**）。
+  check('🔴 旧 prefs 游标键**只被删、不被读写**（否则两个真值源 ⇒ 迟早分叉）',
+      !syncProv.contains(r"prefs.getString('$kLegacySyncCursorPrefsKeyPrefix") &&
+          !syncProv.contains(r"prefs.setString('$kLegacySyncCursorPrefsKeyPrefix"),
+      '游标的读写必须**只**走 `sync_cursor` 表');
 
   print('');
   print('═' * 74);

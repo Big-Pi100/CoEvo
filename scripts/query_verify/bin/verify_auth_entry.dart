@@ -146,8 +146,10 @@ void main() {
       File('../../app/lib/widgets/co_dialog.dart').readAsStringSync());
   // 🔴 2026-10-04 修：原读 `widgets/subscribe_panel.dart`（订阅**弹层**）——
   //    该文件已在「订阅页重做」时**删除**（订阅改成独立页 `/subscribe`）。
-  //    ⚠️ 本脚本**不在 CI 里**，所以那次删除**没让它变红** ⇒ 也就没人发现它已经跑不起来 ——
-  //       「写了没人跑 = 迟早失效」的又一个实例（讽刺的是 CI 注释里正写着这一族教训）。
+  //    ✅ 2026-10-10 更正：当时这里写着「本脚本**不在 CI 里**」—— **该事实已过时**：
+  //       它现在**就在 CI 里**（`ci.yml` 的 `Run dart run bin/verify_auth_entry.dart`）。
+  //       📌 判据：**注释里的「事实」也会过期** —— 而它比代码更容易骗人
+  //          （代码错了会红，注释错了只会让人做出错误判断）。
   //    ⇒ 断言对象平移到 `screens/subscribe_screen.dart`，**意图不变**：
   //      订阅界面不得用 Material 按钮（防「外壳换了、内容没换」的半统一）。
   final subscribeScreen = stripComments(
@@ -183,7 +185,8 @@ void main() {
   //    「订阅页重做」时，订阅卡整行与「升级」按钮**有意改为跳订阅页**
   //    （`context.push('/subscribe')`，见 `profile_screen` 的 1310 / 1355 行）
   //    ⇒ 挂 `_showLoginDialog` 的地方自然只剩 1 处（「登录 / 注册」行）。
-  //    ⚠️ 而本脚本**不在 CI 里** ⇒ 那次改动既没被它拦住、也没人发现它已经变红（存量问题）。
+  //    ⚠️ 而本脚本当时**不在 CI 里** ⇒ 那次改动既没被它拦住、也没人发现它已经变红。
+  //       （2026-10-10 更正：它**现在在 CI 里** —— 见上方 `subscribe_panel` 旁的说明。）
   //    ⇒ 判据：**断言要锁「用户还能不能登录」，不锁「有几个入口」**。
   final wired = countOccurrences(profile, 'onTap: _showLoginDialog');
   check('🔴 登录入口仍挂在 `_showLoginDialog`（「登录 / 注册」行）',
@@ -192,6 +195,44 @@ void main() {
   //    防有人改回「引导登录」却忘了这条（那样两边会各说各话）。
   check('订阅卡入口指向订阅页（与「引导登录」的分工变更已固化）',
       profile.contains("context.push('/subscribe')"));
+
+  // ── ③b 🔴 「我的」页**不得**因后端接口失败而整页失败（2026-10-10 真机踩到）──
+  //
+  // 症状：`getProfile()`（**需要登录**）返回 401 ⇒ 整页被替换成「加载失败」
+  //   ⇒ 同页的 `StatsCard()`（学习记录，**纯端侧、零网络**）与所有入口**一起消失**
+  //   ⇒ 用户以为「数据没同步/丢了」，而数据一直在本机。
+  // 📄 `docs/review/device-sync-and-profile-failure-2026-10-10.md` §一.6/§一.7
+  //
+  // 🔑 判据（该文件 `_buildTopBar` 里早就写着）：**数据在后端 → 必须登录；
+  //    数据在端侧 → 不需要** ⇒ **一个页面里不同数据源的失败必须分层降级**。
+  check('🔴 已删掉「整页错误视图」（`_buildErrorView`）——'
+      '否则一个需登录的接口失败会连带抹掉**纯端侧**的学习记录',
+      !profile.contains('_buildErrorView'));
+  check('🔴 `body:` **不再**按「取资料失败」三选一（不得出现 `_error != null ?` 式整页分叉）',
+      !RegExp(r'body:\s*_isLoading[\s\S]{0,120}?_error\s*!=\s*null').hasMatch(profile),
+      '分层降级：账号资料失败只影响它自己那一块');
+  check('🔑 学习记录卡 `StatsCard()` 仍在页面内容里（端侧数据不受登录态影响）',
+      profile.contains('StatsCard()'));
+
+  // 🔴 **401 必须有出口** —— 旧实现只给「重试」，而 401 是**终态**：
+  //    重试复用 `authProvider` 里**同一个**失效 token ⇒ **必然再 401**
+  //    ⇒ 用户被卡死，唯一出路是杀 App 重开（真机复现）。
+  check('🔴 有 401 的出口函数 `_reloginAfterTokenInvalid`',
+      RegExp(r'Future<void> _reloginAfterTokenInvalid\(\)').hasMatch(profile));
+  check('🔴 该出口调 `tryRestore()`（它会**在服务端校验** token，失效则清凭据）',
+      RegExp(r'_reloginAfterTokenInvalid[\s\S]{0,700}?tryRestore\(\)')
+          .hasMatch(profile));
+  // 🔑 判别**必须用类型**，不能用 `e.toString().contains('401')` ——
+  //    后者是「用字符串当类型」：改一次文案就静默失去出口，且不报错。
+  check('🔴 401 的判别用**类型**（`isUnauthorized`），不是字符串匹配',
+      profile.contains('isUnauthorized') &&
+          !RegExp(r"contains\(\s*'401'\s*\)").hasMatch(profile));
+  final userApi =
+      stripComments(File('../../app/lib/api/user_api_client.dart').readAsStringSync());
+  check('🔴 `getProfile()` 抛出**带状态码**的类型（`ApiStatusException`）',
+      userApi.contains('class ApiStatusException') &&
+          userApi.contains('throw ApiStatusException(resp.statusCode, path)'),
+      '否则调用方只能靠字符串识别 401 —— 改文案即静默失效');
 
   // ── ④ 🔴 启动流程**不得**再自动弹窗、也不得再自动建号（2026-10-09）──
   //

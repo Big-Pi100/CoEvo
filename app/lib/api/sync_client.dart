@@ -4,6 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+// 🔴 2026-10-10：两个错误类型**搬去纯 Dart 文件**（本文件有 Flutter 依赖，
+//    而捕获它们的 `services/sync_service.dart` 必须是纯 Dart ⇒ 否则类型传不到那一层）。
+//    `export` 让本文件原有引用者（含文档里的 `[SyncUnauthorized]`）继续可用。
+import '../services/sync_errors.dart';
+
+export '../services/sync_errors.dart';
 
 /// 云端同步 API 客户端 —— `/api/sync/push` 与 `/api/sync/pull`。
 ///
@@ -120,21 +126,7 @@ class SyncClient {
   }
 }
 
-/// 「已登录，但**没有有效订阅**」—— 这是**预期内的状态**，不是故障。
-///
-/// 上层应据此显示「订阅后可用」而不是「同步失败，请重试」。
-class SyncNotSubscribed implements Exception {
-  SyncNotSubscribed(this.message);
-  final String message;
-  @override
-  String toString() => message;
-}
-
-/// `token` 失效（401）—— 与 [SyncNotSubscribed] 分开，因为**处理方式不同**
-/// （这个要清凭据 / 引导重新登录）。
-class SyncUnauthorized implements Exception {
-  SyncUnauthorized(this.message);
-  final String message;
-  @override
-  String toString() => message;
-}
+// 🗑 2026-10-10：`SyncNotSubscribed` / `SyncUnauthorized` 的**定义**已移到
+//    `services/sync_errors.dart`（原因见上方 import 处的注释）—— 本文件只 `export`。
+//    ⚠️ 别在这里再加回一份：两份定义会让 `is SyncUnauthorized` 在后端层**判 false**，
+//       而且是**静默**的（两个同名不同类，编译器不会报）。

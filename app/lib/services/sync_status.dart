@@ -45,6 +45,25 @@ class SyncStatus {
   /// 最近一次失败的原因（**可直接展示给用户**的一句话）。
   final String? lastError;
 
+  /// 🆕 2026-10-10：这次失败是**登录态失效（HTTP 401）**引起的。
+  ///
+  /// # 为什么要单独一个字段，而不是让 UI 去 `lastError.contains('登录')`
+  ///
+  /// 🔴 **「用字符串当类型」是静默失效的温床** —— 改一次文案，判定就悄悄失效，
+  ///    而且**不报错**（只是「需重新登录」的提示再也不出现）。
+  ///
+  /// # 为什么必须与普通失败区分（这是**终态 vs 瞬时**的区别）
+  ///
+  /// | | 网络超时 / 5xx | **401** |
+  /// |---|---|---|
+  /// | 性质 | 瞬时，**会自愈** | **终态** —— token 已被服务端清掉 |
+  /// | 「重试」 | 有意义 | 🔴 **永远失败** |
+  /// | 正确出口 | 等自动重试 | **重新登录** |
+  ///
+  /// 📄 真机案例：`docs/review/device-sync-and-profile-failure-2026-10-10.md`
+  ///    （同一账号在第二台设备登录 ⇒ 第一台的 token 失效 ⇒ 同步一直失败且无从知晓）
+  final bool needsRelogin;
+
   /// 最近一次成功同步推上去 / 拉下来的条数（摘要用）。
   final int lastPushed;
   final int lastPulled;
@@ -53,6 +72,7 @@ class SyncStatus {
     this.phase = SyncPhase.idle,
     this.lastOkAt,
     this.lastError,
+    this.needsRelogin = false,
     this.lastPushed = 0,
     this.lastPulled = 0,
   });
@@ -64,6 +84,7 @@ class SyncStatus {
     SyncPhase? phase,
     DateTime? lastOkAt,
     String? lastError,
+    bool? needsRelogin,
     int? lastPushed,
     int? lastPulled,
   }) {
@@ -71,6 +92,10 @@ class SyncStatus {
       phase: phase ?? this.phase,
       lastOkAt: lastOkAt ?? this.lastOkAt,
       lastError: lastError,
+      // ⚠️ 与 `lastError` 同一条语义：**不传 = 复位为 false**。
+      //    这是有意的 —— `skipped`（本轮没跑）与 `syncing`（正在跑）都**不该**
+      //    继续声称「需要重新登录」，否则改一次同步结果后旧提示会赖着不走。
+      needsRelogin: needsRelogin ?? false,
       lastPushed: lastPushed ?? this.lastPushed,
       lastPulled: lastPulled ?? this.lastPulled,
     );
@@ -123,6 +148,12 @@ String syncChipLabel(SyncStatus s, DateTime now) {
     case SyncPhase.syncing:
       return '正在同步…';
     case SyncPhase.failed:
+      // 🆕 2026-10-10：401（[SyncStatus.needsRelogin]）**不能显示成「同步失败」**——
+      //  · 「失败」暗示「等会儿/再试一次就好了」⇒ 用户会**反复点**，而它**永远不会好**
+      //    （token 已被服务端清掉，重试还是同一个失效 token）。
+      //  · 文案必须说出**唯一有效的动作**（重新登录），否则就是「静默失败 + 无出口」。
+      // 📄 `docs/review/device-sync-and-profile-failure-2026-10-10.md`
+      if (s.needsRelogin) return '登录已失效 · 需重新登录';
       return '同步失败';
     case SyncPhase.ok:
       final at = s.lastOkAt;
@@ -163,6 +194,11 @@ String? syncStatusSummary(SyncStatus s, DateTime now) {
     case SyncPhase.failed:
       final at = s.lastOkAt;
       final when = at == null ? '' : '（上次成功：${relativeSyncLabel(at, now)}）';
+      // 🆕 2026-10-10：401 时**不说「同步失败」** —— 那不是「失败」，是「**没资格/没凭据**」，
+      //    而且给的动作完全不同（重新登录 vs 重试）。文案必须自带出口。
+      if (s.needsRelogin) {
+        return '${s.lastError ?? '登录状态已失效'}$when';
+      }
       return '同步失败${s.lastError == null ? '' : '：${s.lastError}'}$when';
     case SyncPhase.idle:
     case SyncPhase.skipped:

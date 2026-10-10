@@ -152,7 +152,21 @@ import 'package:sqflite_common/sqlite_api.dart';
 /// ⚠️ **同时必须升版本号**：真机上此刻的库可能是 **v9** ⇒ 版本不变则不触发 `onUpgrade`
 ///    ⇒ 两列加不上、新表建不出（**静默**：界面上表现为「查词次数不涨 / 成就日期还是今天」）。
 ///    ✅ 守护断言：`verify_userdb_migration.dart` 的 `fromVersion: 9` 路径。
-const int kUserDbVersion = 10;
+///
+/// ## v10 → v11（2026-10-10）同步游标移入本库
+///
+/// | 变更 | 类型 | 迁移方式 |
+/// |---|---|---|
+/// | 🆕 `sync_cursor`（增量同步游标，单行表）| 🟢 **纯新增表** ⇒ 重跑脚本即可 |
+///
+/// 🔑 **不需要写 `onUpgrade` 分支** —— `onUpgrade` 的第 ② 步会重跑全量幂等脚本，
+///    而 `sync_cursor` 是 `CREATE TABLE IF NOT EXISTS` ⇒ 自动建出。
+///    ⚠️ 与之相对：**只要涉及「改已有表的列」就必须写分支**（v6/v8/v10 的教训）。
+/// ⚠️ **仍必须升版本号**（10 → 11）：真机上此刻的库是 **v10** ⇒
+///    版本不变 ⇒ `onUpgrade` 根本不触发 ⇒ 表建不出（**静默**）。
+/// ✅ 守护断言：`verify_userdb_migration.dart` 的 `fromVersion: 10` 路径。
+/// 📄 依据：`docs/review/device-sync-and-profile-failure-2026-10-10.md` §四 D
+const int kUserDbVersion = 11;
 
 /// `user.db` 的文件名（调用方拼路径用）。
 const String kUserDbFileName = 'user.db';
@@ -329,6 +343,11 @@ Future<Database> openUserDb({
             ddl: 'INTEGER NOT NULL DEFAULT 1 CHECK (pending_push IN (0, 1))',
           );
         }
+
+        // ✅ v11（`sync_cursor`）**故意不写分支**：它是**纯新增表**，
+        //    下面的第 ② 步重跑全量幂等脚本就会建出它。
+        //    📌 判据：**只有「改已有表的列」才需要版本分支**；新增表靠幂等脚本。
+        //    ⚠️ 反过来说：若哪天给本表**加列**，就必须在这里补 `oldVersion < 12` 分支。
 
         // ── ② **再**重跑全量幂等脚本：建出缺失的表 / 索引 ──
         // 🔑 位置在「补列」**之后**（理由见上）。

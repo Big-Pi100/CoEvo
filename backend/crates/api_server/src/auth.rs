@@ -278,13 +278,43 @@ pub fn register(
     })
 }
 
-/// Delete all existing tokens for a user (to prevent token table bloat)
-fn cleanup_old_tokens(conn: &rusqlite::Connection, user_id: &str) {
+/// 单个账号**同时**允许登录的设备数（2026-10-10 · 白哥定「**最多 3 台**」）。
+///
+/// # 🔴 为什么从「登录即清空全部 token」改成「保留最近 3 个」（2026-10-10）
+///
+/// 旧行为 = **单端登录**。而两台设备会**互相踢** ⇒ 被踢的那台**到处 401**：
+/// 「我的」页整页被替换成「加载失败」（学习记录/成就一起消失），同步则**静默失败**。
+/// ⇒ **「跨设备同步」这个订阅权益在定义上不成立**。
+///
+/// 该冲突 **2026-10-04 的审计报告结论 #4 就已标注「须白哥裁决」**，长期悬空；
+/// 2026-10-10 真机复现（nginx 日志可见三台设备互相踢）后，白哥定为**多端 · 上限 3**。
+pub const MAX_TOKENS_PER_USER: i64 = 3;
+
+/// 把该用户的有效 token 收敛到**最近 [`MAX_TOKENS_PER_USER`] 个**。
+///
+/// # ⚠️ 两个必须遵守的前提（写错任何一个都会静默出错）
+///
+/// ① **排序键必须用 `rowid`，不能用 `created_at`** ——
+///    实测该列**两种格式混存**：老行是 `'2026-10-02 03:09:11'`，
+///    新行（`login` 写的）是 **Unix 秒的字符串** `'1791638643'`。
+///    ⇒ 字典序排序**完全错乱**（`'1…'` < `'2…'`）⇒ 会把**刚签发的** token 判成最旧**踢掉**，
+///    表现为「**一登录就被踢出去**」。`rowid` 是 SQLite 的插入序号（单调递增），不受该脏数据影响。
+///
+/// ② **必须先插入新 token、再调本函数** ——
+///    否则第 4 台登录时，新 token 还没入表，被删的是**已有的那 3 个**之一，
+///    然后才插入新的 ⇒ 净效果虽然是 3 个，但**刚登录前的那个会话被无谓踢掉**；
+///    若再叠加 `LIMIT` 语义写反，就会出现「**登录成功后立刻 401**」。
+///
+/// 失败只记日志不返回错误：**登录本身已经成功**（token 已入库），
+/// 把「限额清理失败」报成登录失败会让用户重试并以为密码错了。
+pub fn enforce_token_limit(conn: &rusqlite::Connection, user_id: &str) {
     if let Err(e) = conn.execute(
-        "DELETE FROM tokens WHERE user_id = ?1",
-        rusqlite::params![user_id],
+        "DELETE FROM tokens WHERE user_id = ?1 AND rowid NOT IN (\
+             SELECT rowid FROM tokens WHERE user_id = ?1 ORDER BY rowid DESC LIMIT ?2\
+         )",
+        rusqlite::params![user_id, MAX_TOKENS_PER_USER],
     ) {
-        tracing::warn!("Failed to clean old tokens for {}: {}", user_id, e);
+        tracing::warn!("enforce_token_limit 失败（user_id={user_id}）: {e}");
     }
 }
 
@@ -319,9 +349,9 @@ pub fn login(conn: &rusqlite::Connection, req: &LoginRequest) -> Result<AuthResp
         return Err(ERR.to_string());
     }
 
-    // Clean up old tokens for this user before creating a new one
-    cleanup_old_tokens(conn, &user_id);
-
+    // 🔴 2026-10-10：**先签发、后限额**（顺序不能反 —— 见 `enforce_token_limit` 的前提 ②）。
+    //    旧行为是「先 `DELETE` 光全部再插新的」= **单端登录**，两台设备互相踢
+    //    ⇒ 被踢那台「我的」页整页失败 + 同步静默失败（真机复现，见 `MAX_TOKENS_PER_USER`）。
     let token = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp();
     let token_id = uuid::Uuid::new_v4().to_string();
@@ -331,6 +361,9 @@ pub fn login(conn: &rusqlite::Connection, req: &LoginRequest) -> Result<AuthResp
         rusqlite::params![token_id, user_id, token, now],
     )
     .map_err(|e| format!("Token insert error: {}", e))?;
+
+    // 收敛到最多 `MAX_TOKENS_PER_USER` 台；超出则踢**最旧**的那台（不是刚登录的这台）。
+    enforce_token_limit(conn, &user_id);
 
     Ok(AuthResponse {
         user_id,
@@ -366,10 +399,18 @@ pub struct ChangePasswordRequest {
 ///
 /// ## ② 的实现取舍（如实标注）
 ///
-/// 本系统的 `login` 本就调 `cleanup_old_tokens`（删该用户**全部** token 再建新的）
-/// ⇒ **实际上是单会话模型**。所以这里用「删掉除当前 token 之外的全部」表达
-/// 「其他设备都登出、当前这台继续用」—— 与用户预期一致，且不依赖「是否真的多端」。
-/// ⚠️ 若将来为「跨设备同步」放宽为多会话，本函数**不用改**（语义已正确）。
+/// 🔴 **2026-10-10 更新（原注释已过时，会保护错误）**：
+/// `login` **不再**是单会话 —— 已放宽为「**最多 3 台**」（`MAX_TOKENS_PER_USER`）。
+/// 但本函数**语义仍然正确、且不需改动**：改密码属**安全操作** ⇒
+/// 应当失效**其他全部**设备、只留当前这台。
+///
+/// ⚠️ 这与 `login` 的「**不踢**旧设备」是**两件不同的事**，别顺手把它们统一：
+/// · `login`   = 日常登录 ⇒ 保留多端（跨设备同步的前提）
+/// · `change_password` = 凭据变更 ⇒ 必须收回其他会话（否则「改密码防盗」防不住）
+/// · `reset_password`  = 忘记密码（凭据已不可信）⇒ 收回**全部**（见其实现）
+///
+/// 📌 判据：**「同一个动作（删 token）」在不同业务语义下结论相反** ——
+/// 不能因为共用一条 SQL 就套同一个策略。
 ///
 /// ## 为什么「原密码错误」可以明说（不像登录那样含糊）
 ///
@@ -1521,7 +1562,10 @@ mod tests {
         let conn = setup_db();
         let (uid, token_a) = seed_user(&conn, "cp4@example.com", "old123");
 
-        // 模拟第二台设备登录（直接插 token —— 走 login 会清掉全部，不便构造多会话）
+        // 模拟第二台设备登录（直接插 token 构造多会话）。
+        // ⚠️ 2026-10-10 前这里写的是「走 login 会清掉全部」—— 该理由**已失效**
+        //    （`login` 现为多端、最多 `MAX_TOKENS_PER_USER` 台）。直接插 token 仍可用，
+        //    但**理由变了**：这里要的是「**不受 login 的限额逻辑干扰**」的确定性构造。
         conn.execute(
             "INSERT INTO tokens (id, user_id, token, created_at) VALUES ('tb', ?1, 'token-b', 0)",
             rusqlite::params![uid],
@@ -1556,6 +1600,179 @@ mod tests {
             0,
             "🔴 其他会话必须失效（防被盗号会话留存）"
         );
+    }
+
+    // ═══════════════════ 多端登录（2026-10-10 · 白哥定「最多 3 台」）═══════════════════
+    //
+    // 📄 背景：`docs/review/device-sync-and-profile-failure-2026-10-10.md`
+    //   旧行为（登录删光全部 token）⇒ 两台设备互相踢 ⇒ 被踢那台「我的」页整页 401、
+    //   同步静默失败 ⇒ **「跨设备同步」这个订阅权益在定义上不成立**。
+
+    /// 3 台以内**全部保留** —— 这正是「跨设备同步」的前提。
+    #[test]
+    fn test_login_keeps_up_to_three_devices() {
+        let conn = setup_db();
+        let (uid, token_reg) = seed_user(&conn, "multi3@example.com", "pw123456");
+
+        let t2 = login(
+            &conn,
+            &LoginRequest {
+                email: "multi3@example.com".into(),
+                password: "pw123456".into(),
+            },
+        )
+        .unwrap()
+        .token;
+        let t3 = login(
+            &conn,
+            &LoginRequest {
+                email: "multi3@example.com".into(),
+                password: "pw123456".into(),
+            },
+        )
+        .unwrap()
+        .token;
+
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tokens WHERE user_id = ?1",
+                rusqlite::params![uid],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 3, "3 台应全部保留（旧行为只剩 1 个）");
+        for t in [&token_reg, &t2, &t3] {
+            assert!(verify_token(&conn, &uid, t), "3 台以内每台都应有效");
+        }
+    }
+
+    /// 第 4 台登录 ⇒ 踢**最旧**那台；总数仍为 3，且**刚登录的必须有效**。
+    ///
+    /// ⚠️ 这条同时兜住一个易错点：若把「先插新 token 再限额」写反成「先限额再插」，
+    ///    或把 `ORDER BY rowid DESC` 写成 `ASC`，都会让**刚登录的这台立刻 401**
+    ///    （用户表现：「一登录就被踢出去」）。
+    #[test]
+    fn test_login_beyond_three_evicts_oldest_and_keeps_newest() {
+        let conn = setup_db();
+        let (uid, t1) = seed_user(&conn, "multi4@example.com", "pw123456");
+
+        let mut tokens = vec![t1];
+        for _ in 0..3 {
+            tokens.push(
+                login(
+                    &conn,
+                    &LoginRequest {
+                        email: "multi4@example.com".into(),
+                        password: "pw123456".into(),
+                    },
+                )
+                .unwrap()
+                .token,
+            );
+        }
+
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tokens WHERE user_id = ?1",
+                rusqlite::params![uid],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 3, "上限 3：超出的应被清掉");
+        assert!(
+            !verify_token(&conn, &uid, &tokens[0]),
+            "🔴 应踢**最旧**的那台"
+        );
+        for t in &tokens[1..] {
+            assert!(verify_token(&conn, &uid, t), "最近 3 台都必须有效");
+        }
+    }
+
+    /// 🔴 **判别性用例**：限额必须按 **`rowid`（插入顺序）** 排序，**不能按 `created_at`**。
+    ///
+    /// 生产中 `tokens.created_at` **两种格式混存**：
+    ///   · 老行 = `'2026-10-02 03:09:11'`（字典序以 `'2'` 开头）
+    ///   · 新行（`login` 写的）= Unix 秒的**字符串** `'1791638643'`（以 `'1'` 开头）
+    /// ⇒ 字典序里 `'2…' > '1…'` ⇒ 按 `created_at DESC` 会保留**全部老行**、
+    ///   把**刚登录的那台**排到最后**踢掉** ⇒ 现象是「**登录成功却立刻 401**」。
+    ///
+    /// 本用例正是构造出这个形状：3 条老格式 + 1 条新登录 ⇒ 断言新登录那台**必须**有效。
+    #[test]
+    fn test_token_limit_orders_by_rowid_not_created_at() {
+        let conn = setup_db();
+        let (uid, _) = seed_user(&conn, "mixedfmt@example.com", "pw123456");
+        // 清掉 register 那条，改成「3 条老格式」的存量形状
+        conn.execute(
+            "DELETE FROM tokens WHERE user_id = ?1",
+            rusqlite::params![uid],
+        )
+        .unwrap();
+        for i in 0..3 {
+            conn.execute(
+                "INSERT INTO tokens (id, user_id, token, created_at) \
+                 VALUES (?1, ?2, ?3, '2026-10-02 03:09:11')",
+                rusqlite::params![format!("old{i}"), uid, format!("tok-old-{i}")],
+            )
+            .unwrap();
+        }
+
+        // 第 4 台登录（新格式 created_at）
+        let fresh = login(
+            &conn,
+            &LoginRequest {
+                email: "mixedfmt@example.com".into(),
+                password: "pw123456".into(),
+            },
+        )
+        .unwrap()
+        .token;
+
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tokens WHERE user_id = ?1",
+                rusqlite::params![uid],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 3, "上限 3");
+        assert!(
+            verify_token(&conn, &uid, &fresh),
+            "🔴 刚登录的 token 必须有效 —— 若按 created_at 排序，它会因 '1…' < '2…' 被误判为最旧而踢掉"
+        );
+        assert!(
+            !verify_token(&conn, &uid, "tok-old-0"),
+            "被踢的应是**最老的那条**（rowid 最小），而不是刚登录的"
+        );
+    }
+
+    /// `enforce_token_limit` 幂等：反复调用不会把有效的 3 台继续删下去。
+    #[test]
+    fn test_enforce_token_limit_is_idempotent() {
+        let conn = setup_db();
+        let (uid, t1) = seed_user(&conn, "idem@example.com", "pw123456");
+        let t2 = login(
+            &conn,
+            &LoginRequest {
+                email: "idem@example.com".into(),
+                password: "pw123456".into(),
+            },
+        )
+        .unwrap()
+        .token;
+
+        for _ in 0..5 {
+            enforce_token_limit(&conn, &uid);
+        }
+        assert!(verify_token(&conn, &uid, &t1));
+        assert!(verify_token(&conn, &uid, &t2));
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tokens WHERE user_id = ?1",
+                rusqlite::params![uid],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 2, "不足上限时不应删任何东西");
     }
 
     #[test]

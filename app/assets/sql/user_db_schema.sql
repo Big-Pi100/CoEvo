@@ -700,6 +700,42 @@ CREATE INDEX IF NOT EXISTS idx_setting_pending ON setting_sync (pending_push)
   WHERE pending_push = 1;
 
 -- ─────────────────────────────────────────────────────────────
+-- 🆕 v11（2026-10-10）`sync_cursor` —— 增量同步的**游标**（单行表）
+-- ─────────────────────────────────────────────────────────────
+-- 依据：`docs/review/device-sync-and-profile-failure-2026-10-10.md` §四 D
+--
+-- # 🔴 它解决什么（一个**不报错**的坑）
+--
+-- 游标 `since` 原先存在 `SharedPreferences`（键 `coevo_sync_since.<userId>`），
+-- 而**数据**在本库 ⇒ **两者生命周期不一致**：
+--   · 只要发生「库被重建、而 prefs 还在」（迁移异常重建 / 库文件损坏 / 手动清库），
+--     游标就会**停在一个很新的时间点**，而数据已经没了
+--   · 此后 pull 只取 `> 游标` 的增量 ⇒ **历史永远拉不回来**，且**全程不报错**
+--     （用户看到的是「学习记录/生词本一直是空的」，与「从没同步过」无法区分）
+--
+-- ⇒ 把游标放进**本库**、并让本表属于 `kUserOwnedTables`
+--   （见 `services/local_data_owner.dart`）⇒ **游标与数据由结构保证同生共死**，
+--   不依赖任何人「记得清」。
+--
+-- # 🔑 迁移语义（有意如此）
+--
+-- 升级到 v11 时本表**是空的** ⇒ 下一次同步 `since == null` ⇒ **全量重拉**。
+--   · 这是**安全且自愈**的：push/pull 都幂等（各表主键 + 合并口径），
+--     重拉只是把已有的值再合并一遍
+--   · 而且它顺手修掉「升级前就已经存在的空洞」——**这正是选「空表」而不是
+--     「把 prefs 里的老游标搬过来」的原因**：搬过来会把脏游标一起带进新结构。
+--   ⚠️ 代价 = 升级后第一次同步的数据量变大（本项目量级：几百~几千行）。
+--
+-- # 为什么是单行表（`CHECK (id = 1)`）
+--
+-- 游标是「**本库的一个标量**」，不是集合。用单行表 + CHECK 让「写第二行」
+-- 在**数据库层**就失败 —— 相比「约定只写一行」，这是不可能忘的写法。
+CREATE TABLE IF NOT EXISTS sync_cursor (
+  id    INTEGER PRIMARY KEY CHECK (id = 1),
+  since TEXT NOT NULL
+);
+
+-- ─────────────────────────────────────────────────────────────
 -- 说明（不在本次范围）
 -- ─────────────────────────────────────────────────────────────
 -- · **`article`** —— v2 已改名为 `content_cache` 并修正语义，属 Phase 3
@@ -786,6 +822,17 @@ CREATE INDEX IF NOT EXISTS idx_setting_pending ON setting_sync (pending_push)
 --   ⚠️ 同时**升 `kUserDbVersion`（9 → 10）** —— 否则真机上「恰好是 v9」的库不触发 `onUpgrade`
 --      ⇒ 两列加不上、新表建不出（**而这是静默的**）。
 --      ✅ 守护断言：`verify_userdb_migration.dart` 的 `fromVersion: 9` 路径。
+--
+-- v1.11 (2026-10-10) **同步游标移入本库** —— 🆕 `sync_cursor`（单行表）：
+--   · 原先存 `SharedPreferences`（`coevo_sync_since.<userId>`）⇒ **与数据生命周期不一致**
+--     ⇒ 「库被重建、prefs 还在」时游标会指向未来 ⇒ **历史永远拉不回且不报错**
+--   · 本表纳入 `kUserOwnedTables` ⇒ **结构上**保证与数据同生共死
+--   · 🔴 迁移语义：升级后本表为空 ⇒ 下次同步 `since == null` ⇒ **全量重拉**（幂等、自愈）
+--     这是**有意**的，不是遗漏 —— 见 `sync_provider.dart` 的说明
+--   · ⚠️ **同时升 `kUserDbVersion`（10 → 11）** —— 同 v1.10 的坑：
+--     「恰好是 v10」的库不升版本就不会建出本表 ⇒ **而这是静默的**
+--   · ✅ 守护断言：`verify_userdb_migration.dart` 的 `fromVersion: 10` 路径
+--   · 📄 依据：`docs/review/device-sync-and-profile-failure-2026-10-10.md` §四 D
 --
 -- 🔴🔴 **升级注意（本次起「已有用户库」必须走迁移）**
 --    v1.2 时本库尚无任何端创建，故 version 停在 1。

@@ -30,6 +30,34 @@ import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
 
+/// 带 **HTTP 状态码** 的 API 异常（2026-10-10 新增）。
+///
+/// # 为什么必须有（而不是沿用 `Exception('Profile API: 401')`）
+///
+/// 调用方需要**区分**「网络不通」与「**登录态已失效（401）**」——
+/// 前者重试有意义，后者**重试永远失败**，必须给「重新登录」的出口。
+///
+/// 🔴 而旧实现把状态码**拼进字符串**（`'Profile API: $statusCode'`）⇒ 调用方只能
+///    `e.toString().contains('401')` —— 这属于「**用字符串当类型**」：
+///    任何一个改文案的人都能让它**静默失效**（不再识别 401 ⇒ 出口消失且不报错）。
+///    判据：**能用类型表达的判别，不要用字符串**。
+class ApiStatusException implements Exception {
+  final int statusCode;
+
+  /// 触发它的接口路径（便于日志定位，不参与判定）。
+  final String path;
+
+  const ApiStatusException(this.statusCode, this.path);
+
+  /// 🔑 401 = **凭证无效**（本项目里最常见的原因：**同一账号在别的设备上登录**，
+  ///    旧 token 被 `enforce_token_limit` / 改密 / 重置密码清掉）。
+  ///    ⚠️ 这是**终态**，不是瞬时错误 ⇒ 界面必须给出口，不能只给「重试」。
+  bool get isUnauthorized => statusCode == 401;
+
+  @override
+  String toString() => 'ApiStatusException($statusCode @ $path)';
+}
+
 /// 个人页所需的用户接口客户端（**只含 2 个方法**，见文件头注释）。
 class UserApiClient {
   final String baseUrl;
@@ -52,14 +80,15 @@ class UserApiClient {
 
   /// 读当前用户资料（**调用方用到的字段**：`display_name` / `real_name` / `phone`）。
   ///
-  /// 非 200 抛异常（与 `chat_client` 原实现一致 —— 调用方在 `try/catch` 里兜）。
+  /// 非 200 抛 [ApiStatusException]（带状态码，供调用方区分 401 与其他错误）。
   Future<Map<String, dynamic>> getProfile() async {
+    final path = '/api/user/$userId/profile';
     final resp = await http.get(
-      Uri.parse('$baseUrl/api/user/$userId/profile'),
+      Uri.parse('$baseUrl$path'),
       headers: _authHeaders,
     ).timeout(ApiConfig.requestTimeout);
     if (resp.statusCode != 200) {
-      throw Exception('Profile API: ${resp.statusCode}');
+      throw ApiStatusException(resp.statusCode, path);
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }

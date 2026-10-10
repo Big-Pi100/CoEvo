@@ -253,6 +253,40 @@ CREATE TABLE IF NOT EXISTS local_meta (
 );
 ''';
 
+/// **v10 的 schema 快照**（2026-10-10 · 同步覆盖面补齐）。
+///
+/// 🔴 与 `_v9Schema` 的取舍**方向相反**，别照抄：
+///    · `_v9Schema` 要「**不含** v10 的变更」（它是被测变更之前的状态）；
+///    · `_v10Schema` 是「**v10 发布出去之后**的真实样子」⇒ 必须**如实包含**
+///      v10 加的那两列 + 那张表，否则它就不是 v10。
+///
+/// ⚠️ 为什么非要如实：本脚本有几条断言是**无条件**的
+///    （如「`lookup_event.uid` 列已存在」）。若 v10 快照缺了 `uid`，
+///    那么「v10 → v11」这条路径里 `oldVersion < 10` 为假 ⇒ `ALTER` 不会跑
+///    ⇒ 升级后 `uid` 仍然不存在 ⇒ **那条断言会红，而红的是快照、不是实现**。
+///    📌 判据（同上）：**前提类断言的粒度 = 被测变更的粒度**。
+///
+/// 🔑 写法上：v10 的三处列变更**本来就是 `ALTER`**（见 `user_db.dart` 的
+///    `oldVersion < 10` 分支）⇒ 这里也用 `ALTER` 复现，与实现同形。
+///    （只用 `CREATE TABLE IF NOT EXISTS` 是**盖不掉**已有表的，所以必须 `ALTER`。）
+///
+/// ⚠️ v11 的变更只有一处**纯新增表**（`sync_cursor`）⇒ 本快照**不含**它。
+const String _v10Schema = '''
+$_v9Schema
+ALTER TABLE lookup_event ADD COLUMN uid TEXT;
+ALTER TABLE lookup_event ADD COLUMN pending_push INTEGER NOT NULL DEFAULT 1 CHECK (pending_push IN (0, 1));
+ALTER TABLE achievement_unlock ADD COLUMN pending_push INTEGER NOT NULL DEFAULT 1 CHECK (pending_push IN (0, 1));
+CREATE TABLE IF NOT EXISTS setting_sync (
+  key          TEXT    PRIMARY KEY,
+  value        TEXT    NOT NULL,
+  updated_at   TEXT    NOT NULL,
+  pending_push INTEGER NOT NULL DEFAULT 1
+               CHECK (pending_push IN (0, 1))
+);
+CREATE INDEX IF NOT EXISTS idx_setting_pending ON setting_sync (pending_push)
+  WHERE pending_push = 1;
+''';
+
 /// **v7 的 schema 快照**（2026-10-08 · 划线 + 翻译缓存）。
 ///
 /// 🔴 与 `_v6Schema` **同一条理由**：真机上的 `user.db` 此刻**恰好就是 v7**
@@ -496,6 +530,11 @@ Future<void> runUpgradeCase({
     check('🔴 前提成立：v$fromVersion 老库**不含** setting_sync（v10 才加）',
         !oldTables.contains('setting_sync'));
   }
+  if (fromVersion < 11) {
+    // 🆕 v11（2026-10-10）：游标表。**纯新增表** ⇒ 前提只查「表在不在」。
+    check('🔴 前提成立：v$fromVersion 老库**不含** sync_cursor（v11 才加）',
+        !oldTables.contains('sync_cursor'));
+  }
 
   check('老库已有 bookmark 数据（2 条）',
       firstInt(await old.rawQuery('SELECT count(*) AS n FROM bookmark')) == 2);
@@ -562,6 +601,12 @@ Future<void> runUpgradeCase({
       achCols.contains('pending_push'), achCols.join(','));
   check('🔴 setting_sync 已创建（v1.10 新表 —— 设置同步的载体）',
       tables.contains('setting_sync'));
+  // 🆕 v11（2026-10-10）：`sync_cursor` —— **「加表」的守护**（与 v7/v9 同族）。
+  //    🔴 它建不出来的后果是**静默**的：游标写不进库 ⇒ 每次同步都被当成「首次」
+  //       ⇒ 每轮都**全量重拉**（功能不坏，但流量与耗时白涨，且没人会发现）。
+  //    另一半守护在 `verify_local_owner`（该表必须 ∈ `kUserOwnedTables`）。
+  check('🔴 sync_cursor 已创建（v1.11 新表 —— 增量同步游标，与数据同生命周期）',
+      tables.contains('sync_cursor'));
   check('user_version 已升到 $kUserDbVersion', ver == kUserDbVersion, '$ver');
 
   section('【4】🔑 全量表清单（从 schema 自动提取 → 将来加表自动覆盖）');
@@ -975,10 +1020,26 @@ Future<void> main() async {
     expectedTables: expectedTables,
   );
 
+  // 🔴🆕 **v10 → 当前**（2026-10-10 加）：真机上此刻**恰好是 v10** 的库最多
+  //    （10-10 出的包把版本升到了 10 —— 见 `kUserDbVersion` 注释）。
+  //    v11 的变更只有**一处**：🆕 `sync_cursor`（**纯新增表**，靠重跑幂等脚本）。
+  //    🔑 与 v10 不同，**没有加列** ⇒ 不需要 `ALTER` 分支 —— 而这条路径正是
+  //       「**没有分支也应当能过**」的守护：若哪天有人误以为「必须写分支」
+  //       而写了个错的，这里会红。
+  //    📌 判据（同 v7/v9/v10）：「**最新那个版本**」最容易被漏 ——
+  //       它看起来「已经是新的了」，而**用户此刻恰好就在那儿**。
+  await runUpgradeCase(
+    factory: factory,
+    schemaSql: schemaSql,
+    fromVersion: 10,
+    oldSchema: _v10Schema,
+    expectedTables: expectedTables,
+  );
+
   print('');
   print('═' * 74);
   if (_failures.isEmpty) {
-    print('✅ 全部通过：$_pass 项（v1…v9 → v$kUserDbVersion 九条路径）');
+    print('✅ 全部通过：$_pass 项（v1…v10 → v$kUserDbVersion 十条路径）');
   } else {
     print('🔴 失败 ${_failures.length} 项 / 通过 $_pass 项：');
     for (final f in _failures) {

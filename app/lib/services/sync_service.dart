@@ -64,6 +64,7 @@ import 'highlight_repository.dart';
 import 'review_list_query.dart';
 import 'review_spelling.dart';
 import 'settings_sync.dart';
+import 'sync_errors.dart';
 import 'sync_merge.dart' as m;
 import 'user_word_repository.dart';
 
@@ -153,6 +154,21 @@ class SyncReport {
   /// 是否成功。`false` 时 [error] 一定有值。
   bool ok = true;
   String? error;
+
+  /// 🆕 2026-10-10：失败原因是**凭据失效（HTTP 401）**。
+  ///
+  /// # 为什么不让上层去 `error.contains('401')`
+  ///
+  /// 🔴 「用字符串当类型」= 改一次文案判定就**静默失效**。
+  ///    这里由 `catch (e) { e is SyncUnauthorized }` **当场**从类型取出，
+  ///    字符串只用于**展示**，不参与任何判定。
+  ///
+  /// # 为什么要与普通失败分开
+  ///
+  /// 401 是**终态**（token 已被服务端清掉）——「重试」永远失败，
+  /// 唯一出口是**重新登录**。混进普通失败 ⇒ 用户反复重试、无从知晓。
+  /// 📄 `docs/review/device-sync-and-profile-failure-2026-10-10.md`
+  bool authExpired = false;
 
   int get pushedTotal =>
       pushedReviewEvents +
@@ -485,6 +501,9 @@ class SyncService {
     } catch (e) {
       r.ok = false;
       r.error = '$e';
+      // 🆕 2026-10-10：把「**凭据失效**」这个语义从异常类型带出来 ——
+      // 它是**终态**（重试永远失败），上层必须给「重新登录」而不是「重试」。
+      r.authExpired = e is SyncUnauthorized;
       _say('sync.push 失败: $e');
     }
     return r;
@@ -751,6 +770,7 @@ class SyncService {
     } catch (e) {
       r.ok = false;
       r.error = '$e';
+      r.authExpired = e is SyncUnauthorized; // 🆕 同 `pushOnce`：凭据失效是终态
       _say('sync.pull 失败: $e');
     }
     return r;

@@ -34,26 +34,36 @@ import 'sync_status_provider.dart';
 import 'user_db_provider.dart';
 import 'word_db_provider.dart' show wordQueryProvider, WordDbReady;
 
-/// **pull 游标**在 `SharedPreferences` 里的键前缀（实际键带 `userId` 后缀）。
+/// 🔴 **已废弃（v11 起）**：pull 游标原先在 `SharedPreferences` 里的键前缀
+/// （实际键 = 本前缀 + `userId`）。
 ///
-/// 🔑 为什么放偏好设置而不是 `user.db`：
-///    它是**单机状态**（这台设备拉到哪了），不是用户资产 ⇒ 不该进同步。
+/// # 为什么废弃（2026-10-10）
 ///
-/// # 🔴 为什么键里必须带 `userId`（而不是「登出时清掉」）
+/// 游标已搬进 `user.db` 的 `sync_cursor` 单行表 —— 因为**游标必须与数据同生命周期**。
+/// 存 prefs 时，一旦出现「**库被重建、而 prefs 还在**」（迁移异常重建 / 库文件损坏 /
+/// 手动清库），游标就会停在一个**很新的时间点**，而历史数据已经没了
+/// ⇒ 此后 pull 只取增量 ⇒ **历史永远拉不回来，且全程不报错**。
+///
+/// ⚠️ **本常量只剩一个用途**：清掉升级前遗留的旧键
+///    （见 [clearLegacySyncCursorPrefs]）。**新代码不得再读写它**。
+///
+/// # 留档：当年为什么选「键带 userId」而不是「登出时清」
 ///
 /// 游标是**账号维度**的状态。若只用一个固定键，换账号后会带着**上一个账号的游标**
-/// 去拉数据（形如「从 2026-10-06T10:00 之后」）⇒ 新账号在此之前的全部数据
-/// **都拉不到**，而用户看到的是「同步正常，只是生词本少了很多」，**没有任何报错**。
+/// 去拉数据 ⇒ 新账号在此之前的全部数据**都拉不到**，而用户看到的是
+/// 「同步正常，只是生词本少了很多」，**没有任何报错**。
 ///
 /// | 方案 | 换账号 | 注销后重注册 | 同账号再登录 |
 /// |---|---|---|---|
 /// | 固定键 + 登出时清 | ✅ | ✅ | ⚠️ 白丢增量（要全量重拉）|
-/// | **键带 userId** ✅ | ✅ 天然隔离 | ✅ 新 userId = 新键 | ✅ **保留增量** |
+/// | **键带 userId** | ✅ 天然隔离 | ✅ 新 userId = 新键 | ✅ **保留增量** |
 ///
-/// ⇒ 带 `userId` **不需要任何清理逻辑**（少一个「忘了清」的漏点，也少一段死代码）。
-/// 📌 同族判据：「**用结构隔离**优于「用流程清理」」——
-///    前者不可能忘，后者一定有人忘（本项目已多次踩到「靠人记得」的机制）。
-const String kSyncCursorPrefsKeyPrefix = 'coevo_sync_since.';
+/// 📌 而同族判据「**用结构隔离**优于『用流程清理』」在 v11 被推到了更强的一层：
+///    **让游标活在与数据同一个库里** —— 连「隔离」都不需要，因为它与数据**同生共死**。
+///    （旧方案仍需一条「换账号时记得清」的流程；新方案**没有这个漏点**。）
+///
+/// 📄 依据：`docs/review/device-sync-and-profile-failure-2026-10-10.md` §四 D
+const String kLegacySyncCursorPrefsKeyPrefix = 'coevo_sync_since.';
 
 /// 组装一个 [SyncService]。
 ///
@@ -107,11 +117,41 @@ Future<SyncService?> buildSyncService(
       since: since,
       deviceId: deviceId,
     ),
-    // 🔑 键带 `userId` ⇒ 换账号天然隔离（见 `kSyncCursorPrefsKeyPrefix` 的说明）
-    readCursor: () async =>
-        prefs.getString('$kSyncCursorPrefsKeyPrefix$userId'),
-    writeCursor: (since) async =>
-        prefs.setString('$kSyncCursorPrefsKeyPrefix$userId', since),
+    // 🔴 2026-10-10：游标**从 prefs 移进 `user.db`**（单行表 `sync_cursor`）。
+    //
+    // # 为什么必须搬（一个**不报错**的坑）
+    //
+    // 旧做法存 `SharedPreferences`（键 `coevo_sync_since.<userId>`），**数据**却在 `user.db`
+    // ⇒ **两者生命周期不一致**：只要出现「库被重建、而 prefs 还在」
+    //   （迁移异常重建 / 库文件损坏 / 手动清库），游标就会停在一个**很新的时间点**，
+    //   而历史数据已经没了 ⇒ 此后 pull **只取增量** ⇒ **历史永远拉不回来，且全程不报错**
+    //   （表现与「从没同步过」完全一样）。
+    //
+    // 🔑 现在：游标与数据同在 `user.db`，且 `sync_cursor` 属于 `kUserOwnedTables`
+    //   ⇒ 换账号 / 清数据时**一起被清** —— 由**结构**保证，不依赖任何人「记得清」。
+    //   📌 判据：**「用结构隔离」优于「用流程清理」**（同 `kSyncCursorPrefsKeyPrefix` 段里的取向）。
+    //
+    // 🔑 迁移语义（**有意**如此）：升级到 v11 时该表为空 ⇒ 下一次同步 `since == null`
+    //   ⇒ **全量重拉**。这是幂等的（各表主键 + 合并口径），而且会**顺手补上**
+    //    升级前就已经存在的空洞 —— 这正是**不把 prefs 老游标搬过来**的原因。
+    // 📄 `docs/review/device-sync-and-profile-failure-2026-10-10.md` §四 D
+    readCursor: () async {
+      final rows =
+          await userDb.rawQuery('SELECT since FROM sync_cursor WHERE id = 1');
+      if (rows.isEmpty) return null;
+      final v = rows.first['since'];
+      // 空串视为「没有游标」⇒ 首次同步（拉全部）—— 与 `SyncPullHttp` 的约定一致
+      // （`api/sync_client.dart` 里 `since` 为空则不传该参数）。
+      return (v is String && v.isNotEmpty) ? v : null;
+    },
+    writeCursor: (since) async {
+      // 单行表：`id` 有 `CHECK (id = 1)` ⇒ 只能有一个游标（写第二行会失败）。
+      await userDb.rawInsert(
+        'INSERT INTO sync_cursor (id, since) VALUES (1, ?) '
+        'ON CONFLICT(id) DO UPDATE SET since = excluded.since',
+        [since],
+      );
+    },
     deviceId: deviceId,
     log: (m) => debugPrint('[sync] $m'),
     // 🔑 拼写解析的第 ⑤ 级（正式词）要查 `word.db` —— 那是**另一个库**，
@@ -165,20 +205,35 @@ Future<void> _writeSyncedSetting(
   }
 }
 
-/// 🆕 2026-10-09：删掉**某个账号**的 pull 游标。
+/// 🗑 2026-10-10：**本函数已改名 + 改语义** —— 原为 `clearSyncCursorFor`（删 prefs 里
+/// **这个账号**的 pull 游标）。
 ///
-/// # 谁需要它
-/// `providers/local_data_owner_provider.dart` —— **换账号清空本地数据之后必须调**：
-///   游标是「这台设备已经拉到哪了」，本地数据刚被清空后还留着旧游标，
-///   新账号第一次 pull 只会拿到「游标之后」的增量 ⇒ **绝大多数数据永远拉不回来**，
-///   而用户看到的是「同步正常，只是东西少了很多」（**静默**）。
+/// # 为什么不再需要「删游标」了（v11 起）
 ///
-/// 🔑 删的是**同一个账号**上次留下的那个键（键带 `userId`，见
-///    [kSyncCursorPrefsKeyPrefix]）—— 不会影响其它账号的游标。
-Future<void> clearSyncCursorFor(WidgetRef ref, String userId) async {
+/// 游标已从 `SharedPreferences` 搬进 `user.db` 的 `sync_cursor` 表
+/// （见 [buildSyncService] 里 `readCursor` 的说明），而该表属于
+/// `kUserOwnedTables` ⇒ **换账号清数据时它已经被一起清掉了**
+/// （`local_data_owner` 的 `clearUserOwnedData`）。⇒ 这里**没有事要做**。
+///
+/// 🔑 这正是一直在追求的那条：**「用结构保证」取代「用流程清理」** ——
+///    旧写法的风险不是「清得不干净」，而是**将来新增一条清数据的路径时忘了调它**。
+///
+/// # 保留本函数的唯一理由：清掉**升级前遗留**的 prefs 键
+///
+/// v11 之前装的版本会在 `SharedPreferences` 里留下 `coevo_sync_since.<userId>`。
+/// 它**已不再被读取**（新代码只认 `sync_cursor` 表），但留着会误导后来的人
+/// （grep 到它以为「游标还在 prefs 里」）。⇒ 顺手删掉。
+///
+/// ⚠️ **不是**「删游标」：删它**不会**影响增量（真正的游标在库里）。
+///    所以本函数失败**也不影响正确性** —— 调用方可以只记日志。
+Future<void> clearLegacySyncCursorPrefs(WidgetRef ref, String userId) async {
   if (userId.isEmpty) return;
   final prefs = await SharedPreferences.getInstance();
-  await prefs.remove('$kSyncCursorPrefsKeyPrefix$userId');
+  // 只删旧键：`coevo_sync_since.<userId>`（新代码再也不读它）
+  final legacyKey = '${kLegacySyncCursorPrefsKeyPrefix}$userId';
+  if (prefs.containsKey(legacyKey)) {
+    await prefs.remove(legacyKey);
+  }
 }
 
 /// **登录成功后**触发一次同步（`void` —— 调用方不必 await，见下）。
@@ -271,7 +326,12 @@ Future<void> _runSync(
     if (report.ok) {
       status.finishOk(report);
     } else {
-      status.finishFailed(report.error ?? '未知原因');
+      // 🆕 2026-10-10：把「凭据失效」这个语义一路带到 UI（[SyncReport.authExpired]）
+      // ⇒ 胶囊显示「登录已失效 · 需重新登录」而不是含糊的「同步失败」。
+      status.finishFailed(
+        report.error ?? '未知原因',
+        needsRelogin: report.authExpired,
+      );
     }
 
     // 🔴🔴 **写端通知读端** —— pull 改了本地库 ⇒ 读端必须重算。
@@ -339,7 +399,11 @@ Future<void> _runSync(
     }
   } catch (e) {
     debugPrint('[sync] $tag 失败（不影响用户）：$e');
-    status.finishFailed(_friendlySyncError(e));
+    // 🆕 2026-10-10：401 单独标记 —— 「需重新登录」与「同步失败」是**不同出口**。
+    status.finishFailed(
+      _friendlySyncError(e),
+      needsRelogin: e is SyncUnauthorized,
+    );
   }
 }
 
@@ -368,6 +432,15 @@ Future<void> _kickUploadIfNeeded(WidgetRef ref) async {
 String _friendlySyncError(Object e) {
   // 403「跨设备同步是订阅权益」—— `SyncNotSubscribed` 自带可直接展示的文案
   if (e is SyncNotSubscribed) return e.message;
+  // 🆕 2026-10-10 · **401（登录态失效）**：
+  //    🔴 它与下面那些「稍后会自动重试」的网络错误**性质相反** ——
+  //       token 已被服务端清掉 ⇒ **重试永远不会成功**。
+  //    ⇒ 文案必须给出**唯一有效的动作**（重新登录），并把原因说清
+  //      （用户最常见的场景就是「在另一台设备上登录了」）。
+  //    ⚠️ 不要写成「同步失败，请重试」——那是在骗用户反复点一个不可能成功的按钮。
+  if (e is SyncUnauthorized) {
+    return '登录状态已失效（可能在本账号的其它设备上登录过），请重新登录后再同步';
+  }
   final raw = e.toString();
   if (raw.contains('TimeoutException')) return '网络超时，稍后会自动重试';
   if (raw.contains('SocketException') ||

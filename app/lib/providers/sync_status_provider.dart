@@ -41,8 +41,17 @@ class SyncStatusNotifier extends StateNotifier<SyncStatus> {
   }
 
   /// 同步失败（原因**可直接展示**）。
-  void finishFailed(String error) {
-    state = state.copyWith(phase: SyncPhase.failed, lastError: error);
+  ///
+  /// [needsRelogin] = 这次失败是 **401（登录态失效）** 引起的
+  /// （见 `SyncStatus.needsRelogin` 的完整推导）。
+  /// 🔑 它决定界面说的是「**同步失败**」（可重试）还是「**需重新登录**」（重试无用）——
+  ///    两者混为一谈就是「静默失败 + 无出口」。
+  void finishFailed(String error, {bool needsRelogin = false}) {
+    state = state.copyWith(
+      phase: SyncPhase.failed,
+      lastError: error,
+      needsRelogin: needsRelogin,
+    );
   }
 
   /// 本轮**没跑**（前提不满足：未登录 / `user.db` 不可用）。

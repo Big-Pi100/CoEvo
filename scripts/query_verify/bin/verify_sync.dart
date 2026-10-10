@@ -32,6 +32,10 @@
 
 import 'dart:io';
 
+// 🆕 2026-10-10：`sync_status.dart` 是**纯 Dart · 零 import** ⇒ 本脚本可直接 import 它
+// 做**行为断言**（而不是读源码字符串）。这正是该文件被刻意写成纯 Dart 的理由。
+import '../../../app/lib/services/sync_status.dart';
+
 int _pass = 0;
 final _failures = <String>[];
 
@@ -284,13 +288,21 @@ void main() {
   //    而正则里 `$` 是行尾锚点；转义写错会**静默匹配 0 处**
   //    （本人踩过一次：表现为「实得 0 处」的假红，看起来像实现问题，
   //      实际是断言自己坏了 —— 这正是「假红消耗门禁可信度」的典型）。
-  final cursorKeys =
-      syncProvider.split('kSyncCursorPrefsKeyPrefix').length - 1;
-  check('🔴 游标键**读、写两处都**带 `userId`（用计数锁，不是存在性）',
-      cursorKeys >= 2, '实得 $cursorKeys 处（应为 2：readCursor + writeCursor）');
-  check('  且**没有**残留的固定键字面量',
-      !syncProvider.contains("'coevo_sync_since'"),
-      '—— 留一处就会「写固定键、读 userId 键」⇒ 永远全量拉，且不报错');
+  // 🔴 2026-10-10（v11）：游标**已从 prefs 搬进 `user.db`**（`sync_cursor` 单行表）。
+  //    判据随之改口径，但**意图一字未变**：「游标口径只能一处，且读、写必须同源」。
+  //      · 旧：`kSyncCursorPrefsKeyPrefix` 出现 ≥2 次（readCursor + writeCursor）
+  //      · 新：`sync_cursor` 出现 ≥2 次（同上）
+  //    🔑 这正是「**断言跟意图走、不跟文件内容走**」——实现换落点时，
+  //       断言**不该**因为「字面量变了」而假红；只有**意图**变了才该改。
+  // ⚠️ 用 `split` 计数而**不用正则**（要匹配的串含 `$`，正则里它是行尾锚点；
+  //    转义写错会**静默匹配 0 处** = 假红，看着像实现问题其实是断言自己坏了）。
+  final cursorDbHits = syncProvider.split('sync_cursor').length - 1;
+  check('🔴 游标**读、写都落在** `user.db` 的 `sync_cursor` 表（用计数锁两处）',
+      cursorDbHits >= 2, '实得 $cursorDbHits 处（应为 2：readCursor + writeCursor）');
+  check('🔴 旧 prefs 游标键**不再被读写**（只允许 `remove` 清遗留）',
+      !syncProvider.contains(r"prefs.getString('$kLegacySyncCursorPrefsKeyPrefix") &&
+          !syncProvider.contains(r"prefs.setString('$kLegacySyncCursorPrefsKeyPrefix"),
+      '—— 读写 prefs 键会与 `sync_cursor` 表**形成两个真值源**，迟早分叉且不报错');
   check('🔴 token / userId 为空时**不构造** SyncService（未登录不同步）',
       syncProvider.contains("if (token.isEmpty || userId.isEmpty) return null;"));
   check('🔑 `book.db` 打不开时**降级**（不阻塞其余四类）',
@@ -745,6 +757,83 @@ void main() {
         achSvc.contains('Future<List<Map<String, Object?>>> pendingUnlocks(') &&
             achSvc.contains('Future<void> markUnlocksSynced('));
   }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  section('【15】🔴 401（登录态失效）必须**可感知 + 可行动**（2026-10-10）');
+  //
+  // 背景（真机）：白哥在两台设备上用同一账号 ⇒ 后登录的那台把前一台的 token 清掉
+  //   ⇒ 前一台**到处 401**，而 UI 只说「同步失败」（**暗示「重试就好」**）
+  //   ⇒ 用户反复点，永远失败，且不知道要重新登录。
+  // 📄 `docs/review/device-sync-and-profile-failure-2026-10-10.md` §一 / §四 C
+  //
+  // 🔑 本组守的是**「终态 vs 瞬时」必须被区分**：
+  //    · 网络超时 / 5xx ⇒ 瞬时，重试有意义
+  //    · 401            ⇒ **终态**，重试永远失败 ⇒ 必须给「重新登录」
+
+  // ① 🔴 类型必须住在**纯 Dart** 文件里
+  //    —— 否则捕获层（`sync_service`，纯逻辑层、要被本脚本 import）**拿不到这个类型**
+  //    ⇒ 只能退化成「按字符串猜 401」⇒ 改一次文案就静默失效。
+  //    ⚠️ 这正是**本次修复之前**的真实状态：`SyncUnauthorized` 被定义、被抛出，
+  //       却**全仓零消费**（因为定义在带 Flutter 依赖的 `api/sync_client.dart` 里）。
+  final syncErrSrc = readFile('../../app/lib/services/sync_errors.dart');
+  check('🔴 `sync_errors.dart` 存在且**零 import**（纯 Dart ⇒ 捕获层才能用它判类型）',
+      syncErrSrc.contains('class SyncUnauthorized') &&
+          !RegExp(r'^\s*import\s', multiLine: true).hasMatch(syncErrSrc),
+      '一旦引入 package: 依赖 ⇒ 捕获层 import 不到 ⇒ 401 静默退化成普通失败');
+  check('🔴 两个类型**都**在纯 Dart 文件里（`SyncUnauthorized` + `SyncNotSubscribed`）',
+      syncErrSrc.contains('class SyncUnauthorized') &&
+          syncErrSrc.contains('class SyncNotSubscribed'));
+
+  // ② 客户端仍抛出它，并且**只定义一份**
+  final syncClientSrc = readFile('../../app/lib/api/sync_client.dart');
+  check('🔴 `sync_client` 对 401 抛 `SyncUnauthorized`',
+      syncClientSrc.contains('throw SyncUnauthorized('));
+  check('🔴 `sync_client` **不得**再自带一份类型定义'
+      '（两份同名 ⇒ `is` 判 false，而且**编译器不报**）',
+      !syncClientSrc.contains('class SyncUnauthorized'));
+
+  // ③ 捕获层把它翻成**结构化标记**（不是靠字符串匹配）
+  final authExpiredHits = RegExp(r'r\.authExpired = e is SyncUnauthorized;')
+      .allMatches(syncService)
+      .length;
+  check('🔴 push 与 pull **两处**都把 401 翻成 `authExpired`（用计数锁，不是存在性）',
+      authExpiredHits == 2, '实得 $authExpiredHits 处（应为 2：pushOnce 与 pullOnce）');
+  check('🔴 `SyncReport` 声明了 `authExpired` 字段',
+      syncService.contains('bool authExpired = false;'));
+
+  // ④ 上报层：两处失败路径都必须带上 `needsRelogin`
+  check('🔴 上报失败时带 `needsRelogin`（**两处**：SyncReport 路径 + 异常路径）',
+      (syncProvider.split('needsRelogin:').length - 1) >= 2,
+      '实得 ${syncProvider.split('needsRelogin:').length - 1} 处 —— 只带一处 ⇒ 另一条路仍是「同步失败」');
+  check('🔴 `_friendlySyncError` 对 `SyncUnauthorized` 有**专门文案**（含出口）',
+      RegExp(r'if \(e is SyncUnauthorized\)[\s\S]{0,240}?重新登录')
+          .hasMatch(syncProvider),
+      '落进通用分支 ⇒ 用户看到「同步失败」而重试永远失败');
+
+  // ⑤ 🔑 **行为断言**（可执行，不靠读源码）：
+  //    401 与普通失败**必须显示不同的话**。锁「行为」而不是「某个字面量」——
+  //    将来改文案时，只要两种状态仍可区分，这条就不该红。
+  final nowS = DateTime(2026, 10, 10, 12, 0);
+  check('🔴 胶囊文案：401 ⇒ 提「重新登录」；普通失败 ⇒ 仍是「同步失败」',
+      syncChipLabel(
+              const SyncStatus(phase: SyncPhase.failed, needsRelogin: true), nowS)
+          .contains('重新登录') &&
+          syncChipLabel(
+                  const SyncStatus(phase: SyncPhase.failed), nowS) ==
+              '同步失败');
+  final reloginSummary = syncStatusSummary(
+      const SyncStatus(
+          phase: SyncPhase.failed, needsRelogin: true, lastError: '登录状态已失效'),
+      nowS);
+  check('🔴 401 的 summary **不得**以「同步失败」开头（否则暗示「重试即可」）',
+      reloginSummary != null && !reloginSummary.startsWith('同步失败'),
+      '实得：${reloginSummary ?? "(null)"}');
+  check('🔑 `needsRelogin` **不粘**：切到 `syncing`/`skipped` 时会被复位',
+      const SyncStatus(phase: SyncPhase.failed, needsRelogin: true)
+              .copyWith(phase: SyncPhase.syncing)
+              .needsRelogin ==
+          false,
+      '否则下次同步开始后旧提示还挂着');
 
   _report();
 }

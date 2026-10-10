@@ -34,7 +34,8 @@
 // `setting_sync` 在 `kUserOwnedTables` 里（换账号会被清空），但**写回 prefs 的那些值不会**。
 // ⇒ 换账号后，下一个账号的「首次采集」可能把**上一个账号的设置值**当成自己的推上去。
 //    🔴 处理：`sync_provider.dart` 的换账号路径会**一并复位**这些 prefs 键
-//       （见 `resetSyncedSettingPrefs`）—— 与 `clearSyncCursorFor` 同一时机。
+//       （见 `resetSyncedSettingPrefs`）—— 与清理旧版游标键
+//       （`clearLegacySyncCursorPrefs`，2026-10-10 由 `clearSyncCursorFor` 改名）同一时机。
 
 import 'dart:convert';
 
@@ -209,7 +210,7 @@ typedef PrefsRemove = Future<void> Function(String key);
 /// 🔑 做法：把每个同步键**移除**（**不是**写默认值 ——
 ///    写了默认值会被采集端当成「用户设过」而推上去，等于把问题倒过来）。
 ///    移除后 `readPref` 返回 `null` ⇒ 采集端跳过 ⇒ 由别端或代码默认值决定。
-/// 📌 与 `clearSyncCursorFor` 同一时机（换账号清数据的收尾），理由同族：
+/// 📌 与 `clearLegacySyncCursorPrefs` 同一时机（换账号清数据的收尾），理由同族：
 ///    **用结构隔离/复位优于「靠人记得」**。
 Future<void> resetSyncedSettingPrefs(PrefsRemove removePref) async {
   for (final key in kSyncedSettingKeys) {

@@ -103,6 +103,12 @@ const List<String> kUserOwnedTables = [
   'achievement_unlock', // 成就解锁
   'translation_cache', // 翻过的句子（行为数据）
   'setting_sync', // 🆕 v10：应用设置的同步载体（账号数据，换账号要清）
+  'sync_cursor', // 🆕 v11：增量同步游标 —— 🔴 **必须在这里**
+  //   理由：游标与数据**必须同生共死**。若只有数据被清、游标留着，
+  //   它会指向一个「未来」的时间点 ⇒ 之后 pull 只取增量 ⇒
+  //   **历史永远拉不回来，且全程不报错**。
+  //   放进本清单 = 由**结构**保证（而不是靠谁记得去清）。
+  //   📄 `docs/review/device-sync-and-profile-failure-2026-10-10.md` §四 D
 ];
 
 /// `book.db` 里**属于用户**的表（换账号时清空）。
