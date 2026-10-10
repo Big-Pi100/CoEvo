@@ -53,6 +53,7 @@ import '../providers/device_id_provider.dart';
 import '../providers/memory_settings_provider.dart';
 import '../providers/review_list_provider.dart';
 import '../providers/review_session_provider.dart';
+import '../providers/sync_provider.dart';
 import '../providers/user_db_provider.dart';
 import '../services/fsrs_service.dart';
 import '../services/highlight_grader.dart';
@@ -178,6 +179,13 @@ class _ReviewSessionScreenState extends ConsumerState<ReviewSessionScreen> {
       // ⚠️ 用**提前取好的** notifier 引用（见方法开头）—— 不用 `ref`，
       //    因为这两次 `await` 期间页面可能已被销毁。
       revision.bump();
+
+      // 🆕 2026-10-10：**本地写操作之后安排一次节流同步**（4 秒）。
+      //    复习是「状态性」动作 —— 别端必须尽快看到它，否则两端的 due 数
+      //    与「今天复习了几个」长期不一致（白哥真机报的那条）。
+      //    ⚠️ 不 await、也不传 `ref`：节流回调 4 秒后才执行，届时本页 widget
+      //       可能已销毁 ⇒ 内部用**根层 ref**（见 `scheduleSyncAfterChange`）。
+      scheduleSyncAfterChange();
 
       // 🔑 成就检查放在**写库成功之后**（与 bump 同理：「数据变了」才是检查时机）。
       //    `unawaited` —— 不让成就查询拖慢「提交 → 下一张」的节奏；

@@ -657,6 +657,11 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp>
     //    —— widget 的 `dispose` 里**不能安全用 `ref`**（Riverpod 会拒绝），
     //    而且根 widget 能覆盖**所有**本地改动（复习/生词/收藏/阅读/电子书）。
     WidgetsBinding.instance.addObserver(this);
+    // 🆕 2026-10-10：把**根层 `ref`** 交给同步模块。
+    //    `scheduleSyncAfterChange()`（本地写操作后的节流同步）在 **4 秒后**才执行，
+    //    那时调用点 widget 的 `ref` 可能已随页面销毁 ⇒ 只能用与 App 同生命周期的引用。
+    //    📄 理由见 `providers/sync_provider.dart` 的 `scheduleSyncAfterChange`。
+    registerAppSyncRef(ref);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // 🔴 IAP **预热**（必须在启动时 read 一次）——
       //    `iapServiceProvider` 是懒加载的：不预热的话，用户若从不打开
@@ -680,24 +685,26 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp>
     super.dispose();
   }
 
-  /// App 生命周期变化 —— 两个时机，**覆盖范围刻意不同**：
+  /// App 生命周期变化 —— 两个时机，**都是完整同步**（push + pull）：
   ///
   /// | 时机 | 动作 | 为什么 |
   /// |---|---|---|
-  /// | **`paused`（进后台）** | **只推**（`pushWhenAppPaused`）| 把本地改动送上去；要**快**，不能拖住退出 |
-  /// | **`resumed`（回前台）** 🆕 | **push + pull**（`syncWhenAppResumed`）| 🔴 **用户切回来就是想看最新的** ⇒ 必须**拉** |
+  /// | **`paused`（进后台）** | **push + pull**（`syncWhenAppPaused`）| 把本地改动送上去，**同时**把别端改动拿回来 |
+  /// | **`resumed`（回前台）** | **push + pull**（`syncWhenAppResumed`）| 🔴 **用户切回来就是想看最新的** ⇒ 必须**拉** |
   ///
   /// ⚠️ 只处理 `paused` / `resumed`（**不处理 `inactive`**）：后者在
   ///    「来电 / 拉控制中心 / 切 App 切换器」时都会触发 ⇒ 过频。
   ///
-  /// 🔴🔴 **2026-10-10 补上 `resumed` 分支的理由（真机踩到）**：
-  ///    此前只有 `paused` 且它是 `pushOnly` ⇒ 自动同步里**只有「登录后」会拉**
+  /// 🔴🔴 **2026-10-10 把两个时机都统一成「完整同步」的理由（真机踩到）**：
+  ///    此前 `paused` 是 **`pushOnly`（只推不拉）**，而自动时机里**只有「登录后」会拉**
   ///    ⇒ 日常「切来切去」**从不拉** ⇒ **两端的复习/学习记录/成就长期不一致**，
   ///    而「**重开 App 就对了**」（重开恰好走「登录后同步」）。
   ///    📄 `docs/review/sync-ui-not-refreshing-and-device-state-mismatch-2026-10-10.md`
+  ///    📌 判据：**「只推不拉」是必然导致两端分歧的结构** ——
+  ///       一次同步应当同时表达双向意图（唯一例外：登出前的 flush）。
   ///
   /// ⚠️ 没有本地改动时 `pushOnce` **不发请求**（空批次直接返回）；
-  ///    `pull` 会发一次请求，这正是本钩子的目的（代价可接受）。
+  ///    `pull` 会发一次请求，这正是这两个钩子的目的（代价可接受）。
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!mounted) return;
@@ -706,7 +713,7 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp>
       return;
     }
     if (state == AppLifecycleState.paused) {
-      pushWhenAppPaused(ref);
+      syncWhenAppPaused(ref);
     }
   }
 

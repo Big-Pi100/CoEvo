@@ -261,7 +261,7 @@ void runSyncAfterLogin(WidgetRef ref) {
 Future<void> flushBeforeLogout(WidgetRef ref) =>
     _runSync(ref, tag: '登出前 flush', pushOnly: true);
 
-/// **App 进入后台时**触发一次 push（只推不拉）。
+/// **App 进入后台时**触发一次**完整同步**（push + pull）。
 ///
 /// # 🔑 为什么用「进后台」而不是「退出复习页」
 ///
@@ -277,11 +277,72 @@ Future<void> flushBeforeLogout(WidgetRef ref) =>
 ///    `inactive` 会在「来电 / 拉控制中心 / 切 App 切换器」时触发 ⇒ **过于频繁**；
 ///    而 `paused` 才是「真的退到后台」。
 ///
-/// ⚠️ 不发请求的情形：**没有任何本地改动**时 `pushOnce` 直接返回
-///    （`pushedTotal == 0` ⇒ 空批次不发请求）⇒ 这个钩子**平时是零成本**的。
-void pushWhenAppPaused(WidgetRef ref) {
-  Future.microtask(() => _runSync(ref, tag: '进后台', pushOnly: true));
+/// # 🔴🔴 2026-10-10 改为**完整同步**（原为 `pushOnly: true`）
+///
+/// 真机症状：**两端长期不一致**，而服务端日志显示「复习事件**确实推上去了**」——
+/// 只是**每一次都只有 push、没有 pull**（`sync_push` 有、`sync_pull` 无）。
+///
+/// 原自动时机里**只有「登录后」会拉**，其余（登出前 / 进后台）都是「只推不拉」
+/// ⇒ **日常使用中没有任何一台设备会主动拉别端的改动**。
+///
+/// 🔑 判据：**「只推不拉」是一条必然导致两端分歧的结构** ——
+///   一次 push 只表达「我这边有新数据」，而用户要的是「我和别人**一致**」。
+///   任何一次同步都应当**同时**表达双向意图。
+/// ⚠️ 唯一例外是 `flushBeforeLogout`（登出前）—— 那时 pull 无意义（马上要清库）。
+/// ⚠️ 代价评估：`pull` 是一次 GET（本机 VPS 往返 ~100ms），进后台有数秒执行窗口
+///    ⇒ 不会拖住退出；即使失败，回前台还有一次完整同步兜底。
+/// 📌 函数名同步改为 `syncWhenAppPaused`（原名 `pushWhenAppPaused` 只描述了一半行为）。
+void syncWhenAppPaused(WidgetRef ref) {
+  Future.microtask(() => _runSync(ref, tag: '进后台', pushOnly: false));
 }
+
+/// 🆕 2026-10-10：**本地写操作之后**安排一次完整同步（**节流 4 秒**）。
+///
+/// # 🔴 为什么需要它（真机：两端长期不一致的最后一环）
+///
+/// 复习 / 查词 / 收藏这些动作**自己不会触发任何同步** ——
+/// 若用户一直待在 App 里不动，A 端的数据**根本没推上去**，B 端永远看不到。
+/// 已有的时机（进后台 / 回前台 / 登录后 / 手动）都要求用户**离开或切换**，
+/// 覆盖不到「在 A 端复习完就顺手拿起 B 端看」这个最常见的场景。
+///
+/// # 为什么是**节流**（throttle）而不是去抖（debounce）
+///
+/// 一次复习会话有几十张卡，每张卡都会调用本函数：
+/// · **去抖**（每次调用都重置计时器）⇒ 连续复习期间**永远不会触发**
+///   （每 5 秒一张卡，计时器永远被重置）—— 那等于没做。
+/// · **节流**（已在等待就忽略）⇒ 保证「**最多每 4 秒同步一次**」，
+///   连续复习时数据也会**持续上云**。✅ 选它。
+///
+/// # 🔑 为什么用根层 `ref`（而不是调用点的 `ref`）
+///
+/// 节流意味着「**4 秒后才用 ref**」。调用点（复习页等）的 `ref` 属于
+/// **会被销毁的 widget** —— 用户提交完随手退出页面，4 秒后那个 `ref` 已失效，
+/// `ref.read` 会抛 `StateError` ⇒ 同步**静默不发生**（本项目的头号敌人）。
+/// 根 widget 与 App 同生命周期 ⇒ 永远可用。
+/// 📌 判据：**凡是「延时之后还要用引用」，那个引用必须是长寿命的**。
+///    （姊妹条：「等条件成立」优于「等猜的时长」—— 两条都在防「延时里的失效」。）
+void scheduleSyncAfterChange() {
+  final ref = _appLevelRef;
+  if (ref == null) return; // 尚未注册（`app.dart` 的 initState 会注册）
+  // 节流：已在等待 ⇒ 忽略本次（不重置计时器 —— 否则退化成去抖）
+  if (_changeSyncTimer?.isActive ?? false) return;
+  _changeSyncTimer = Timer(const Duration(seconds: 4), () {
+    _changeSyncTimer = null;
+    _runSync(ref, tag: '本地改动后', pushOnly: false);
+  });
+}
+
+/// App 根层的 `ref`（由 `app.dart` 的 `initState` 注册一次）。
+///
+/// 用途见 [scheduleSyncAfterChange]：节流回调在 4 秒后执行，
+/// 只能用**与 App 同生命周期**的引用。
+WidgetRef? _appLevelRef;
+
+/// 由 `app.dart` 的 `initState` 调用（注册根层 `ref`）。
+void registerAppSyncRef(WidgetRef ref) => _appLevelRef = ref;
+
+/// 节流计时器（模块级 —— 全局唯一，多个调用点共享同一个窗口）。
+Timer? _changeSyncTimer;
 
 /// 🆕 2026-10-10：**回到前台时拉一次**（**完整同步**：push + pull）。
 ///

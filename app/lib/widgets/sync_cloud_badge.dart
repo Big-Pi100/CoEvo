@@ -46,12 +46,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/iap_provider.dart';
-import '../providers/sync_provider.dart';
 import '../providers/sync_status_provider.dart';
 import '../services/sync_status.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
+import 'sync_progress_dialog.dart';
 
 /// 状态 →（图标, 颜色）—— **两种形态共用的唯一一处**。
 ///
@@ -118,28 +118,19 @@ void syncCloudOnTap(
     context.push('/subscribe');
     return;
   }
-  // 🔑 先把 messenger 取出来（判据：**「等条件成立」优于「等猜的时长」** ——
-  //    这里没有 await，但一旦将来加 await，提前取引用就不会失效）。
-  final messenger = ScaffoldMessenger.of(context);
-  final msg = syncStatusSummary(s, DateTime.now());
-  if (msg == null) {
-    // 从未同步过 / 本轮没跑 ⇒ 点它 = **现在同步一次**。
-    // 🔴 这条必须存在：否则「从没成功过」的用户**没有任何办法手动触发同步**
-    //    （自动时机只有登录后 / 登出前 / 进后台）。
-    syncNowFromUi(ref);
-    return;
-  }
-  messenger.showSnackBar(
-    SnackBar(
-      content: Text(msg),
-      action: s.hasError
-          ? SnackBarAction(
-              label: '重试',
-              onPressed: () => syncNowFromUi(ref),
-            )
-          : null,
-    ),
-  );
+  // 🔴 正在同步 ⇒ 忽略本次点击（不叠加第二个请求）——
+  //    弹窗本身已经在说「正在同步…」，再点一次不该再发一遍。
+  if (s.phase == SyncPhase.syncing) return;
+
+  // 🆕 2026-10-10（白哥）：「同步在 UI 上没有显示」⇒ **点击 = 立即同步一次**，
+  //    并以**转圈弹窗**呈现进行中状态（[syncWithProgressDialog]）。
+  //
+  // 🔴 改掉旧行为的理由：旧版点击先弹一句「上次同步是几点」的 SnackBar，
+  //    用户想真的同步还得再点一下「重试」—— 这是「有动作、多一跳」。
+  //    ⇒ 反馈必须发生在**动作那一刻**。
+  //    ⚠️ 「上次同步时间」并没有丢：它仍在胶囊的常驻文案里（`syncChipLabel`）
+  //       与「我的」页的订阅组里。
+  syncWithProgressDialog(context, ref);
 }
 
 /// 云端同步的**图标**形态（订阅页「已订阅」卡上的一枚）。

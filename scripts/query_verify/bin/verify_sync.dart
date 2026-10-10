@@ -326,8 +326,13 @@ void main() {
       '—— `inactive` 在 来电/控制中心/切换器 都会触发 ⇒ 过频');
   check('  且检查了 `mounted`（避免对已卸载的 state 操作）',
       lifecycle.contains('mounted'));
-  check('🔑 provider 有 `pushWhenAppPaused`（只推不拉）',
-      syncProvider.contains('void pushWhenAppPaused(WidgetRef ref)'));
+  // 🔴 2026-10-10 改判：进后台已从「只推」改为「**完整同步**」
+  //    （`pushWhenAppPaused` → `syncWhenAppPaused`）。
+  //    ⚠️ 这是**断言保护错误**的实例 —— 旧断言锁住「只推」这个**已被废止的事实**，
+  //       ⇒ 行为改**对**之后它**反而红**。
+  //    ✅ 处理方式是**改判**（锁新意图），不是删掉：删了就没人守着这个时机了。
+  check('🔑 provider 有 `syncWhenAppPaused`（进后台 · **完整同步**）',
+      syncProvider.contains('void syncWhenAppPaused(WidgetRef ref)'));
   // 🔑 锁**意图**（「两个入口共用同一个执行函数」），**不锁那个函数的拼写**。
   //
   // 🔴 2026-10-09 实测踩到：该实现由 `_pushOnly` **并入** `_runSync`
@@ -344,20 +349,28 @@ void main() {
   }
 
   final flushExecutor = executorOf('Future<void> flushBeforeLogout');
-  final pausedExecutor = executorOf('void pushWhenAppPaused');
+  // 🔴 2026-10-10：进后台的函数已改名（`pushWhenAppPaused` → `syncWhenAppPaused`）。
+  //    ⚠️「**两个入口共用同一个执行函数**」这条**意图没变** ⇒ 只改函数名，
+  //       断言本身的判据一字不动（**断言跟意图走、不跟拼写走**）。
+  final pausedExecutor = executorOf('void syncWhenAppPaused');
   check(
     '🔑 `flushBeforeLogout` 与「进后台」**共用**同一个执行函数（口径一处）',
     flushExecutor.isNotEmpty && flushExecutor == pausedExecutor,
     '实测 flush→_$flushExecutor · paused→_$pausedExecutor',
   );
-  // 🔑 「进后台 = 只推不拉」由两段共同保证：**标记**（`pushOnly: true`）
-  //    + **映射**（该标记必须落到 `pushOnce`，不是 `syncNow`）。
-  //    ⚠️ 下面这条是**有意的形状锁定**：若把三元重构成 `if`，请连同它一起改，
-  //       **不要**删掉 —— 删了就没有任何东西守着「进后台别去拉数据」了。
-  final pushWhenPaused = between(syncProvider, 'void pushWhenAppPaused', '\n\n');
+  // 🔑 「进后台做什么」由两段共同保证：**标记**（`pushOnly` 的取值）
+  //    + **映射**（该标记必须落到 `pushOnce` / `syncNow` 之一）。
+  //
+  // 🔴 2026-10-10 改判：进后台**不再只推**（`pushOnly` 由 `true` → `false`）——
+  //    理由见 `syncWhenAppPaused` 的长注释（「只推不拉」是两端分歧的成因）。
+  //    ⚠️ 旧断言写 `pushOnly: true` ⇒ 行为改**对**后**反而红**（断言保护错误）。
+  //       这里**改判为 `false`**，而不是删掉断言。
+  //    ⚠️ 仍是有意的**形状锁定**：若把三元重构成 `if`，请连同它一起改。
+  final syncWhenPaused = between(syncProvider, 'void syncWhenAppPaused', '\n\n');
   check(
-    '🔑 进后台标记为「只推」（`pushOnly: true` —— 进后台不是取新数据的时机）',
-    pushWhenPaused.contains('pushOnly: true'),
+    '🔑 进后台标记为「**完整同步**」（`pushOnly: false` —— 推 + 拉）',
+    syncWhenPaused.contains('pushOnly: false'),
+    '只推不拉 ⇒ 别端的改动永远看不到（这正是「两端长期不一致」的成因）',
   );
   check(
     '🔑 该标记真的落到 `pushOnce`（不是 `syncNow`）',
@@ -880,8 +893,9 @@ void main() {
           .hasMatch(appSrc));
   check('🔴 `resumed` 走的是**完整同步**（`syncWhenAppResumed`），不是只推',
       appSrc.contains('syncWhenAppResumed(ref)'));
-  check('🔑 `paused`（进后台）仍保持**只推**（要快，不拖住退出）',
-      appSrc.contains('pushWhenAppPaused(ref)'));
+  check('🔴 `paused`（进后台）走**完整同步**（`syncWhenAppPaused` —— 2026-10-10 改判）',
+      appSrc.contains('syncWhenAppPaused(ref)'),
+      '只推不拉 ⇒ 别端改动永远看不到；⚠️ 唯一保留「只推」的是**登出前的 flush**');
   final syncProvSrc3 = syncProvider;
   // 🔴 **必须切片**，不能用「函数名 + 大窗口正则」——
   //    第一版写成 `RegExp(r"void syncWhenAppResumed[\s\S]{0,320}?pushOnly: false")`，
@@ -921,6 +935,111 @@ void main() {
       reviewSrc.contains('_alwaysScrollable') &&
           reviewSrc.contains('AlwaysScrollableScrollPhysics'),
       '内容不满一屏时不可滚动 ⇒ RefreshIndicator 不响应');
+
+  // ══════════════════════════════════════════════════════════════════
+  section('【17】推拉时机 · 快照原子性 · 首次全量 · 同步 UI（2026-10-10 批）');
+  // ══════════════════════════════════════════════════════════════════
+
+  // ── 17.1 服务端：`pull_changes` 的所有查询必须在**同一个读事务**里 ──
+  //
+  // 🔴 不这么做 ⇒「数据查询」与「server_time 查询」是两个快照 ⇒ 并发写入的
+  //    `received_at` 可能被 `server_time` 覆盖 ⇒ **那条数据永久拉不回、且不报错**。
+  final s17PullFn = between(sync, 'pub fn pull_changes(', 'pub async fn sync_pull(');
+  check('🔴 切片有效（截到了 `pull_changes` 函数体 —— 下面三条的前提）',
+      s17PullFn.isNotEmpty &&
+          s17PullFn.contains('max_received') &&
+          !s17PullFn.contains('pub async fn sync_pull'),
+      '长 ${s17PullFn.length} —— 不含上界函数名才算真的截住（上批正是在这里假绿）');
+  check('🔴 `pull_changes` 用 `unchecked_transaction`（快照原子性）',
+      s17PullFn.contains('unchecked_transaction'),
+      '没有事务 ⇒ 两个查询两个快照 ⇒ server_time 可能超前于返回数据 ⇒ 永久漏一条');
+  check('🔴 事务对象真的被用于查询（`&tx` 遮蔽 —— 否则事务是摆设）',
+      s17PullFn.contains('&tx'),
+      '开了事务却仍用原 `conn` ⇒「看起来修了、其实没生效」（本批最该防的假绿）');
+  check('🔴 且**提交**了该事务（不是只开不关）',
+      s17PullFn.contains('tx.commit()'),
+      '只开不提交 ⇒ 连接归还池时事务仍挂起 ⇒ 复用时读到陈旧快照');
+
+  // ── 17.2 服务端：首次全量**不排除本设备** ──
+  //
+  // 🔴 「排除本设备」的前提是「本端推的，本端一定有」；该前提在
+  //    重装 / 清数据 / `user.db` 重建（含 v11 清空游标表 ⇒ 必然触发首次全量）后
+  //    **不成立** ⇒ 那些记录永久拿不回。首次全量的语义是「完整克隆」⇒ 必须不排除。
+  final s17PullHandler = between(sync, 'pub async fn sync_pull(', '#[cfg(test)]');
+  check('🔴 切片有效（截到了 `sync_pull` handler —— 下面两条的前提）',
+      s17PullHandler.isNotEmpty && s17PullHandler.contains('is_first_sync'),
+      '长 ${s17PullHandler.length}');
+  final s17FirstBranch = between(
+      s17PullHandler, 'let my_device = if is_first_sync {', 'q.device_id');
+  check('🔴 首次全量分支返回空串（= **不排除任何设备**）',
+      s17FirstBranch.contains('""'),
+      '首次全量仍排除本设备 ⇒ 重装/重建库后**自己推过的历史永远拉不回**（静默）');
+  check('  ✅ 阴性对照：增量（else）分支**仍读 `device_id`**（否则每次白拉自己的事件）',
+      s17PullHandler.contains('q.device_id.as_deref()'));
+
+  // ── 17.3 端侧：进后台 = **完整同步**（不是只推） ──
+  final s17PausedFn = between(syncProvider, 'void syncWhenAppPaused(',
+      'void syncWhenAppResumed(');
+  check('🔴 切片有效（`syncWhenAppPaused` 函数体 —— 下面那条的前提）',
+      s17PausedFn.isNotEmpty &&
+          s17PausedFn.contains('_runSync') &&
+          !s17PausedFn.contains('syncWhenAppResumed'),
+      '长 ${s17PausedFn.length} —— 含上界函数名 = 没截住（上批正是在这里假绿）');
+  check('🔴 进后台用 `pushOnly: false`（**会拉**）',
+      s17PausedFn.contains('pushOnly: false'),
+      '只推不拉 ⇒ 别端的改动永远看不到 —— 这正是「两端长期不一致」的原始症状');
+
+  // ── 17.4 端侧：本地写操作后的**节流**同步 ──
+  final s17SchedFn = between(syncProvider, 'void scheduleSyncAfterChange(',
+      'WidgetRef? _appLevelRef;');
+  check('🔴 切片有效（`scheduleSyncAfterChange` 函数体 —— 下面三条的前提）',
+      s17SchedFn.isNotEmpty && s17SchedFn.contains('Timer('),
+      '长 ${s17SchedFn.length}');
+  check('🔴 是**节流**（`isActive` 短路）而不是去抖',
+      s17SchedFn.contains('isActive'),
+      '「每次 cancel + 重启」= 去抖 ⇒ 连续复习期间计时器永远被重置 ⇒ **永不触发**');
+  check('🔴 回调做**完整同步**（`pushOnly: false`）',
+      s17SchedFn.contains('pushOnly: false'));
+  check('🔴 节流回调用**根层 ref**（4 秒后调用点的 ref 可能已随页面销毁）',
+      s17SchedFn.contains('_appLevelRef'),
+      '用调用点 ref ⇒ `ref.read` 抛 StateError ⇒ 同步**静默不发生**');
+  check('🔴 `registerAppSyncRef` 存在**且被 `app.dart` 调用**',
+      hasIdent(syncProvider, 'registerAppSyncRef') &&
+          appDart.contains('registerAppSyncRef(ref)'),
+      '注册漏了 ⇒ `_appLevelRef` 恒 null ⇒ 节流同步**永远不执行**（且完全静默）');
+
+  // ── 17.5 端侧：复习提交后触发节流同步 ──
+  final s17SessionSrc = stripComments(
+      readFile('../../app/lib/screens/review_session_screen.dart'));
+  check('🔴 复习提交后调用 `scheduleSyncAfterChange()`',
+      s17SessionSrc.contains('scheduleSyncAfterChange()'),
+      '漏了 ⇒ 用户一直待在 App 里时，复习数据**根本没推上去** ⇒ 别端看不到');
+  final s17ILog = s17SessionSrc.indexOf('logReview(r.event)');
+  final s17ISched = s17SessionSrc.indexOf('scheduleSyncAfterChange()');
+  check('🔑 且发生在**写库之后**（`logReview` 之后）',
+      s17ILog >= 0 && s17ISched > s17ILog,
+      '顺序反了 ⇒ 同步跑在数据落库之前 ⇒ 这一批推不上去');
+
+  // ── 17.6 端侧：同步进行中的 UI 反馈（白哥要求） ──
+  final s17DialogSrc = stripComments(
+      readFile('../../app/lib/widgets/sync_progress_dialog.dart'));
+  final s17BadgeSrc = stripComments(
+      readFile('../../app/lib/widgets/sync_cloud_badge.dart'));
+  check('🔴 有「同步中」的转圈弹窗',
+      s17DialogSrc.contains('CircularProgressIndicator') &&
+          hasIdent(s17DialogSrc, 'SyncProgressDialog'),
+      '白哥原话：「同步在 UI 上没有显示，可以用弹窗转圈的方式显示同步进行中的状态」');
+  check('🔴 弹窗有**超时兜底**（状态回调没来 ⇒ 否则永久卡屏）',
+      s17DialogSrc.contains('Timer(') && s17DialogSrc.contains('_kTimeout'),
+      '弹窗关闭**依赖状态变化**，而状态是异步的 ⇒ 没有兜底就是「回调没来就卡死」');
+  check('🔴 弹窗**不在 `build` 里直接 `pop`**（构建期改导航栈会抛异常）',
+      s17DialogSrc.contains('addPostFrameCallback'),
+      '直接 pop ⇒ build 期间改导航栈');
+  check('🔴 手动同步走弹窗：云朵点击 → `syncWithProgressDialog`',
+      s17BadgeSrc.contains('syncWithProgressDialog(context, ref)'),
+      '旧行为（先弹一句「上次同步是几点」、再让用户去找「重试」）已废弃');
+  check('🔑 已在同步时**忽略重复点击**（不叠加第二个请求）',
+      s17BadgeSrc.contains('SyncPhase.syncing) return'));
 
   _report();
 }

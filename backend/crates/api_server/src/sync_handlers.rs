@@ -998,13 +998,41 @@ pub async fn sync_push(
 /// **pull 的核心逻辑**（接受 `&Connection` ⇒ 可独立测试；理由同 `push_changes`）。
 ///
 /// `since` 传 `"1970-01-01T00:00:00.000Z"` 表示**首次同步**（拉全部）。
-/// `my_device` 传空串表示**不排除任何设备**。
+/// `my_device` 传空串表示**不排除任何设备** ——
+/// 🔴 `sync_pull` handler 在**首次全量**时显式传空串（理由见 `sync_pull` 里的长注释）。
 pub fn pull_changes(
     conn: &Connection,
     uid: &str,
     since: &str,
     my_device: &str,
 ) -> Result<PullOutput, AppError> {
+    // 🔴🔴 2026-10-10：**所有查询必须落在同一个读事务里**。
+    //
+    // # 为什么（这是一个**会静默丢数据**的竞态）
+    //
+    // `server_time` 与返回的数据来自**两次独立查询**。连接池（`db_pool.rs`，30 连接）
+    // + WAL ⇒ 每次 autocommit 查询是**各自独立的读快照** ⇒ 两次查询之间若有并发写入：
+    //
+    // | 时刻 | 谁 | 发生什么 |
+    // |---|---|---|
+    // | T1 | pull | 查数据（快照 S1）—— **没有** X |
+    // | T2 | push | 写入 X（`received_at = R`）并提交 |
+    // | T3 | pull | 查 `MAX(received_at)`（快照 S2）—— **看到了 R** |
+    //
+    // ⇒ `server_time = R` ⇒ 客户端把游标推进到 R
+    // ⇒ 下次 `received_at > R` ⇒ **X 永远不再返回** ⇒ 那条改动**永久丢失，且不报错**。
+    //
+    // 🔑 修法：同一事务的同一快照 ⇒「返回的数据」与「`server_time`」必然一致
+    //    （`server_time` 只会等于「已返回数据的最大值」，绝不会超前于它）。
+    // 📌 同族判据：**「判据口径差一层」不报错只给错数** —— 这里是「快照差一层」。
+    // ⚠️ 只读事务在 WAL 下不阻塞写，成本可忽略；且本函数无 `LIMIT`（一次全拉）
+    //    ⇒ 「截断 + 时间戳超前」那类漏在结构上也不可能发生。
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::Internal(format!("begin pull tx: {e}")))?;
+    // 遮蔽：下面所有 `conn.xxx` 都走本事务的**同一快照**。
+    let conn: &Connection = &tx;
+
     // 🔑 「排除自己的设备」用 `?3 = '' OR device_id <> ?3` 表达 ——
     //    比「拼两条 SQL」清晰，且 device_id 缺省时自动退化为「不排除」。
     //    只有 review_log 需要（其余表的变更本身是「字段值」，重拉无害且能纠正偏差）。
@@ -1345,7 +1373,7 @@ pub fn pull_changes(
         m.unwrap_or_else(now_ms)
     };
 
-    Ok(PullOutput {
+    let out = PullOutput {
         review_events,
         user_words,
         article_reads,
@@ -1358,7 +1386,12 @@ pub fn pull_changes(
         achievement_unlocks,
         settings,
         server_time: max_received,
-    })
+    };
+    // 🔴 显式结束读事务（`unchecked_transaction` 在 drop 时会 rollback ——
+    //    读事务下二者等价，但显式 commit 让「这里正常结束」的意图可读）。
+    tx.commit()
+        .map_err(|e| AppError::Internal(format!("commit pull tx: {e}")))?;
+    Ok(out)
 }
 
 /// `GET /api/sync/pull` — 拉取服务端的变更（**需登录 + 有效订阅**）。
@@ -1369,13 +1402,32 @@ pub async fn sync_pull(
     let (uid, _token) = authorize_with_subscription(&headers)?;
 
     // 首次同步（无 since）⇒ 用一个早于一切的时间戳（ISO8601 最小可表示值）
-    let since = q
-        .since
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .unwrap_or("1970-01-01T00:00:00.000Z");
-    let my_device = q.device_id.as_deref().map(str::trim).unwrap_or("");
+    let since_raw = q.since.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    // 🔴 是否「首次全量」（客户端没有游标）
+    let is_first_sync = since_raw.is_none();
+    let since = since_raw.unwrap_or("1970-01-01T00:00:00.000Z");
+
+    // 🔴🔴 2026-10-10：**首次全量拉取时不排除本设备**。
+    //
+    // # 为什么（不这么做 ⇒ 自己推的历史**永远拉不回来**）
+    //
+    // `pull` 默认排除本设备，其前提是「**本端推的，本端一定有**」。
+    // 该前提在下面这些情形**不成立**：
+    //   · 卸载重装 / 清数据 / 换账号后重登
+    //   · `user.db` 被重建（含 v11 把游标表清空 ⇒ 客户端必然做一次「首次全量拉取」）
+    // ⇒ 那些记录在服务端有、本地没有，而 `device_id <> me` 又把它们排除掉
+    // ⇒ **永久拿不回，且不报错**（用户看到「同步成功，但东西少了一份」）。
+    //
+    // 🔑 「首次全量拉取」的语义就是「**把服务端这份数据完整克隆到本地**」
+    //    —— 排除本设备与这个语义**直接矛盾**（除非本地一定完整，而那正是不能假设的）。
+    // ⚠️ 增量拉取（有 since）仍排除本设备：那时「本地完整」的前提由「本地曾拉过」
+    //    保证；且不排除会导致**每次同步都白拉一遍自己的事件**。
+    // 📄 依据：`docs/review/sync-ui-not-refreshing-and-device-state-mismatch-2026-10-10.md` §二
+    let my_device = if is_first_sync {
+        ""
+    } else {
+        q.device_id.as_deref().map(str::trim).unwrap_or("")
+    };
 
     let out = {
         let conn = crate::db_pool::get_conn();
@@ -1430,6 +1482,94 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         crate::schema::init_database(&conn).unwrap();
         conn
+    }
+
+    /// 🔴🔴 2026-10-10：**读事务必须提供「单一快照」**（`pull` 的正确性前提）。
+    ///
+    /// # 这条测试同时**证明缺陷存在**与**修复手段有效**（对照组 + 实验组）
+    ///
+    /// `pull_changes` 先查数据、再查 `MAX(received_at)` 当 `server_time`。
+    /// 连接池（`db_pool.rs`，30 连接）+ WAL ⇒ **每次 autocommit 查询各自独立快照**
+    /// ⇒ 两次查询之间若有并发 push 提交：
+    ///   · `server_time` **包含**那条并发记录（第三次查询的快照看到了它）
+    ///   · 但**返回的数据里没有它**（第一次查询的快照没看到）
+    /// ⇒ 客户端把游标推进到 `server_time` ⇒ 下次 `received_at > server_time`
+    ///   ⇒ **那条记录永远不再返回**（永久丢失，且全程不报错）。
+    /// 📌 同族判据：**「判据口径差一层」不报错只给错数** —— 这里是「快照差一层」。
+    ///
+    /// ⚠️ 本测试**不**直接调 `pull_changes`（无法在它内部两次查询之间插入写入），
+    ///    而是验证它依赖的**机制前提**：
+    /// · 对照组（**无**事务）⇒ 第二次查询能看到并发提交 ⇒ **非原子确实存在**
+    /// · 实验组（**有**事务）⇒ 同一事务内看不到 ⇒ **事务提供同一快照**
+    /// 「`pull_changes` 真的用了事务」由**源码断言**兜（`verify_sync.dart` §17.1）
+    /// —— 两层互补，且各自**可证伪**（把 `unchecked_transaction` 删掉，§17.1 立刻红）。
+    #[test]
+    fn test_read_transaction_gives_single_snapshot() {
+        let dir = std::env::temp_dir().join(format!(
+            "coevo_pull_snapshot_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.db");
+
+        let writer = Connection::open(&path).unwrap();
+        writer
+            .execute_batch(
+                "PRAGMA journal_mode=WAL;
+                 CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT NOT NULL);",
+            )
+            .unwrap();
+        let reader = Connection::open(&path).unwrap();
+
+        // ── 对照组：**没有**事务 ⇒ 两次查询看到不同快照 ──
+        let before = reader
+            .query_row("SELECT COUNT(*) FROM t", [], |r| r.get::<_, i64>(0))
+            .unwrap();
+        writer
+            .execute("INSERT INTO t (v) VALUES ('x')", [])
+            .unwrap();
+        let after = reader
+            .query_row("SELECT COUNT(*) FROM t", [], |r| r.get::<_, i64>(0))
+            .unwrap();
+        assert_eq!(before, 0);
+        assert_eq!(
+            after, 1,
+            "🔴 对照组前提不成立：无事务时第二次查询**应当**能看到并发提交。\
+             若这里相等，说明本环境不满足「各自快照」⇒ 本测试证明不了任何事（假绿）。"
+        );
+
+        // ── 实验组：**有**事务 ⇒ 同一快照（第一次读时确定）──
+        let tx = reader.unchecked_transaction().unwrap();
+        let snap1 = tx
+            .query_row("SELECT COUNT(*) FROM t", [], |r| r.get::<_, i64>(0))
+            .unwrap();
+        writer
+            .execute("INSERT INTO t (v) VALUES ('y')", [])
+            .unwrap(); // 并发写入并提交
+        let snap2 = tx
+            .query_row("SELECT COUNT(*) FROM t", [], |r| r.get::<_, i64>(0))
+            .unwrap();
+        assert_eq!(snap1, 1);
+        assert_eq!(
+            snap2, 1,
+            "🔴 事务内第二次查询看到了并发提交 ⇒ 快照隔离失效 \
+             ⇒ `pull` 的 `server_time` 会超前于返回数据 ⇒ 永久漏一条"
+        );
+        tx.commit().unwrap();
+
+        // 事务结束后重新查 ⇒ 能看到（证明那次写入**真的发生了**，不是没写进去）
+        let final_count = reader
+            .query_row("SELECT COUNT(*) FROM t", [], |r| r.get::<_, i64>(0))
+            .unwrap();
+        assert_eq!(final_count, 2);
+
+        drop(reader);
+        drop(writer);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 造用户；`expires` 给 `None` = 未订阅。
