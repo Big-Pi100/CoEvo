@@ -169,6 +169,15 @@ for label, needle in [
     #       这里 `enforce_token_limit 失败（user_id=…）` 的 `（user_id=` 之前正是所搜的子串。
     ("④-10 含 `enforce_token_limit 失败`（本批 · 多端登录的限额清理）",
      "enforce_token_limit 失败".encode("utf-8")),
+    # ── 2026-10-10 第三批：`pull` 的读事务（快照原子性）──
+    #    🔑 这两条是**本批独有**的（新增的 `AppError::Internal` 格式串）⇒
+    #       部署前实测为 **0** ⇒ 命中即证明「这个包确实是本批构建的」。
+    #    ⚠️ 它们来自 `format!("…")`（**不是** `tracing` 宏）⇒ 整个格式串
+    #       `"begin pull tx: {e}"` 原样在 `.rodata` 里，不会像 ④-10 那样被占位符切开。
+    ("④-12 含 `begin pull tx:`（本批 · pull 读事务开启）",
+     b"begin pull tx:"),
+    ("④-13 含 `commit pull tx:`（本批 · pull 读事务提交）",
+     b"commit pull tx:"),
 ]:
     n = bin_count(needle)
     check(label, n >= 1, f"{n} 次")
