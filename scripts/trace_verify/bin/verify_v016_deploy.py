@@ -110,6 +110,19 @@ c_up = http_code("/api/books/blob", "POST")
 check("②-4 POST /api/books/blob → 非 404（multipart 端点 · 同上）",
       c_up != 404, f"实际 {c_up}")
 
+# ── 2026-10-10 第三批：`sync/pull` / `sync/push` 的**路由存活** ──
+#    🔴 本批改了 `sync_pull` 的 handler 实现（读事务 + 首次全量分支）⇒
+#       万一改坏了路由注册，②-1~②-4 **测不到它**（那几条只覆盖 translate / books/blob）。
+#    ⚠️ `push` 是 `Json` 端点 ⇒ 不带 `Content-Type` 时提取器先失败（415），
+#       与 ②-1 同族 ⇒ 判据只做到「非 404」。
+#    ⚠️ **零副作用**：无 token ⇒ 鉴权拒绝（不会走到写库那一步）。
+c_pull = http_code("/api/sync/pull", "GET")
+check("②-6 GET /api/sync/pull → 401（本批改动的 handler · 路由仍在）",
+      c_pull == 401, f"实际 {c_pull}")
+c_push = http_code("/api/sync/push", "POST")
+check("②-7 POST /api/sync/push → 非 404（Json 端点 · 同上）",
+      c_push != 404, f"实际 {c_push}")
+
 # 🔴 阴性对照：证明「401」这个判据**真的能区分**存在与不存在
 #    （否则「所有 401」和「全部通过」在输出上长得一样）
 neg = http_code("/api/definitely-not-a-real-route-xyz")
