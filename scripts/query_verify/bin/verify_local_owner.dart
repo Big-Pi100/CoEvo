@@ -200,7 +200,8 @@ Future<void> main() async {
       check('🔴 `$t` 已清空', false, '仍有 $n 行');
     }
   }
-  check('🔴 10 张用户表全部清空', left == 0, '还有 $left 张没清干净');
+  // 🔑 文案用**动态表数**（写死「10 张」会在加表后变成一句假话 —— 而断言本身是对的）。
+  check('🔴 ${kUserOwnedTables.length} 张用户表全部清空', left == 0, '还有 $left 张没清干净');
 
   check('🔴 归属**没被**清掉（它是判据，不是数据）',
       await readLocalOwner(udb) == 'u-old', '${await readLocalOwner(udb)}');
@@ -228,7 +229,7 @@ Future<void> main() async {
   for (final t in kBookOwnedTables) {
     if (await _count(bdb, t) != 0) bLeft++;
   }
-  check('🔴 6 张书库表全部清空', bLeft == 0, '还有 $bLeft 张没清干净');
+  check('🔴 ${kBookOwnedTables.length} 张书库表全部清空', bLeft == 0, '还有 $bLeft 张没清干净');
 
   // ═══════════════════════════════════════════════════════════
   section('【5】老库（没有 `local_meta`）⇒ 读归属返回 null ⇒ **认领**（不清数据）');

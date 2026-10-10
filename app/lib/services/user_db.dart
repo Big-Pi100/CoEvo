@@ -138,7 +138,21 @@ import 'package:sqflite_common/sqlite_api.dart';
 ///       真机上「恰好是 v8」的库不触发 `onUpgrade` ⇒ `local_meta` 建不出来
 ///       ⇒ 归属读不到 ⇒ **换账号判定失效**（而它失效是静默的：
 ///         只会表现成「数据没被清」）。守护断言见 `verify_userdb_migration.dart`。
-const int kUserDbVersion = 9;
+///
+/// ## 🆕 v10（2026-10-10）：同步覆盖面补齐（审计报告 §五）
+///
+/// | 变更 | 类型 |
+/// |---|---|
+/// | `lookup_event` + `uid`（跨设备身份）+ `pending_push` | 🔴 **加列** ⇒ 必须写 ALTER |
+/// | `achievement_unlock` + `pending_push` | 🔴 **加列** ⇒ 必须写 ALTER |
+/// | 🆕 `setting_sync`（应用设置的同步载体）| 🟢 纯新增表 ⇒ 重跑脚本即可 |
+///
+/// 🔴 **加列必须写 `onUpgrade` 分支**（`CREATE TABLE IF NOT EXISTS` 对已存在的表整条跳过）
+///    —— 这是 v6/v8 已经写过两次的同一条教训。
+/// ⚠️ **同时必须升版本号**：真机上此刻的库可能是 **v9** ⇒ 版本不变则不触发 `onUpgrade`
+///    ⇒ 两列加不上、新表建不出（**静默**：界面上表现为「查词次数不涨 / 成就日期还是今天」）。
+///    ✅ 守护断言：`verify_userdb_migration.dart` 的 `fromVersion: 9` 路径。
+const int kUserDbVersion = 10;
 
 /// `user.db` 的文件名（调用方拼路径用）。
 const String kUserDbFileName = 'user.db';
@@ -273,6 +287,46 @@ Future<Database> openUserDb({
             table: 'highlight',
             column: 'paused',
             ddl: 'INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1))',
+          );
+        }
+
+        // ── ①c v10：`lookup_event` 补 `uid` + `pending_push`；`achievement_unlock` 补 `pending_push` ──
+        //
+        // 🔴 与 v6/v8 同一个坑：`CREATE TABLE IF NOT EXISTS` 对**已存在的表整条跳过**
+        //    ⇒ schema 里新加的列对老库**永远加不上** ⇒ 必须在这里 ALTER。
+        // ⚠️ ddl 必须与 `user_db_schema.sql` 里那两列**逐字一致**（含 CHECK），
+        //    否则「升级出来的库」与「新建的库」约束漂移（静默）。
+        //
+        // 🔴 `uid` **可空**（老行回填前为 NULL）—— 不能给 `NOT NULL`：
+        //    ① 老数据没有 uuid，而 SQLite 的 DDL **无法生成** uuid；
+        //    ② 回填由 `UserWordRepository.backfillLookupUids()` **惰性**完成
+        //       （只在「真要 push」时才生成，避免为永不上云的设备白造 uuid）。
+        //    ⚠️ 不加 DEFAULT —— `NULL` 正是「还没回填」的可辨识状态。
+        //    🔴 后果提醒：**uid 为 NULL 的行绝不能直接 push** ——
+        //       服务端 PK 是 `(user_id, uid)`，空串会让所有未回填行**互相覆盖**。
+        //       所以 `sync_service.pushOnce` 必须先 `backfillLookupUids()`。
+        //
+        // 🔴 `pending_push` 对**老行**默认 1 ⇒ 升级后第一次同步会把历史查词记录
+        //    全部推上去（**有意**：否则「查词次数」成就在新设备上缺了历史）。
+        //    ⚠️ 因此提交端**必须分批**（可能有数千条，见 `sync_service` 的批量循环）。
+        if (oldVersion < 10) {
+          await addColumnIfMissing(
+            db,
+            table: 'lookup_event',
+            column: 'uid',
+            ddl: 'TEXT',
+          );
+          await addColumnIfMissing(
+            db,
+            table: 'lookup_event',
+            column: 'pending_push',
+            ddl: 'INTEGER NOT NULL DEFAULT 1 CHECK (pending_push IN (0, 1))',
+          );
+          await addColumnIfMissing(
+            db,
+            table: 'achievement_unlock',
+            column: 'pending_push',
+            ddl: 'INTEGER NOT NULL DEFAULT 1 CHECK (pending_push IN (0, 1))',
           );
         }
 

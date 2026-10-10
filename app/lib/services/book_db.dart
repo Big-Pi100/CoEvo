@@ -68,7 +68,18 @@ const String kBookDbSchemaAsset = 'assets/sql/book_db_schema.sql';
 ///    （= 「真机此刻所处的版本」）。只测 v1/v2 → v4 会**假绿** ——
 ///    那些路径的版本都在变 ⇒ `onUpgrade` 一定触发 ⇒ 新表一定建出来。
 ///    🔑 判据：**测试要覆盖「用户此刻真实所处的状态」**，不只是历史版本。
-const int kBookDbVersion = 4;
+///
+/// ## 🆕 v5（2026-10-10）：`book_marker` 纳入跨设备同步 ⇒ 新增 `book_marker_pending`
+///
+/// | 变更 | 类型 |
+/// |---|---|
+/// | 🆕 `book_marker_pending`（待认领的远端书签）| 🟢 纯新增表 ⇒ 重跑全量幂等脚本即覆盖 |
+///
+/// 🔴 **但仍必须升版本号** —— 这正是 `user.db` 上踩过两次的坑（`highlight` / `local_meta`）：
+///    加表却忘升版本 ⇒ 老库（`version == 目标版本`）**不触发 `onUpgrade`** ⇒ 表**永远建不出来**
+///    （`IF NOT EXISTS` 一句都不会执行）⇒ **静默失败**。
+/// ⚠️ 因此 `verify_bookdb_migration` **必须补 `fromVersion: 4`**（真机此刻所处的版本）。
+const int kBookDbVersion = 5;
 
 /// 打开（必要时创建）`book.db`。
 ///

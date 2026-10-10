@@ -140,3 +140,33 @@ class UserDbRevision extends Notifier<int> {
 
 final userDbRevisionProvider =
     NotifierProvider<UserDbRevision, int>(UserDbRevision.new);
+
+// ════════════════════════════════════════════════════════════════
+// 🆕 2026-10-10：「同步设置（prefs）被外部改动」的单一信号源
+// ════════════════════════════════════════════════════════════════
+
+/// `SharedPreferences` 里的**同步设置**（字号 / 痕迹 / 兴趣 / TTS / 显示名）
+/// 被**外部**改动过的信号（目前唯一来源：云端同步 pull 写回）。
+///
+/// # 🔴 为什么需要它（与 [userDbRevisionProvider] 同族，但对象不同）
+/// 那些设置**不在 `user.db`**，而在 prefs ⇒ `userDbRevision` 的 bump 覆盖不到它们。
+/// 同步 pull 回来会**写回 prefs** ⇒ 读 prefs 的 provider 必须重算，
+/// 否则「数据同步了、界面没变」（本项目最忌的静默失效）。
+///
+/// 🔑 与 `userDbRevision` **同一模式**：读端 `watch` 一个 revision，写端只 `bump()` 一次
+///    （反转依赖 —— 写端不必点名每个读端；点名法迟早漏一个）。
+/// 🔑 为什么放本文件：它与「本机状态变了」是同一个概念族
+///    （`userDbRevision` = DB 变了 · 本 provider = prefs 变了）。
+///
+/// ⚠️ 用户**自己在设置面板里改**不走这里（那条路径有自己的状态更新）；
+///    它只为「外部改写」（同步）服务。
+class SettingsRevision extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  /// 在**写完 prefs 之后**调用（顺序重要：先写再 bump —— 反过来的话读端会读到旧值）。
+  void bump() => state = state + 1;
+}
+
+final settingsRevisionProvider =
+    NotifierProvider<SettingsRevision, int>(SettingsRevision.new);

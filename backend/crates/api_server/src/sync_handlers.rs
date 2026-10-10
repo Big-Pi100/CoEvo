@@ -164,6 +164,61 @@ pub struct BookInput {
     pub deleted: i64,
 }
 
+/// 查词记录（**日志型**：内容一旦写入不再改 ⇒ `INSERT OR IGNORE`）。
+///
+/// 🔴 跨设备身份是 `uid`（端侧 uuid），**不是**端侧自增 id ——
+///    自增 id 在两台设备上各自从 1 开始 ⇒ 必撞（同 `HighlightInput.id` 的判据）。
+#[derive(Debug, Deserialize)]
+pub struct LookupEventInput {
+    pub uid: String,
+    /// ⚠️ **可空**：查了但词库里没有 ⇒ `None`（白哥定「未命中也要记」）。
+    #[serde(default)]
+    pub word_id: Option<String>,
+    pub spelling: String,
+    #[serde(default)]
+    pub article_id: Option<i64>,
+    #[serde(default)]
+    pub sentence: Option<String>,
+    #[serde(default)]
+    pub position: Option<i64>,
+    pub looked_up_at: String,
+}
+
+/// 书本内书签。
+///
+/// 🔑 `content_hash` 是**书**的跨设备身份（不是端侧 `book_id` —— 那是端侧 uuid）。
+/// 🔴 `deleted` 合并是 **OR**（任一端删过即删）—— 本表没有 `updated_at`，
+///    「谁更新谁赢」在这里没有判据；而书签的「取消」是终局意愿（见 `schema.rs` 说明）。
+#[derive(Debug, Deserialize)]
+pub struct BookMarkerInput {
+    pub id: String,
+    pub content_hash: String,
+    pub chapter_idx: i64,
+    pub scroll_ratio: f64,
+    pub excerpt: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub deleted: i64,
+}
+
+/// 成就解锁记录（`unlocked_at` 取**较早** = 首次解锁时刻）。
+#[derive(Debug, Deserialize)]
+pub struct AchievementUnlockInput {
+    pub key: String,
+    pub unlocked_at: String,
+}
+
+/// 应用设置（**键值对** —— 与其余表形态不同的同步通道）。
+///
+/// 🔑 `value` 是端侧 `jsonEncode` 后的文本（bool / int / double / String / List 统一承载）
+///    ⇒ 服务端只做搬运、不理解语义（语义是端侧知识）。
+#[derive(Debug, Deserialize)]
+pub struct SettingInput {
+    pub key: String,
+    pub value: String,
+    pub updated_at: String,
+}
+
 /// `POST /api/sync/push` 的请求体。
 #[derive(Debug, Deserialize)]
 pub struct PushInput {
@@ -184,6 +239,18 @@ pub struct PushInput {
     pub book_progress: Vec<BookProgressInput>,
     #[serde(default)]
     pub books: Vec<BookInput>,
+    /// 🆕 2026-10-10：查词记录（成就 `lookupCount` 的数据源）。
+    #[serde(default)]
+    pub lookup_events: Vec<LookupEventInput>,
+    /// 🆕 2026-10-10：书本内书签（用户资产）。
+    #[serde(default)]
+    pub book_markers: Vec<BookMarkerInput>,
+    /// 🆕 2026-10-10：成就解锁记录（保留真实解锁时间）。
+    #[serde(default)]
+    pub achievement_unlocks: Vec<AchievementUnlockInput>,
+    /// 🆕 2026-10-10：应用设置（prefs 键值）。
+    #[serde(default)]
+    pub settings: Vec<SettingInput>,
 }
 
 /// `GET /api/sync/pull` 的查询参数。
@@ -283,6 +350,45 @@ pub struct BookOut {
 }
 
 #[derive(Debug, Serialize)]
+pub struct LookupEventOut {
+    pub uid: String,
+    pub word_id: Option<String>,
+    pub spelling: String,
+    pub article_id: Option<i64>,
+    pub sentence: Option<String>,
+    pub position: Option<i64>,
+    pub looked_up_at: String,
+}
+
+/// 书本内书签（回应给端侧）。
+///
+/// 🔑 `content_hash` 让端侧认出「这是**哪本书**的书签」（本地可能还没导入那本书
+///    ⇒ 端侧先存进 `book_marker_pending`，等导入后认领）。
+#[derive(Debug, Serialize)]
+pub struct BookMarkerOut {
+    pub id: String,
+    pub content_hash: String,
+    pub chapter_idx: i64,
+    pub scroll_ratio: f64,
+    pub excerpt: String,
+    pub created_at: String,
+    pub deleted: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AchievementUnlockOut {
+    pub key: String,
+    pub unlocked_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SettingOut {
+    pub key: String,
+    pub value: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize)]
 pub struct PullOutput {
     pub review_events: Vec<ReviewEventOut>,
     pub user_words: Vec<UserWordOut>,
@@ -292,6 +398,14 @@ pub struct PullOutput {
     pub highlights: Vec<HighlightOut>,
     pub book_progress: Vec<BookProgressOut>,
     pub books: Vec<BookOut>,
+    /// 🆕 2026-10-10：查词记录。
+    pub lookup_events: Vec<LookupEventOut>,
+    /// 🆕 2026-10-10：书本内书签。
+    pub book_markers: Vec<BookMarkerOut>,
+    /// 🆕 2026-10-10：成就解锁记录。
+    pub achievement_unlocks: Vec<AchievementUnlockOut>,
+    /// 🆕 2026-10-10：应用设置。
+    pub settings: Vec<SettingOut>,
     /// 🔑 客户端把它存下来作为**下次 pull 的 `since`**。
     ///    取「本次返回数据里最大的 `received_at`」；若无数据则取当前时间。
     ///    ⚠️ **不能用「当前时间」替代** —— 若本次有数据而客户端用当前时间当 since，
@@ -417,6 +531,14 @@ pub struct PushStats {
     pub highlights: usize,
     pub book_progress: usize,
     pub books: usize,
+    /// 🆕 2026-10-10：查词记录。
+    pub lookup_events: usize,
+    /// 🆕 2026-10-10：书本内书签。
+    pub book_markers: usize,
+    /// 🆕 2026-10-10：成就解锁记录。
+    pub achievement_unlocks: usize,
+    /// 🆕 2026-10-10：应用设置。
+    pub settings: usize,
 }
 
 /// **push 的核心逻辑**（接受 `&Connection` ⇒ 测试可直接用临时库验证）。
@@ -449,6 +571,10 @@ pub fn push_changes(
     check_batch_size("highlights", input.highlights.len())?;
     check_batch_size("book_progress", input.book_progress.len())?;
     check_batch_size("books", input.books.len())?;
+    check_batch_size("lookup_events", input.lookup_events.len())?;
+    check_batch_size("book_markers", input.book_markers.len())?;
+    check_batch_size("achievement_unlocks", input.achievement_unlocks.len())?;
+    check_batch_size("settings", input.settings.len())?;
 
     let mut stats = PushStats::default();
     // 🔑 用 `unchecked_transaction`（只需 `&Connection`，与 `db_pool` 的共享连接兼容）
@@ -710,6 +836,114 @@ pub fn push_changes(
             .map_err(|e| AppError::Internal(format!("upsert book: {e}")))?;
     }
 
+    // ── ⑦ 查词记录：**纯 `INSERT OR IGNORE`**（日志不可变，PK 相同即重复）──
+    //
+    // 🔑 与 `review_log` 同一形态：「事件日志」不需要合并口径 ——
+    //    内容一旦写入不再改，同一 `uid` 推多次结果一致。
+    for e in &input.lookup_events {
+        stats.lookup_events += tx
+            .execute(
+                "INSERT OR IGNORE INTO sync_lookup_event
+                   (user_id, uid, word_id, spelling, article_id, sentence, position,
+                    looked_up_at, received_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    &uid,
+                    &e.uid,
+                    &e.word_id,
+                    &e.spelling,
+                    e.article_id,
+                    &e.sentence,
+                    e.position,
+                    &e.looked_up_at,
+                    &received_at
+                ],
+            )
+            .map_err(|e| AppError::Internal(format!("insert lookup_event: {e}")))?;
+    }
+
+    // ── ⑧ 书本内书签：**`deleted` 取 OR + 其余字段取较早端** ──
+    //
+    // 🔴 `deleted = MAX(excluded.deleted, sync_book_marker.deleted)` 表达的正是 **OR**：
+    //    任一端删过 ⇒ 结果删。理由见 `BookMarkerInput` / `schema.rs`（本表无 `updated_at`，
+    //    LWW 无判据；而「取消书签」是终局意愿）。
+    //
+    // 🔑 `created_at = MIN(...)` + 位置/摘录 CASE 取「较早那端」——
+    //    同一 uuid 的两端副本内容本该一致，取较早保证结果稳定、可交换。
+    for m in &input.book_markers {
+        stats.book_markers += tx
+            .execute(
+                "INSERT INTO sync_book_marker
+                   (user_id, id, content_hash, chapter_idx, scroll_ratio, excerpt,
+                    created_at, deleted, received_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                 ON CONFLICT (user_id, id) DO UPDATE SET
+                   deleted      = MAX(excluded.deleted, sync_book_marker.deleted),
+                   content_hash = CASE WHEN excluded.created_at < sync_book_marker.created_at
+                                       THEN excluded.content_hash
+                                       ELSE sync_book_marker.content_hash END,
+                   chapter_idx  = CASE WHEN excluded.created_at < sync_book_marker.created_at
+                                       THEN excluded.chapter_idx
+                                       ELSE sync_book_marker.chapter_idx END,
+                   scroll_ratio = CASE WHEN excluded.created_at < sync_book_marker.created_at
+                                       THEN excluded.scroll_ratio
+                                       ELSE sync_book_marker.scroll_ratio END,
+                   excerpt      = CASE WHEN excluded.created_at < sync_book_marker.created_at
+                                       THEN excluded.excerpt
+                                       ELSE sync_book_marker.excerpt END,
+                   created_at   = MIN(excluded.created_at, sync_book_marker.created_at),
+                   received_at  = excluded.received_at
+                 WHERE excluded.created_at < sync_book_marker.created_at
+                    OR excluded.deleted     > sync_book_marker.deleted",
+                params![
+                    &uid,
+                    &m.id,
+                    &m.content_hash,
+                    m.chapter_idx,
+                    m.scroll_ratio,
+                    &m.excerpt,
+                    &m.created_at,
+                    m.deleted,
+                    &received_at
+                ],
+            )
+            .map_err(|e| AppError::Internal(format!("upsert book_marker: {e}")))?;
+    }
+
+    // ── ⑨ 成就解锁：`unlocked_at` 取**较早**（首次解锁时刻，同 `article_read.read_at`）──
+    for a in &input.achievement_unlocks {
+        stats.achievement_unlocks += tx
+            .execute(
+                "INSERT INTO sync_achievement_unlock (user_id, key, unlocked_at, received_at)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (user_id, key) DO UPDATE SET
+                   unlocked_at = MIN(excluded.unlocked_at, sync_achievement_unlock.unlocked_at),
+                   received_at = excluded.received_at
+                 WHERE excluded.unlocked_at < sync_achievement_unlock.unlocked_at",
+                params![&uid, &a.key, &a.unlocked_at, &received_at],
+            )
+            .map_err(|e| AppError::Internal(format!("upsert achievement_unlock: {e}")))?;
+    }
+
+    // ── ⑩ 应用设置：`value` 取**较新端**（LWW，同 `book_progress`）──
+    //
+    // 🔴 `value` 是**整体替换**（不是字段级合并）—— 一个设置项就是一个原子值，
+    //    「较新的那端说了算」（端侧在**写入设置时**刷新 `updated_at`）。
+    for s in &input.settings {
+        stats.settings += tx
+            .execute(
+                "INSERT INTO sync_setting (user_id, key, value, updated_at, received_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT (user_id, key) DO UPDATE SET
+                   value       = excluded.value,
+                   updated_at  = excluded.updated_at,
+                   received_at = excluded.received_at
+                 WHERE excluded.updated_at > sync_setting.updated_at",
+                params![&uid, &s.key, &s.value, &s.updated_at, &received_at],
+            )
+            .map_err(|e| AppError::Internal(format!("upsert setting: {e}")))?;
+    }
+
     tx.commit()
         .map_err(|e| AppError::Internal(format!("commit: {e}")))?;
     Ok(stats)
@@ -732,7 +966,8 @@ pub async fn sync_push(
     };
 
     tracing::info!(
-        "sync_push: uid={} device={} review={} word={} read={} bm={} hl={} bp={} book={}",
+        "sync_push: uid={} device={} review={} word={} read={} bm={} hl={} bp={} book={} \
+         lookup={} marker={} ach={} set={}",
         uid,
         device_id,
         stats.review_events,
@@ -741,7 +976,11 @@ pub async fn sync_push(
         stats.bookmarks,
         stats.highlights,
         stats.book_progress,
-        stats.books
+        stats.books,
+        stats.lookup_events,
+        stats.book_markers,
+        stats.achievement_unlocks,
+        stats.settings
     );
 
     Ok(Json(serde_json::json!({
@@ -961,6 +1200,113 @@ pub fn pull_changes(
         }
     }
 
+    // 🆕 2026-10-10：查词记录。⚠️ 本表**不排除本设备**（所有表里只有 `review_log` 需要排除）——
+    //    重复拉回由端侧「按 uid 幂等写入」兜住，且能纠正偏差。
+    let mut lookup_events: Vec<LookupEventOut> = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT uid, word_id, spelling, article_id, sentence, position, looked_up_at
+                   FROM sync_lookup_event
+                  WHERE user_id = ?1 AND received_at > ?2
+                  ORDER BY received_at ASC",
+            )
+            .map_err(|e| AppError::Internal(format!("prepare pull lookup: {e}")))?;
+        let rows = stmt
+            .query_map(params![&uid, &since], |r| {
+                Ok(LookupEventOut {
+                    uid: r.get(0)?,
+                    word_id: r.get(1)?,
+                    spelling: r.get(2)?,
+                    article_id: r.get(3)?,
+                    sentence: r.get(4)?,
+                    position: r.get(5)?,
+                    looked_up_at: r.get(6)?,
+                })
+            })
+            .map_err(|e| AppError::Internal(format!("query pull lookup: {e}")))?;
+        for row in rows {
+            lookup_events.push(row.map_err(|e| AppError::Internal(format!("row lookup: {e}")))?);
+        }
+    }
+
+    // 🆕 2026-10-10：书本内书签。
+    let mut book_markers: Vec<BookMarkerOut> = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, content_hash, chapter_idx, scroll_ratio, excerpt, created_at, deleted
+                   FROM sync_book_marker
+                  WHERE user_id = ?1 AND received_at > ?2
+                  ORDER BY received_at ASC",
+            )
+            .map_err(|e| AppError::Internal(format!("prepare pull marker: {e}")))?;
+        let rows = stmt
+            .query_map(params![&uid, &since], |r| {
+                Ok(BookMarkerOut {
+                    id: r.get(0)?,
+                    content_hash: r.get(1)?,
+                    chapter_idx: r.get(2)?,
+                    scroll_ratio: r.get(3)?,
+                    excerpt: r.get(4)?,
+                    created_at: r.get(5)?,
+                    deleted: r.get(6)?,
+                })
+            })
+            .map_err(|e| AppError::Internal(format!("query pull marker: {e}")))?;
+        for row in rows {
+            book_markers.push(row.map_err(|e| AppError::Internal(format!("row marker: {e}")))?);
+        }
+    }
+
+    // 🆕 2026-10-10：成就解锁记录。
+    let mut achievement_unlocks: Vec<AchievementUnlockOut> = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT key, unlocked_at FROM sync_achievement_unlock
+                  WHERE user_id = ?1 AND received_at > ?2
+                  ORDER BY received_at ASC",
+            )
+            .map_err(|e| AppError::Internal(format!("prepare pull achievement: {e}")))?;
+        let rows = stmt
+            .query_map(params![&uid, &since], |r| {
+                Ok(AchievementUnlockOut {
+                    key: r.get(0)?,
+                    unlocked_at: r.get(1)?,
+                })
+            })
+            .map_err(|e| AppError::Internal(format!("query pull achievement: {e}")))?;
+        for row in rows {
+            achievement_unlocks
+                .push(row.map_err(|e| AppError::Internal(format!("row achievement: {e}")))?);
+        }
+    }
+
+    // 🆕 2026-10-10：应用设置。
+    let mut settings: Vec<SettingOut> = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT key, value, updated_at FROM sync_setting
+                  WHERE user_id = ?1 AND received_at > ?2
+                  ORDER BY received_at ASC",
+            )
+            .map_err(|e| AppError::Internal(format!("prepare pull setting: {e}")))?;
+        let rows = stmt
+            .query_map(params![&uid, &since], |r| {
+                Ok(SettingOut {
+                    key: r.get(0)?,
+                    value: r.get(1)?,
+                    updated_at: r.get(2)?,
+                })
+            })
+            .map_err(|e| AppError::Internal(format!("query pull setting: {e}")))?;
+        for row in rows {
+            settings.push(row.map_err(|e| AppError::Internal(format!("row setting: {e}")))?);
+        }
+    }
+
     // 🔑 `server_time` = 「**本次返回的数据里**最大的 received_at」，没有数据时才用当前时间。
     //
     // 🔴 为什么不能用「当前时间」一了百了：本函数先查数据、后取当前时间，
@@ -980,6 +1326,11 @@ pub fn pull_changes(
             "SELECT MAX(received_at) FROM sync_highlight     WHERE user_id = ?1",
             "SELECT MAX(received_at) FROM sync_book_progress WHERE user_id = ?1",
             "SELECT MAX(received_at) FROM sync_book          WHERE user_id = ?1",
+            // 🆕 2026-10-10：漏一张 ⇒ 只写那张表时 `server_time` 不前进 ⇒ 同一批被**反复重拉**
+            "SELECT MAX(received_at) FROM sync_lookup_event      WHERE user_id = ?1",
+            "SELECT MAX(received_at) FROM sync_book_marker       WHERE user_id = ?1",
+            "SELECT MAX(received_at) FROM sync_achievement_unlock WHERE user_id = ?1",
+            "SELECT MAX(received_at) FROM sync_setting           WHERE user_id = ?1",
         ] {
             let v: Option<String> = conn
                 .query_row(sql, params![&uid], |r| r.get(0))
@@ -1002,6 +1353,10 @@ pub fn pull_changes(
         highlights,
         book_progress,
         books,
+        lookup_events,
+        book_markers,
+        achievement_unlocks,
+        settings,
         server_time: max_received,
     })
 }
@@ -1028,7 +1383,8 @@ pub async fn sync_pull(
     };
 
     tracing::info!(
-        "sync_pull: uid={} since={} device={} review={} word={} read={} bm={} hl={} bp={}",
+        "sync_pull: uid={} since={} device={} review={} word={} read={} bm={} hl={} bp={} \
+         lookup={} marker={} ach={} set={}",
         uid,
         since,
         my_device,
@@ -1037,7 +1393,11 @@ pub async fn sync_pull(
         out.article_reads.len(),
         out.bookmarks.len(),
         out.highlights.len(),
-        out.book_progress.len()
+        out.book_progress.len(),
+        out.lookup_events.len(),
+        out.book_markers.len(),
+        out.achievement_unlocks.len(),
+        out.settings.len()
     );
 
     Ok(Json(out))
@@ -1113,6 +1473,10 @@ mod tests {
             highlights: vec![],
             book_progress: vec![],
             books: vec![],
+            lookup_events: vec![],
+            book_markers: vec![],
+            achievement_unlocks: vec![],
+            settings: vec![],
         }
     }
 
@@ -1126,6 +1490,12 @@ mod tests {
             "sync_bookmark",
             "sync_highlight",
             "sync_book_progress",
+            "sync_book",
+            // 🆕 2026-10-10：同步覆盖面补齐的 4 张表
+            "sync_lookup_event",
+            "sync_book_marker",
+            "sync_achievement_unlock",
+            "sync_setting",
         ] {
             let n: i64 = conn
                 .query_row(
@@ -1756,5 +2126,285 @@ mod tests {
             !crate::subscription::is_subscription_active(&conn, "expired"),
             "已过期应拒绝"
         );
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 🆕 2026-10-10：同步覆盖面补齐（审计报告 §五 P0/P1/P2/P3）
+    //    四张新表：`sync_lookup_event` · `sync_book_marker` ·
+    //              `sync_achievement_unlock` · `sync_setting`
+    // ══════════════════════════════════════════════════════════════════
+
+    /// 🔑 `lookup_event` 是**日志型** ⇒ `INSERT OR IGNORE` 幂等；未命中词的 `word_id` 是 NULL。
+    ///
+    /// ⚠️ 这条同时守一个**结构陷阱**：`word_id` 可空，但**绝不能**把它放进 PK ——
+    ///    NULL 在 SQLite 的 PK 里互不相等 ⇒ 破坏幂等。跨设备身份只用 `uid`。
+    #[test]
+    fn test_lookup_event_union_and_idempotent() {
+        let conn = setup();
+        seed_user(&conn, "u1", Some("2099-01-01"));
+
+        let mut a = base_push("devA");
+        a.lookup_events = vec![LookupEventInput {
+            uid: "lk-1".into(),
+            word_id: Some("w1".into()),
+            spelling: "receive".into(),
+            article_id: Some(7),
+            sentence: Some("I receive it".into()),
+            position: Some(3),
+            looked_up_at: "2026-10-01T00:00:00Z".into(),
+        }];
+        push_changes(&conn, "u1", "devA", RECV1, &a).unwrap();
+
+        // 未命中的词（word_id = None）也要能存
+        let mut b = base_push("devB");
+        b.lookup_events = vec![LookupEventInput {
+            uid: "lk-2".into(),
+            word_id: None,
+            spelling: "zzz".into(),
+            article_id: None,
+            sentence: None,
+            position: None,
+            looked_up_at: "2026-10-02T00:00:00Z".into(),
+        }];
+        push_changes(&conn, "u1", "devB", RECV1, &b).unwrap();
+
+        let out = pull_changes(&conn, "u1", ALL, "").unwrap();
+        assert_eq!(out.lookup_events.len(), 2, "两条不同 uid 都应存在");
+        let miss = out.lookup_events.iter().find(|e| e.uid == "lk-2").unwrap();
+        assert_eq!(
+            miss.word_id, None,
+            "未命中词的 word_id 应是 NULL（不是空串）"
+        );
+
+        // 幂等：同一批重推，行数与 received_at 都不变
+        let recv_before: String = conn
+            .query_row(
+                "SELECT received_at FROM sync_lookup_event WHERE uid='lk-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        push_changes(&conn, "u1", "devA", RECV2, &a).unwrap();
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sync_lookup_event", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 2, "重复 push 不得增行");
+        let recv_after: String = conn
+            .query_row(
+                "SELECT received_at FROM sync_lookup_event WHERE uid='lk-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(recv_before, recv_after, "重复 push 不得推进 received_at");
+    }
+
+    /// 🔴 `book_marker` 的 `deleted` 合并是 **OR**（任一端删过即删），不是「取较新」。
+    ///
+    /// # 为什么这条断言最重要
+    /// 本表**没有 `updated_at`** ⇒ 若照抄其余表的「谁更新谁赢」，取消**永远传不出去**
+    /// （取消不刷时间戳 ⇒ `t > t` 为假 ⇒ 服务端保留旧的 `deleted = 0`）——
+    /// 那正是「取消了的书签又自己回来」。OR 语义**恰好**匹配「取消是终局意愿」。
+    #[test]
+    fn test_book_marker_deleted_is_or() {
+        let conn = setup();
+        seed_user(&conn, "u1", Some("2099-01-01"));
+
+        fn mk(id: &str, created: &str, deleted: i64) -> BookMarkerInput {
+            BookMarkerInput {
+                id: id.into(),
+                content_hash: "hash-book-1".into(),
+                chapter_idx: 2,
+                scroll_ratio: 0.5,
+                excerpt: "一段摘录".into(),
+                created_at: created.into(),
+                deleted,
+            }
+        }
+
+        // A 端打书签
+        let mut a = base_push("devA");
+        a.book_markers = vec![mk("m1", "2026-10-01T00:00:00.000Z", 0)];
+        push_changes(&conn, "u1", "devA", RECV1, &a).unwrap();
+
+        // B 端取消（deleted=1）—— ⚠️ 它**没有更晚的 created_at**（正是本表没有 LWW 判据的证明）
+        let mut b = base_push("devB");
+        b.book_markers = vec![mk("m1", "2026-10-01T00:00:00.000Z", 1)];
+        push_changes(&conn, "u1", "devB", RECV2, &b).unwrap();
+
+        let out = pull_changes(&conn, "u1", ALL, "").unwrap();
+        assert_eq!(out.book_markers.len(), 1);
+        assert_eq!(out.book_markers[0].deleted, 1, "任一端的取消都要生效（OR）");
+
+        // 反向：A 再推「未删」的旧副本 ⇒ **不得复活**
+        let mut a2 = base_push("devA");
+        a2.book_markers = vec![mk("m1", "2026-10-01T00:00:00.000Z", 0)];
+        push_changes(&conn, "u1", "devA", RECV2, &a2).unwrap();
+        let out2 = pull_changes(&conn, "u1", ALL, "").unwrap();
+        assert_eq!(
+            out2.book_markers[0].deleted, 1,
+            "OR 语义下不得被未删副本复活"
+        );
+
+        // 位置 / 摘录是「首次事实」⇒ 取 `created_at` 较早端（更晚的副本不得改写位置）
+        let mut b2 = base_push("devB");
+        b2.book_markers = vec![BookMarkerInput {
+            id: "m1".into(),
+            content_hash: "hash-book-1".into(),
+            chapter_idx: 99,
+            scroll_ratio: 0.99,
+            excerpt: "被改写".into(),
+            created_at: "2026-10-09T00:00:00.000Z".into(),
+            deleted: 1,
+        }];
+        push_changes(&conn, "u1", "devB", RECV2, &b2).unwrap();
+        let out3 = pull_changes(&conn, "u1", ALL, "").unwrap();
+        assert_eq!(
+            out3.book_markers[0].chapter_idx, 2,
+            "位置是首次事实 ⇒ 取较早端"
+        );
+        assert_eq!(out3.book_markers[0].excerpt, "一段摘录");
+    }
+
+    /// `achievement_unlock` 的 `unlocked_at` 取**较早**（= 首次解锁这一事实）。
+    #[test]
+    fn test_achievement_unlock_keeps_earliest() {
+        let conn = setup();
+        seed_user(&conn, "u1", Some("2099-01-01"));
+
+        let mut later = base_push("devA");
+        later.achievement_unlocks = vec![AchievementUnlockInput {
+            key: "first_word".into(),
+            unlocked_at: "2026-10-05T00:00:00Z".into(),
+        }];
+        push_changes(&conn, "u1", "devA", RECV1, &later).unwrap();
+
+        // B 端记的是**更早**时刻（真正的首次解锁）⇒ 应胜出
+        let mut earlier = base_push("devB");
+        earlier.achievement_unlocks = vec![AchievementUnlockInput {
+            key: "first_word".into(),
+            unlocked_at: "2026-10-01T00:00:00Z".into(),
+        }];
+        push_changes(&conn, "u1", "devB", RECV2, &earlier).unwrap();
+
+        let out = pull_changes(&conn, "u1", ALL, "").unwrap();
+        assert_eq!(out.achievement_unlocks.len(), 1);
+        assert_eq!(
+            out.achievement_unlocks[0].unlocked_at, "2026-10-01T00:00:00Z",
+            "应取**较早**（首次解锁时刻）"
+        );
+
+        // 再推更晚的 ⇒ 不得把「首次解锁时间」推后
+        push_changes(&conn, "u1", "devA", RECV2, &later).unwrap();
+        let out2 = pull_changes(&conn, "u1", ALL, "").unwrap();
+        assert_eq!(
+            out2.achievement_unlocks[0].unlocked_at, "2026-10-01T00:00:00Z",
+            "更晚的不得覆盖较早的"
+        );
+    }
+
+    /// `setting` 的 `value` 取**较新端**（LWW），且更旧的重推不推进 `received_at`（幂等）。
+    #[test]
+    fn test_setting_last_write_wins() {
+        let conn = setup();
+        seed_user(&conn, "u1", Some("2099-01-01"));
+
+        let mut a = base_push("devA");
+        a.settings = vec![SettingInput {
+            key: "reading_font_size".into(),
+            value: "17".into(),
+            updated_at: "2026-10-01T00:00:00Z".into(),
+        }];
+        push_changes(&conn, "u1", "devA", RECV1, &a).unwrap();
+
+        let mut b = base_push("devB");
+        b.settings = vec![SettingInput {
+            key: "reading_font_size".into(),
+            value: "22".into(),
+            updated_at: "2026-10-05T00:00:00Z".into(),
+        }];
+        push_changes(&conn, "u1", "devB", RECV2, &b).unwrap();
+
+        let out = pull_changes(&conn, "u1", ALL, "").unwrap();
+        assert_eq!(out.settings.len(), 1);
+        assert_eq!(out.settings[0].value, "22", "较新端胜");
+
+        // 幂等：重推更旧的那批 ⇒ 不覆盖、不推进 received_at
+        let before: String = conn
+            .query_row(
+                "SELECT received_at FROM sync_setting WHERE key='reading_font_size'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        push_changes(&conn, "u1", "devA", RECV2, &a).unwrap();
+        let after: String = conn
+            .query_row(
+                "SELECT received_at FROM sync_setting WHERE key='reading_font_size'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(before, after, "更旧的设置不得刷新 received_at");
+        let out2 = pull_changes(&conn, "u1", ALL, "").unwrap();
+        assert_eq!(out2.settings[0].value, "22", "更旧的不得回退");
+    }
+
+    /// 🔴 4 张新表的多用户隔离 —— **这条能抓出「PK 忘了带 user_id」**。
+    ///
+    /// 手法：两个用户用**完全相同**的 `uid` / `id` / `key`。若某张表 PK 漏了 `user_id`，
+    /// 第二个用户会**覆盖**第一个 —— 而单人测试**永远发现不了**。
+    #[test]
+    fn test_new_sync_tables_multi_user_isolation() {
+        let conn = setup();
+        seed_user(&conn, "u1", Some("2099-01-01"));
+        seed_user(&conn, "u2", Some("2099-01-01"));
+
+        for u in ["u1", "u2"] {
+            let mut p = base_push("devA");
+            p.lookup_events = vec![LookupEventInput {
+                uid: "same-uid".into(),
+                word_id: None,
+                spelling: "same".into(),
+                article_id: None,
+                sentence: None,
+                position: None,
+                looked_up_at: "2026-10-01T00:00:00Z".into(),
+            }];
+            p.book_markers = vec![BookMarkerInput {
+                id: "same-id".into(),
+                content_hash: "h".into(),
+                chapter_idx: 1,
+                scroll_ratio: 0.1,
+                excerpt: "e".into(),
+                created_at: "2026-10-01T00:00:00Z".into(),
+                deleted: 0,
+            }];
+            p.achievement_unlocks = vec![AchievementUnlockInput {
+                key: "same-key".into(),
+                unlocked_at: "2026-10-01T00:00:00Z".into(),
+            }];
+            p.settings = vec![SettingInput {
+                key: "same-key".into(),
+                value: "v".into(),
+                updated_at: "2026-10-01T00:00:00Z".into(),
+            }];
+            push_changes(&conn, u, "devA", RECV1, &p).unwrap();
+        }
+
+        let o1 = pull_changes(&conn, "u1", ALL, "").unwrap();
+        let o2 = pull_changes(&conn, "u2", ALL, "").unwrap();
+        assert_eq!(o1.lookup_events.len(), 1, "u1 应恰好看到自己那条");
+        assert_eq!(o2.lookup_events.len(), 1);
+        assert_eq!(o1.book_markers.len(), 1);
+        assert_eq!(o2.book_markers.len(), 1);
+        assert_eq!(
+            o1.achievement_unlocks.len(),
+            1,
+            "PK 漏 user_id ⇒ 一人看不到自己的"
+        );
+        assert_eq!(o2.achievement_unlocks.len(), 1);
+        assert_eq!(o1.settings.len(), 1);
+        assert_eq!(o2.settings.len(), 1);
     }
 }

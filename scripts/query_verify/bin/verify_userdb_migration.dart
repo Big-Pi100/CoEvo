@@ -233,6 +233,26 @@ $_v7Schema
 ALTER TABLE highlight ADD COLUMN paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1));
 ''';
 
+/// **v9 的 schema 快照**（2026-10-09 时点的样子）= v8 + `local_meta`。
+///
+/// 🔴 与 `_v8Schema` **同一条理由**：真机上的 `user.db` 此刻**恰好就是 v9**
+///    （10-09 出的包把版本升到了 9）⇒「**v9 → 当前版本**」是**最真实的那条升级路径**。
+///
+/// ⚠️ v10 的变更里混着**两类**，本快照两样都不能含：
+///    · **加列**：`lookup_event.uid` / `lookup_event.pending_push` /
+///      `achievement_unlock.pending_push` —— `ADD COLUMN` 不在 schema 脚本里
+///      （它在 `onUpgrade` 的 ①c 分支里）⇒ 本快照必须**不含这些列**，
+///      否则「升级后它们存在」那条断言就失去意义（本来就存在）。
+///    · **加表**：`setting_sync` ⇒ 本快照也**不含**它。
+///    📌 判据：「前提类断言」的粒度必须等于被测变更的粒度（加表查表、加列查列）。
+const String _v9Schema = '''
+$_v8Schema
+CREATE TABLE IF NOT EXISTS local_meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+''';
+
 /// **v7 的 schema 快照**（2026-10-08 · 划线 + 翻译缓存）。
 ///
 /// 🔴 与 `_v6Schema` **同一条理由**：真机上的 `user.db` 此刻**恰好就是 v7**
@@ -445,6 +465,38 @@ Future<void> runUpgradeCase({
         !oldTables.contains('local_meta'));
   }
 
+  // 🔴🆕 **v10 的前提（2026-10-10）** —— 三类变更混在同一版本，**粒度分开查**：
+  //    · `lookup_event` **不含** `uid` / `pending_push`（加列）
+  //    · `achievement_unlock` **不含** `pending_push`（加列）
+  //    · **不含** `setting_sync`（加表）
+  //    📌 同 v8/v9 的判据：加列查列、加表查表。
+  final oldLeCols = oldTables.contains('lookup_event')
+      ? <String>[
+          for (final r in await old.rawQuery('PRAGMA table_info(lookup_event)'))
+            r['name'] as String,
+        ]
+      : <String>[];
+  final oldAchCols = oldTables.contains('achievement_unlock')
+      ? <String>[
+          for (final r
+              in await old.rawQuery('PRAGMA table_info(achievement_unlock)'))
+            r['name'] as String,
+        ]
+      : <String>[];
+  if (fromVersion < 10) {
+    check('🔴 前提成立：v$fromVersion 老库的 lookup_event **不含** uid 列（v10 才加）',
+        !oldLeCols.contains('uid'),
+        oldLeCols.isEmpty ? '（表不存在 ⇒ 天然成立）' : oldLeCols.join(','));
+    check('🔴 前提成立：v$fromVersion 老库的 lookup_event **不含** pending_push 列（v10）',
+        !oldLeCols.contains('pending_push'),
+        oldLeCols.isEmpty ? '（表不存在 ⇒ 天然成立）' : oldLeCols.join(','));
+    check('🔴 前提成立：v$fromVersion 老库的 achievement_unlock **不含** pending_push 列',
+        !oldAchCols.contains('pending_push'),
+        oldAchCols.isEmpty ? '（表不存在 ⇒ 天然成立）' : oldAchCols.join(','));
+    check('🔴 前提成立：v$fromVersion 老库**不含** setting_sync（v10 才加）',
+        !oldTables.contains('setting_sync'));
+  }
+
   check('老库已有 bookmark 数据（2 条）',
       firstInt(await old.rawQuery('SELECT count(*) AS n FROM bookmark')) == 2);
   await old.close();
@@ -485,6 +537,31 @@ Future<void> runUpgradeCase({
   //    换账号时**不清空**（静默地把上一个账号的数据留在新账号名下）。
   check('🔴 local_meta 已创建（v1.9 新表 —— 「本地数据归属账号」的判据）',
       tables.contains('local_meta'));
+  // 🆕 v10（2026-10-10）：同步覆盖面补齐 —— **两处「加列」+ 一处「加表」**。
+  //    🔴 这是本版本最容易漏的一类（加列靠 `ALTER`，重跑全量脚本**覆盖不了**）。
+  final leCols = <String>[
+    for (final r in await db.rawQuery('PRAGMA table_info(lookup_event)'))
+      r['name'] as String,
+  ];
+  check('🔴 lookup_event.uid 列已存在（v10 的 ALTER 生效 —— 同步的跨设备身份）',
+      leCols.contains('uid'), leCols.join(','));
+  check('🔴 lookup_event.pending_push 列已存在（v10 的 ALTER 生效）',
+      leCols.contains('pending_push'), leCols.join(','));
+  // 🔑 列顺序：新列必须是**最后两列**（`ALTER` 只能追加末尾 + schema 里也写在末尾
+  //    ⇒ 「新建的库」与「升级出来的库」列顺序一致，按位置取值的代码不会错位）。
+  check('🔑 lookup_event 末两列是 uid / pending_push（新旧库列顺序一致）',
+      leCols.length >= 2 &&
+          leCols[leCols.length - 2] == 'uid' &&
+          leCols.last == 'pending_push',
+      leCols.join(','));
+  final achCols = <String>[
+    for (final r in await db.rawQuery('PRAGMA table_info(achievement_unlock)'))
+      r['name'] as String,
+  ];
+  check('🔴 achievement_unlock.pending_push 列已存在（v10 的 ALTER 生效）',
+      achCols.contains('pending_push'), achCols.join(','));
+  check('🔴 setting_sync 已创建（v1.10 新表 —— 设置同步的载体）',
+      tables.contains('setting_sync'));
   check('user_version 已升到 $kUserDbVersion', ver == kUserDbVersion, '$ver');
 
   section('【4】🔑 全量表清单（从 schema 自动提取 → 将来加表自动覆盖）');
@@ -881,10 +958,27 @@ Future<void> main() async {
     expectedTables: expectedTables,
   );
 
+  // 🔴🆕 **v9 → 当前**（2026-10-10 加）：真机上此刻**恰好是 v9**的库最多
+  //    （10-09 出的包把版本升到了 9 —— 详见 `kUserDbVersion` 注释）。
+  //    v10 的变更是**两处加列 + 一处加表**：
+  //      · 加列（`lookup_event.uid` / `.pending_push` / `achievement_unlock.pending_push`）
+  //        靠 `ALTER`，**重跑全量脚本覆盖不了** ⇒ 漏了就是**静默失败**
+  //        （查词记录推不上去 / 成就日期是假的 / 设置不同步）。
+  //      · 加表（`setting_sync`）靠重跑脚本。
+  //    📌 判据（同 v7/v9 那两次）：「最新那个版本」最容易被漏 ——
+  //       它看起来「已经是新的了」，而**用户此刻恰好就在那儿**。
+  await runUpgradeCase(
+    factory: factory,
+    schemaSql: schemaSql,
+    fromVersion: 9,
+    oldSchema: _v9Schema,
+    expectedTables: expectedTables,
+  );
+
   print('');
   print('═' * 74);
   if (_failures.isEmpty) {
-    print('✅ 全部通过：$_pass 项（v1…v8 → v$kUserDbVersion 八条路径）');
+    print('✅ 全部通过：$_pass 项（v1…v9 → v$kUserDbVersion 九条路径）');
   } else {
     print('🔴 失败 ${_failures.length} 项 / 通过 $_pass 项：');
     for (final f in _failures) {

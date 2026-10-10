@@ -164,6 +164,25 @@ class TtsService extends ChangeNotifier {
     });
   }
 
+  /// 🆕 2026-10-10：云端同步写回 prefs 后**重读**开关与语速。
+  ///
+  /// 🔑 与 [init] 分开：`init()` 还要取音色列表（走 method channel，成本高且可能挂），
+  ///    而本方法只重读两个 prefs 值 ⇒ 便宜、可在任意时刻调用。
+  /// 📌 谁调用：`sync_provider._runSync` 在「设置被 pull 改写」之后（见那里的说明）。
+  Future<void> reloadSyncedSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _enabled = prefs.getBool('tts_enabled') ?? true;
+      _speechRate = clampSpeechRate(
+        prefs.getDouble('tts_speech_rate') ?? kSpeechRateDefault,
+      );
+      notifyListeners();
+    } catch (e) {
+      // 纯偏好，读不到不该崩（同 `init` 的取向）—— 但**必须留日志**
+      debugPrint('[TTS] 重读同步设置失败（不影响朗读）: $e');
+    }
+  }
+
   /// 初始化可用音色列表
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -183,6 +202,7 @@ class TtsService extends ChangeNotifier {
     //    ⇒ 这里显式做一次**逐元素规范化**：类型不对的元素直接丢弃，不猜、不抛。
     final raw = await _guard<dynamic>(_tts.getVoices, 'getVoices');
     _availableVoices = (raw is List ? raw : const <dynamic>[])
+
         .whereType<Map>()
         .map(Map<String, dynamic>.from)
         .toList(growable: false);

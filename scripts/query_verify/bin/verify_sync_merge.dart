@@ -147,6 +147,51 @@ Map<String, Object?> hmark({
       'updated_at': updated,
     };
 
+/// 🆕 2026-10-10：一条查词记录（形状与 `LookupEvent.toPushRow()` 一致）。
+Map<String, Object?> levent({
+  required String uid,
+  String spelling = 'receive',
+  Object? wordId = 'w001',
+  String at = tNoMs,
+}) =>
+    {
+      'uid': uid,
+      'word_id': wordId,
+      'spelling': spelling,
+      'article_id': 7,
+      'sentence': 'I receive it',
+      'position': 3,
+      'looked_up_at': at,
+    };
+
+/// 🆕 2026-10-10：一条书签（形状与 `_pendingBookMarkers` 的 SELECT 一致）。
+Map<String, Object?> mkmark({
+  required String id,
+  String hash = 'hash-book-1',
+  int chapter = 2,
+  double ratio = 0.5,
+  String excerpt = '一段摘录',
+  int deleted = 0,
+  String created = tNoMs,
+}) =>
+    {
+      'id': id,
+      'content_hash': hash,
+      'chapter_idx': chapter,
+      'scroll_ratio': ratio,
+      'excerpt': excerpt,
+      'created_at': created,
+      'deleted': deleted,
+    };
+
+/// 🆕 2026-10-10：一条成就解锁记录。
+Map<String, Object?> aunlock(String key, String at) =>
+    {'key': key, 'unlocked_at': at};
+
+/// 🆕 2026-10-10：一行设置（`value` 是 JSON 文本）。
+Map<String, Object?> setrow(String key, String value, String at) =>
+    {'key': key, 'value': value, 'updated_at': at};
+
 void main() {
   print('');
   print('#' * 74);
@@ -377,6 +422,11 @@ void main() {
     'highlight': schemaUser, // 🆕 2026-10-09（划线记忆在 user.db）
     'book_progress': schemaBook,
     'book': schemaBook,
+    // 🆕 2026-10-10：同步覆盖面补齐
+    'lookup_event': schemaUser,
+    'achievement_unlock': schemaUser,
+    'setting_sync': schemaUser,
+    'book_marker': schemaBook,
   };
 
   for (final entry in M.kSyncFieldSources.entries) {
@@ -420,6 +470,11 @@ void main() {
     'bookmark': 'BookmarkInput',
     'book_progress': 'BookProgressInput',
     'highlight': 'HighlightInput',
+    // 🆕 2026-10-10
+    'lookup_event': 'LookupEventInput',
+    'book_marker': 'BookMarkerInput',
+    'achievement_unlock': 'AchievementUnlockInput',
+    'setting': 'SettingInput',
   };
   for (final e in rustStructOf.entries) {
     final fields = _rustStructFields(rust, e.value);
@@ -714,6 +769,94 @@ void main() {
         .contains(r"strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"),
     '—— 有意保留，不是漏改（改它没有收益、徒增 diff）',
   );
+
+  // ═══════════════════════════════════════════════════════════
+  section('【14】🆕 同步覆盖面补齐（2026-10-10）：4 类数据的合并口径');
+
+  // ── ① lookup_event：**日志**（内容不可变）⇒ 整行取较早端 ──
+  final lem = M.mergeLookupEvent(
+      levent(uid: 'u1', at: tNoMs), levent(uid: 'u1', at: t3));
+  check('🔑 `lookup_event` 取**较早**端（同一 uid 内容一致 ⇒ 结果稳定、可交换）',
+      lem['looked_up_at'] == tNoMs, '${lem['looked_up_at']}');
+  check('`lookup_event` 保留 `uid`',
+      M.mergeLookupEvent(levent(uid: 'a'), levent(uid: 'a'))['uid'] == 'a');
+  check('⚠️ 未命中词（`word_id` 为 null）合并后仍是 null',
+      M.mergeLookupEvent(levent(uid: 'u2', wordId: null),
+          levent(uid: 'u2', wordId: null))['word_id'] ==
+          null);
+  check('🔑 `lookup_event` 较早端缺 `word_id` ⇒ 退到另一端（null 是「没这份信息」）',
+      M.mergeLookupEvent(levent(uid: 'u3', wordId: null, at: tNoMs),
+          levent(uid: 'u3', wordId: 'w009', at: t3))['word_id'] ==
+          'w009');
+  check('`lookup_event` 不产出 `pending_push`', !lem.containsKey('pending_push'));
+
+  // ── ② book_marker：`deleted` 取 **OR**（本表**没有 `updated_at`**）──
+  final mkm = M.mergeBookMarker(mkmark(id: 'm1', deleted: 0, created: tNoMs),
+      mkmark(id: 'm1', deleted: 1, created: tNoMs));
+  check('🔴 `book_marker` 的 `deleted` 取 **OR**（任一端删过即删）', mkm['deleted'] == 1);
+  check(
+    '🔴 反向：更晚的「未删」副本**不得复活**',
+    M.mergeBookMarker(mkmark(id: 'm1', deleted: 1, created: tNoMs),
+            mkmark(id: 'm1', deleted: 0, created: t3))['deleted'] ==
+        1,
+    '本表没有时间列 ⇒ 若照抄「取较新」，取消**永远传不出去**',
+  );
+  check(
+    '`book_marker` 对称（交换参数结论相同）',
+    M.mergeBookMarker(mkmark(id: 'm1', deleted: 1, created: tNoMs),
+            mkmark(id: 'm1', deleted: 0, created: tNoMs))['deleted'] ==
+        1,
+  );
+  check(
+    '🔑 `book_marker` 位置/摘录取**较早端**',
+    M.mergeBookMarker(mkmark(id: 'm1', chapter: 2, ratio: 0.5, created: tNoMs),
+            mkmark(id: 'm1', chapter: 99, ratio: 0.99, created: t3))['chapter_idx'] ==
+        2,
+  );
+  check('`book_marker` 保留 `content_hash`（**书**的跨设备身份）',
+      mkm['content_hash'] == 'hash-book-1');
+
+  // ── ③ achievement_unlock：`unlocked_at` 取**较早**（首次解锁）──
+  check('🔴 `achievement_unlock` 的 `unlocked_at` 取**较早**',
+      M.mergeAchievementUnlock(aunlock('k', t2), aunlock('k', tNoMs))['unlocked_at'] ==
+          tNoMs);
+  check('`achievement_unlock` 对称',
+      M.mergeAchievementUnlock(aunlock('k', tNoMs), aunlock('k', t2))['unlocked_at'] ==
+          tNoMs);
+
+  // ── ④ setting：`value` 取较新（LWW，整体替换）──
+  final stm = M.mergeSetting(setrow('reading_font_size', '17', tNoMs),
+      setrow('reading_font_size', '22', t3));
+  check('🔴 `setting` 的 `value` 取**较新**端（LWW）', stm['value'] == '22');
+  check('`setting` 的 `updated_at` 取较新', stm['updated_at'] == t3);
+  check(
+    '🔑 `setting` **整体替换**（一个键就是一个原子值，不逐字段拼）',
+    M.mergeSetting(setrow('k', '17', t3), setrow('k', '22', tNoMs))['value'] == '17',
+  );
+  check('`setting` 保留 `key`', stm['key'] == 'reading_font_size');
+
+  // ── 契约表登记 ──
+  for (final k in ['lookup_event', 'book_marker', 'achievement_unlock', 'setting']) {
+    check('契约表已登记 `$k`',
+        M.kSyncFieldSources.containsKey(k) && M.kPushJsonContract.containsKey(k));
+  }
+  check(
+    '🔴 `book_marker` 的跨设备身份在契约里指向 **`book` 表**（不是 `book_marker.book_id`）',
+    M.kSyncFieldSources['book_marker']!.contains(('book', 'content_hash')),
+    '${M.kSyncFieldSources['book_marker']}',
+  );
+  check('🔑 `setting` 的字段来自 `setting_sync` 表（不是 `setting`）',
+      M.kSyncFieldSources['setting']!.every((e) => e.$1 == 'setting_sync'));
+
+  // ── 跨语言口径核对（后端 UPSERT 的方向必须与端侧合并一致）──
+  check('🔴 后端 `sync_book_marker` 用 `MAX(...deleted...)`（OR）—— 与 `mergeBookMarker` 同向',
+      RegExp(r'MAX\(excluded\.deleted,\s*sync_book_marker\.deleted\)').hasMatch(rust));
+  check('🔴 后端 `sync_achievement_unlock` 用 `MIN(`（取较早）',
+      RegExp(r'unlocked_at\s*=\s*MIN\(').hasMatch(rust));
+  check('🔴 后端 `sync_setting` 用 `>`（取较新）—— 与 `mergeSetting` 同向',
+      RegExp(r'excluded\.updated_at\s*>\s*sync_setting\.updated_at').hasMatch(rust));
+  check('🔴 后端 `sync_lookup_event` 用 `INSERT OR IGNORE`（日志不可变）',
+      rust.contains('INSERT OR IGNORE INTO sync_lookup_event'));
 
   _report();
 }

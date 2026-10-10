@@ -41,6 +41,7 @@
 //   （那是 `sync_client.dart` 的事，需要 Flutter + 真后端 ⇒ 端到端才验）。
 // · 本机 flutter 跑不起来 ⇒ 本脚本是**唯一**能在本地验证这层的途径。
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -448,23 +449,32 @@ void main() async {
 
     check('发了 1 个 push 请求', x.http.pushBodies.length == 1);
     final body = x.http.pushBodies.first;
-    check('顶层键集合正确',
-        body.keys.toSet().toString() ==
-            {
-              'device_id',
-              'review_events',
-              'user_words',
-              'article_reads',
-              'bookmarks',
-              // 🆕 2026-10-09：划线记忆（**必须与后端 `PushInput` 的键逐字一致**）
-              'highlights',
-              'book_progress',
-              // 🆕 2026-10-08 书架上云：书单。
-              // 🔴 它必须**先于文件上传**到达服务端 —— 否则
-              //    `book_blob_handler` 会以 400 拒绝（「这本书还没在书单里」）。
-              'books'
-            }.toString(),
-        '${body.keys.toList()}');
+    // 🔑 **排序后**比较（而不是依赖插入顺序）——
+    //    锁的是「键集合」（漏一个键 = 那类数据**静默传空**），
+    //    而「字段顺序」只是可读性 ⇒ 调整顺序不该让这条**假红**。
+    //    📌 判据：**断言跟「意图」走、不跟「拼写/顺序」走**。
+    final gotKeys = body.keys.toList()..sort();
+    final wantKeys = <String>[
+      'device_id',
+      'review_events',
+      'user_words',
+      'article_reads',
+      'bookmarks',
+      // 🆕 2026-10-09：划线记忆（**必须与后端 `PushInput` 的键逐字一致**）
+      'highlights',
+      'book_progress',
+      // 🆕 2026-10-08 书架上云：书单。
+      // 🔴 它必须**先于文件上传**到达服务端 —— 否则
+      //    `book_blob_handler` 会以 400 拒绝（「这本书还没在书单里」）。
+      'books',
+      // 🆕 2026-10-10：同步覆盖面补齐的 4 类（查词 / 书签 / 成就 / 设置）
+      'lookup_events',
+      'book_markers',
+      'achievement_unlocks',
+      'settings',
+    ]..sort();
+    check('顶层键集合正确', gotKeys.toString() == wantKeys.toString(),
+        '实得 $gotKeys');
     check('顶层 `device_id` = 本机', body['device_id'] == 'dev-test');
     final ev = (body['review_events'] as List).first as Map;
     check('`review_events[0]` 键集合 = 后端 `ReviewEventInput`',
@@ -904,6 +914,255 @@ void main() async {
     check('🔴 首次事实不动：offsets 仍是本地的',
         row['start_offset'] == 1, '${row['start_offset']}');
     check('本地已推 + 无新事实 ⇒ 不标待推（防回声）', row['pending_push'] == 0);
+    await db.close();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  section('【14】🆕 同步覆盖面补齐（2026-10-10）：4 类数据的**真库行为**');
+  //
+  // # 🔴 为什么这组必须有（它守的是本批**新写的 pull 逻辑**）
+  // 「写了新的 pull 分支」与「它真的能把数据落进正确的表」是两件事 ——
+  // 前者靠源码断言（`verify_sync`），后者**只有真跑一遍**才知道。
+  //
+  // # 证伪方式
+  // · 删掉 `pushOnce` 里的 `backfillLookupUids()` ⇒ ①「uid 已回填」必红
+  // · 让 `_applyBookMarkers` 在本地没书时也写 `book_marker` ⇒ ②「进 pending」必红
+  // · 让 `_applySettings` 只写表不写 prefs ⇒ ④「写回 prefs」必红
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── ① 查词记录：`uid` 惰性回填 + push + pull（幂等）──
+  {
+    final db = await _openUserDb();
+    // 造两条**没有 uid**的老行（= v9 老库升级上来的样子）
+    await db.insert('lookup_event', {
+      'uid': null,
+      'word_id': 'w001',
+      'spelling': 'receive',
+      'looked_up_at': '2026-10-01T00:00:00Z',
+      'pending_push': 1,
+    });
+    await db.insert('lookup_event', {
+      'uid': null,
+      'word_id': null, // 未命中词库
+      'spelling': 'zzz',
+      'looked_up_at': '2026-10-02T00:00:00Z',
+      'pending_push': 1,
+    });
+
+    final x = _mk(db);
+    await x.svc.pushOnce();
+    check('① 发了 1 个 push 请求', x.http.pushBodies.length == 1);
+    final looks = (x.http.pushBodies.first['lookup_events'] as List);
+    check('🔴 两条查词记录都推出去了（老行也推 —— 否则换设备后查词次数归零）',
+        looks.length == 2, '${looks.length}');
+    final uids = [for (final e in looks) (e as Map)['uid']];
+    check('🔴 `uid` 已被**回填**（空 uid 会让服务端 PK `(user_id,uid)` 互相覆盖）',
+        uids.every((u) => u is String && u.isNotEmpty), '$uids');
+    check(
+      '🔑 未命中词的 `word_id` 传 `null`（不是空串）',
+      (looks.firstWhere((e) => (e as Map)['spelling'] == 'zzz') as Map)['word_id'] ==
+          null,
+    );
+
+    // pull：重复的 uid 应被 `INSERT OR IGNORE` 忽略，新的写入
+    x.http.pullResponse = {
+      'lookup_events': [
+        looks[0], // 已存在（同 uid）
+        {
+          'uid': 'remote-uid-1',
+          'word_id': 'w500',
+          'spelling': 'resilience',
+          'article_id': null,
+          'sentence': null,
+          'position': null,
+          'looked_up_at': '2026-10-03T00:00:00Z',
+        },
+      ],
+      'server_time': '2026-10-06T10:00:00.000Z',
+    };
+    final r = await x.svc.pullOnce();
+    check('🔴 只拉回 1 条新记录（重复 uid 被忽略 —— 日志幂等）',
+        r.pulledLookupEvents == 1, '${r.pulledLookupEvents}');
+    check('本地共 3 条（2 老 + 1 新）',
+        (await db.rawQuery('SELECT count(*) AS n FROM lookup_event')).first['n'] == 3);
+    final remoteRow =
+        (await db.query('lookup_event', where: "uid = 'remote-uid-1'")).first;
+    check('🔴 拉回来的标 `pending_push = 0`（防回声）', remoteRow['pending_push'] == 0);
+    check('🔴 `pulledLookupEvents` 计入 `pulledTotal`',
+        r.pulledTotal >= 1, '${r.pulledTotal}');
+    await db.close();
+  }
+
+  // ── ② 书签：推要在**书**的指纹上；拉要按「本地有没有这本书」分流 ──
+  {
+    final udb = await _openUserDb();
+    final bdb = await _openBookDb();
+    await bdb.insert('book', {
+      'id': 'b-local',
+      'title': 'P&P',
+      'source_format': 'epub',
+      'added_at': '2026-10-01T00:00:00Z',
+      'content_hash': 'hash-abc',
+    });
+    await bdb.insert('book_marker', {
+      'id': 'mk-local',
+      'book_id': 'b-local',
+      'chapter_idx': 1,
+      'scroll_ratio': 0.3,
+      'excerpt': '本地摘录',
+      'created_at': '2026-10-01T00:00:00Z',
+      'deleted': 0,
+    });
+
+    final x = _mk(udb, bookDb: bdb);
+    await x.svc.pushOnce();
+    final markers = (x.http.pushBodies.first['book_markers'] as List);
+    check(
+      '🔴 书签推出去时带 `content_hash`（**书**的跨设备身份，不是端侧 `book_id`）',
+      markers.length == 1 && (markers.first as Map)['content_hash'] == 'hash-abc',
+      '$markers',
+    );
+    check('🔴 推的**不是** `book_id`（那是端侧 uuid，别端对不上）',
+        !(markers.first as Map).containsKey('book_id'));
+
+    x.http.pullResponse = {
+      'book_markers': [
+        {
+          'id': 'mk-local', // 同 id ⇒ 合并
+          'content_hash': 'hash-abc',
+          'chapter_idx': 1,
+          'scroll_ratio': 0.3,
+          // ⚠️ 摘录更晚的副本 ⇒ **不该**覆盖本地（位置/摘录取较早端）
+          'excerpt': '远端摘录',
+          'created_at': '2026-10-09T00:00:00Z',
+          'deleted': 1, // 🔴 别端取消 ⇒ OR 语义 ⇒ 本地也删
+        },
+        {
+          'id': 'mk-remote-book',
+          'content_hash': 'hash-xyz', // 本地**没有**这本书
+          'chapter_idx': 0,
+          'scroll_ratio': 0.1,
+          'excerpt': 'x',
+          'created_at': '2026-10-02T00:00:00Z',
+          'deleted': 0,
+        },
+      ],
+      'server_time': '2026-10-06T10:00:00.000Z',
+    };
+    final r = await x.svc.pullOnce();
+    check('🔴 拉回 2 条书签', r.pulledBookMarkers == 2, '${r.pulledBookMarkers}');
+    final localMk =
+        (await bdb.query('book_marker', where: "id = 'mk-local'")).first;
+    check(
+      '🔴 `deleted` 取 OR ⇒ 别端取消后本地也删（本表无 updated_at，照抄「取较新」会传不出去）',
+      localMk['deleted'] == 1,
+      '${localMk['deleted']}',
+    );
+    check('🔑 位置/摘录取**较早端**（更晚的副本不得改写）',
+        localMk['excerpt'] == '本地摘录', '${localMk['excerpt']}');
+    check(
+      '🔴 本地**没有**那本书的书签进 `book_marker_pending`（直接写 book_marker 会 FK 失败）',
+      (await bdb.rawQuery(
+                  "SELECT count(*) AS n FROM book_marker_pending WHERE id = 'mk-remote-book'"))
+              .first['n'] ==
+          1,
+    );
+    check('🔴 `pulledBookMarkers` 计入 `pulledTotal`', r.pulledTotal >= 2);
+    await udb.close();
+    await bdb.close();
+  }
+
+  // ── ③ 成就解锁：push + pull（`unlocked_at` 取较早）──
+  {
+    final db = await _openUserDb();
+    await db.insert('achievement_unlock', {
+      'key': 'first_word',
+      'unlocked_at': '2026-10-05T00:00:00Z',
+      'pending_push': 1,
+    });
+    final x = _mk(db);
+    await x.svc.pushOnce();
+    final achs = (x.http.pushBodies.first['achievement_unlocks'] as List);
+    check('③ 成就记录推出去',
+        achs.length == 1 && (achs.first as Map)['key'] == 'first_word');
+
+    x.http.pullResponse = {
+      'achievement_unlocks': [
+        // 更早 ⇒ 应胜出（它是**真正的**首次解锁时刻）
+        {'key': 'first_word', 'unlocked_at': '2026-10-01T00:00:00Z'},
+        {'key': 'streak_3', 'unlocked_at': '2026-10-04T00:00:00Z'},
+      ],
+      'server_time': '2026-10-06T10:00:00.000Z',
+    };
+    final r = await x.svc.pullOnce();
+    check('🔴 拉回 2 条成就解锁', r.pulledAchievementUnlocks == 2);
+    final row =
+        (await db.query('achievement_unlock', where: "key = 'first_word'")).first;
+    check(
+      '🔴 `unlocked_at` 取**较早**（首次解锁时间不得被推后 —— 否则成就墙日期是假的）',
+      row['unlocked_at'] == '2026-10-01T00:00:00Z',
+      '${row['unlocked_at']}',
+    );
+    await db.close();
+  }
+
+  // ── ④ 应用设置：pull 写回 prefs + **不回声** ──
+  {
+    final db = await _openUserDb();
+    // 模拟 prefs（内存 Map；**存解码后的值**，与真实 `_writeSyncedSetting` 同口径）
+    final prefs = <String, Object?>{
+      'reading_font_size': 22,
+      'tts_enabled': false,
+    };
+    final svc = SyncService(
+      userDb: db,
+      pushHttp: (b) async => {'ok': true},
+      pullHttp: ({since, deviceId}) async => {
+            'settings': [
+              {
+                'key': 'reading_font_size',
+                'value': '15', // 更晚 ⇒ 远端胜
+                'updated_at': '2099-01-01T00:00:00Z',
+              },
+              {
+                'key': 'display_name',
+                'value': '"云端昵称"',
+                'updated_at': '2026-10-05T00:00:00Z',
+              },
+            ],
+            'server_time': '2026-10-06T10:00:00.000Z',
+          },
+      readCursor: () async => null,
+      writeCursor: (s) async {},
+      deviceId: 'dev-test',
+      readPrefSetting: (k) async => prefs[k],
+      // 与 `sync_provider._writeSyncedSetting` 同口径：**解码后**按类型写回
+      writePrefSetting: (k, v) async => prefs[k] = jsonDecode(v),
+    );
+
+    final r = await svc.pullOnce();
+    check('🔴 `applySettings` **写回 prefs**（只写表 ⇒「同步了、界面没变」）',
+        prefs['display_name'] != null, '${prefs['display_name']}');
+    check('🔴 `pulledSettings` = **真正改变 prefs 的键数**（不是写表行数）',
+        r.pulledSettings == 2, '${r.pulledSettings}');
+    check('🔴 远端更新的值胜（LWW）：字号 22 → 15', prefs['reading_font_size'] == 15,
+        '${prefs['reading_font_size']}');
+    check('🔑 远端**没有**的键不被动（`tts_enabled` 保持本地 false）',
+        prefs['tts_enabled'] == false);
+    check('🔴 `pulledSettings` 计入 `pulledTotal`（否则「只拉回设置」不 bump）',
+        r.pulledTotal >= 2);
+
+    // 再 push：采集比对「prefs vs 表」——
+    //   · 刚 pull 回来的两个键（值一致）⇒ **不该产生待推**（防回声）
+    //   · `tts_enabled` 远端**没有**、本地有 ⇒ 采集**会**把它推上去
+    //     （✅ 这是**对的** —— 否则那项设置永远上不了云）
+    // ⇒ 期望恰好 1 条；若 > 1 就是「刚拉回来的又被推回去」（回声）。
+    final p = await svc.pushOnce();
+    check(
+      '🔑 pull 写回后**不回声**（只推「远端没有、本地有」的那 1 项）',
+      p.pushedSettings == 1,
+      '${p.pushedSettings} —— >1 则说明刚 pull 回来的键被当成「本地改动」又推了回去',
+    );
     await db.close();
   }
 

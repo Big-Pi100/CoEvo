@@ -194,6 +194,44 @@ CREATE TABLE IF NOT EXISTS book_marker (
 -- 取某本书的全部书签（按**位置**排序 —— 找地方是按顺序找，不是按「我什么时候标的」）
 CREATE INDEX IF NOT EXISTS idx_book_marker ON book_marker(book_id, chapter_idx, scroll_ratio);
 
+-- ── 🆕 v5（2026-10-10）：**待认领的远端书签** ──────────────────────────────
+--
+-- # 🔴 为什么需要它（与 `book_progress_pending` 同一条理由）
+--
+-- `book_marker` 有 `FK → book(id) ON DELETE CASCADE`。而同步拉回来的书签，
+-- 其 `content_hash` 指向的书**本地可能还没导入** ⇒ 直接写 `book_marker` 会 **FK 失败**。
+-- 若因此丢弃远端书签 ⇒ 用户的真实流程是「新设备 → **同步** → **导入书** → 打开」，
+-- 而同步往往**早于**导入 ⇒ 书签**永久丢失**。
+-- ⇒ 先按 `content_hash` 接住，等导入同一本书时**认领**（与进度同一套流程）。
+--
+-- # 🔑 与 `book_progress_pending` 的关键差别：**主键不同**
+--
+-- | | 进度 | 书签（本表）|
+-- |---|---|---|
+-- | 一本几条 | **一条**（覆盖式）| **多条**（用户可标多处）|
+-- | 主键 | `content_hash` | 🔴 **书签 uuid（`id`）** |
+-- ⇒ ⚠️ **不能照抄「content_hash 作主键」** —— 那会把同一本书的多个书签**互相覆盖**，
+--    只留最后一条（且**不报错**，用户以为书签丢了）。
+--
+-- # 认领流程（同 `book_progress_pending`）
+-- ```
+-- ① pull → 写本表（**不需要**本地已有这本书）
+-- ② 用户导入同一本书 → 算出 content_hash → 命中本表多行
+--    ⇒ 逐行写入 book_marker（此时 FK 满足，用**远端的 id** 作主键）→ 删掉本表的行
+-- ```
+CREATE TABLE IF NOT EXISTS book_marker_pending (
+  id           TEXT PRIMARY KEY,   -- 书签 uuid（**远端**的 id —— 认领后原样写进 `book_marker`）
+  content_hash TEXT NOT NULL,      -- 书的跨设备身份（用来找「本地有没有这本书」）
+  chapter_idx  INTEGER NOT NULL,
+  scroll_ratio REAL NOT NULL,
+  excerpt      TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  deleted      INTEGER NOT NULL DEFAULT 0
+);
+
+-- 认领时按指纹找（`WHERE content_hash = ?`）
+CREATE INDEX IF NOT EXISTS idx_bmp_hash ON book_marker_pending(content_hash);
+
 -- ─────────────────────────────────────────────────────────────
 -- v4 (2026-10-08) 书架上云：**云端书单的本地镜像**
 -- ─────────────────────────────────────────────────────────────

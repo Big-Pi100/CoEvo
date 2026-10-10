@@ -183,6 +183,42 @@ class AchievementService {
   }
 
   // ══════════════════════════════════════════════════════════
+  // 🆕 v10：跨设备同步（`achievement_unlock`）
+  // ══════════════════════════════════════════════════════════
+  //
+  // 🔴 为什么值得同步：成就**内容**能由指标重算，但「**解锁时间**」算不出来 ——
+  //    新设备上会记成「现在」而不是「当初」⇒ 成就墙的日期是假的。
+  // 🔑 合并语义已定：`unlocked_at` 取**较早**（首次解锁这一事实，同 `article_read.read_at`）。
+  //    ⚠️ 「A 端解锁 B 端没解锁」不成问题 —— 解锁记录是**并集**（指标够了会重算出来）。
+
+  /// 待同步的解锁记录（`pending_push = 1`）。
+  ///
+  /// ⚠️ 返回**行形状**（`key` / `unlocked_at`）—— 与后端 `AchievementUnlockInput` 字段一致，
+  ///    供 `sync_service` 直接组装请求体。
+  ///
+  /// ⚠️ [limit]：与其余表的 `pending()` 同一理由（单次请求每表 ≤ 1000）
+  ///    —— 本表**最多只有成就条数**（几十），加它只是为了**口径统一**。
+  Future<List<Map<String, Object?>>> pendingUnlocks({int? limit}) async {
+    final rows = await db.query('achievement_unlock',
+        where: 'pending_push = 1', orderBy: 'unlocked_at ASC', limit: limit);
+    return rows
+        .map((r) => <String, Object?>{
+              'key': r['key'],
+              'unlocked_at': r['unlocked_at'],
+            })
+        .toList(growable: false);
+  }
+
+  /// 标记已同步（push 成功后调用）。
+  Future<void> markUnlocksSynced(Iterable<String> keys) async {
+    final list = keys.where((k) => k.isNotEmpty).toList();
+    if (list.isEmpty) return;
+    final ph = List.filled(list.length, '?').join(',');
+    await db.update('achievement_unlock', {'pending_push': 0},
+        where: 'key IN ($ph)', whereArgs: list);
+  }
+
+  // ══════════════════════════════════════════════════════════
   // 内部查询
   // ══════════════════════════════════════════════════════════
 

@@ -199,8 +199,22 @@ Future<void> main() async {
       .first['sql'] as String;
   check('lookup_event.word_id **可空**（未命中留痕的前提）',
       RegExp(r'word_id\s+TEXT\s*,').hasMatch(leSql));
-  check('🔴 lookup_event 无 pending_push（纯日志，照 v1）',
-      !leSql.contains('pending_push'));
+  // 🔴🆕 2026-10-10：**口径已变** —— 本条原先断言「无 pending_push（纯日志，照 v1）」。
+  //
+  // 为什么改：`lookup_event` 已**纳入跨设备同步**（审计报告 §五 P0）—— 它驱动成就
+  //   `lookupCount`（查词总次数）。不同步 ⇒ 换设备后查词次数归零、成就要重查够次数才重新亮。
+  //   ⇒ 现在它**有** `pending_push`（+ `uid` 跨设备身份）。
+  //
+  // ⚠️ 这正是「**断言会保护错误**」的教科书例子：旧断言把「v1 的取舍」钉死了，
+  //    而业务需要已经变了 ⇒ 改对了反而变红。
+  //    📌 判据：**「判据已记」≠「已执行」** —— 口径变更时必须回来改断言（而不是绕开它）。
+  // 🔑 顺带把 `uid` 也锁上（同步的跨设备身份，漏了它就推不出去）。
+  check('🔴 lookup_event **有** `pending_push`（v10 起纳入同步 —— 口径已变，别再改回去）',
+      leSql.contains('pending_push'));
+  check('🔴 lookup_event **有** `uid`（跨设备身份；自增 id 在两台设备上必撞）',
+      leSql.contains('uid'));
+  check('🔴 lookup_event.uid 有 UNIQUE 索引（`INSERT OR IGNORE` 幂等的前提）',
+      schema.contains('UNIQUE INDEX IF NOT EXISTS idx_le_uid'));
 
   print('\n【10】schema 里不得出现 PRAGMA（Android 上会炸 · 已踩过）');
   // 🔴🔴 **必须先滤注释行** —— schema 里有大段注释**解释「为什么不能用 PRAGMA」**，

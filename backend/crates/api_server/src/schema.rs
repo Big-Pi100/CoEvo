@@ -1195,6 +1195,118 @@ CREATE TABLE IF NOT EXISTS sync_book (
 CREATE INDEX IF NOT EXISTS idx_sync_book_pull ON sync_book(user_id, received_at);
 -- 🔑 配额查询：`SELECT COALESCE(SUM(blob_size),0) WHERE user_id=? AND deleted=0`
 --    —— 挂在 PK 的 user_id 前缀上，不需要额外索引。
+
+-- ── 查词记录（**日志型**；并集，`uid` 作跨设备身份）──
+--
+-- 🔴 为什么需要同步它（2026-10-10 补）：`lookup_event` 是「查了哪些词」的日志，
+--    它在端侧驱动两个东西 ——
+--      · 成就 `lookupCount`（查词总次数）与 4 个基于它的成就
+--      · 「最近查了什么」/「1 小时内查词峰值」
+--    端侧此前**不同步**它 ⇒ 换设备后查词次数归零、成就回退（要重查够次数才重新亮）。
+--    📌 判据：**同步的粒度必须覆盖「指标的数据源」** —— 只同步生词本（`user_word`）
+--       不够，因为「查了但没加入生词本」的词也在 `lookup_event` 里。
+--
+-- 🔑 跨设备身份用 `uid`（端侧 uuid）而不是端侧自增 id：
+--    自增 id 在两台设备上各自从 1 开始 ⇒ 必撞（同 `highlight.id` 的判据）。
+--    ⚠️ 端侧老库的 `uid` 由 push 前**惰性回填**（见 `UserWordRepository.backfillLookupUids`）。
+--
+-- ⚠️ 它是**不可变的日志**（内容一旦写入不再改）⇒ 幂等靠 `INSERT OR IGNORE`，
+--    不需要 `updated_at` / 合口径（同 `sync_review_log`）。
+-- ⚠️ `word_id` **可空**（未命中词库时留 NULL）—— 但**不能**把它放进 PK：
+--    NULL 在 SQLite 的 PK 里互不相等 ⇒ 破坏幂等（同 `device_id` 那条注释）。
+--    跨设备身份只用 `uid`。
+CREATE TABLE IF NOT EXISTS sync_lookup_event (
+    user_id      TEXT    NOT NULL,
+    uid          TEXT    NOT NULL,                 -- 端侧生成的 uuid（跨设备身份）
+    word_id      TEXT,                             -- ⚠️ 可空：未命中词库时 NULL
+    spelling     TEXT    NOT NULL,                 -- 用户实际查的词（未命中时也有）
+    article_id   INTEGER,                          -- 哪篇文章（可空）
+    sentence     TEXT,                             -- 当时那句（可空）
+    position     INTEGER,                          -- 句内位置（可空）
+    looked_up_at TEXT    NOT NULL,                 -- 设备时间（UTC ISO8601）
+    received_at  TEXT    NOT NULL,
+    PRIMARY KEY (user_id, uid)
+);
+CREATE INDEX IF NOT EXISTS idx_sync_lookup_event_pull ON sync_lookup_event(user_id, received_at);
+
+-- ── 书本内书签（**软删**；`deleted` 取 **OR**）──
+--
+-- 🔴 为什么需要同步它（2026-10-10 补）：`book_marker` 是用户在书里**手动标记的位置**，
+--    是**用户资产**（换机后会丢）。表结构与 `deleted` 软删列从 v3 起就为同步准备好了，
+--    但**管线一直没接**（端侧 schema 注释如实写着「同步管线尚未接入本表」）。
+--
+-- 🔑 跨设备身份两层：
+--    · `id` = 端侧 uuid v4（行身份，PK 的一部分）
+--    · `content_hash` = **书**的跨设备身份（不是端侧 `book_id` —— 那是端侧 uuid，
+--      同一本书在两台设备上是两个 id，见 `sync_book_progress` 那条同族判据）
+--
+-- 🔴 `deleted` 的合并是 **OR（任一端删过即删）而不是「取较新」** —— 与其余表不同：
+--    `book_marker` **没有 `updated_at` 列**（取消书签只翻 `deleted` 标志，不刷时间戳）
+--    ⇒ 「谁更新谁赢」在这里**没有判据**。而书签的语义允许 OR：
+--    「取消某处标记」是**终局意愿**（用户不会「取消后又想把同一条恢复」——
+--     他会重新打一条，那是**新的 uuid**）⇒ OR 恰好正确，且**不需要新增时间列**。
+--    📌 判据：**合并规则要匹配「这一列能表达什么」** —— 没有时间列时不要硬造 LWW。
+--
+-- 🔑 其余字段（位置 / 摘录）是「首次事实」⇒ 取 `created_at` 较早那端
+--    （同一 uuid 的两端副本内容本该一致；取较早保证结果稳定、可交换）。
+CREATE TABLE IF NOT EXISTS sync_book_marker (
+    user_id      TEXT    NOT NULL,
+    id           TEXT    NOT NULL,                 -- 端侧 uuid v4（行身份）
+    content_hash TEXT    NOT NULL,                 -- 书的跨设备身份（不是端侧 book_id）
+    chapter_idx  INTEGER NOT NULL,
+    scroll_ratio REAL    NOT NULL,                 -- 章内相对位置 0~1
+    excerpt      TEXT    NOT NULL,                 -- 摘录（近似值）
+    created_at   TEXT    NOT NULL,
+    deleted      INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
+    received_at  TEXT    NOT NULL,
+    PRIMARY KEY (user_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_sync_book_marker_pull ON sync_book_marker(user_id, received_at);
+
+-- ── 成就解锁（并集；`unlocked_at` 取**较早**）──
+--
+-- 🔴 为什么需要同步它（2026-10-10 补）：成就的**内容**能由指标重算（`evaluateAchievements`），
+--    但「**解锁时间**」算不出来 —— 新设备上会记成「现在」而不是「当初」
+--    ⇒ 成就墙的日期变成假的。同步它即可保留真实时间。
+--    ⚠️ 但**依赖指标的数据源先同步**：基于 `lookup_event` 的那些成就，
+--       只有 `sync_lookup_event` 也在同步时才算得出来（否则换设备后仍解锁不了）。
+--
+-- 🔑 `unlocked_at` 取**较早**（`MIN`）：它是「**首次解锁**这一事实」，
+--    与 `article_read.read_at`（首次读完）同一判据。
+--    ⚠️ 一端改了时间不该改掉「什么时候第一次拿到」。
+CREATE TABLE IF NOT EXISTS sync_achievement_unlock (
+    user_id     TEXT NOT NULL,
+    key         TEXT NOT NULL,                     -- 成就 key（同 `kAchievements[].key`）
+    unlocked_at TEXT NOT NULL,                     -- UTC ISO8601（首次解锁时刻）
+    received_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_sync_achievement_pull ON sync_achievement_unlock(user_id, received_at);
+
+-- ── 应用设置（键值对；`value` 取**较新端**）──
+--
+-- 🔴 为什么需要它（2026-10-10 补）：阅读字号 / 痕迹开关 / 兴趣筛选 / TTS 开关与语速 /
+--    显示名都是 `SharedPreferences` 里的**键值对**，换设备后全部丢失（用户要重设一遍）。
+--    它**不在任何 DB 表里** ⇒ 是最容易被漏的一类（审计报告 §四）。
+--
+-- 🔑 这是一条**与其余表形态不同**的同步通道（键值 vs 行记录），所以单开一张表：
+--    行记录有固定的列集合，而设置的键是**开放的**（将来加一项设置不必改 DDL）。
+--
+-- 🔴 `value` 存**字符串**（端侧 `jsonEncode` 之后的值）：
+--    bool / int / double / String / List 统一用 JSON 文本承载 ⇒ 服务端不必知道每种键的类型。
+--    📌 判据：**服务端只做「搬运」，不理解语义** —— 语义（哪些键、什么类型）是端侧知识。
+--
+-- 🔑 `updated_at` 取**较新**（LWW）：设置是「最新意愿」（同 `book_progress`）。
+--    ⚠️ 端侧负责在**写入设置时**刷新时间戳 —— 详见端侧 `settings_sync` 的说明。
+CREATE TABLE IF NOT EXISTS sync_setting (
+    user_id     TEXT NOT NULL,
+    key         TEXT NOT NULL,
+    value       TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_sync_setting_pull ON sync_setting(user_id, received_at);
 "#;
 
 /// **翻译额度**（免费层月度计数 · 2026-10-08）。
@@ -1797,6 +1909,15 @@ mod tests {
         "sync_book_progress",
         // 🆕 书单（2026-10-07 · 书架上云的地基：端侧推元数据，服务端持 blob_size）
         "sync_book",
+        // 🆕 同步覆盖面补齐（2026-10-10 · 审计报告 `sync-coverage-audit` 的结论）：
+        //    · `sync_lookup_event`     查词日志（`lookupCount` 成就的数据源）
+        //    · `sync_book_marker`      书本内书签（用户资产，管线此前未接）
+        //    · `sync_achievement_unlock` 成就解锁时间（内容可重算，时间不可）
+        //    · `sync_setting`          应用设置（prefs 键值，换设备会丢）
+        "sync_lookup_event",
+        "sync_book_marker",
+        "sync_achievement_unlock",
+        "sync_setting",
         // 🆕 翻译额度（2026-10-08 · 免费层月度计数，持久化）
         "translation_usage",
     ];

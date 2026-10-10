@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/reading_settings.dart';
+import 'user_db_provider.dart' show settingsRevisionProvider;
 
 /// 阅读器设置 —— 与「设计系统主题」（`themeProvider`）**分开**。
 ///
@@ -94,9 +95,20 @@ class ReadingSettingsNotifier extends StateNotifier<ReadingSettings> {
       debugPrint('阅读器设置持久化失败: $e\n$st');
     }
   }
+
+  /// 🆕 2026-10-10：**重新从 prefs 读一遍**（云端同步把远端设置写回 prefs 之后调用）。
+  ///
+  /// 🔑 为什么需要它：同步写回的是 **prefs**，而本 notifier 的 `state` 是**内存副本** ——
+  ///    不重读的话「云端同步成功了，字号却没变」（静默）。
+  /// 📌 判据同 `userDbRevision`：**读端要能被通知**，不能指望写端记得逐个点名更新。
+  Future<void> reload() => _load();
 }
 
 final readingSettingsProvider =
-    StateNotifierProvider<ReadingSettingsNotifier, ReadingSettings>(
-  (ref) => ReadingSettingsNotifier(),
-);
+    StateNotifierProvider<ReadingSettingsNotifier, ReadingSettings>((ref) {
+  final notifier = ReadingSettingsNotifier();
+  // 🆕 2026-10-10：云端同步写回 prefs 后重算。
+  // 🔑 `settingsRevisionProvider` 是**唯一**信号源（见 `user_db_provider.dart`）。
+  ref.listen(settingsRevisionProvider, (_, __) => notifier.reload());
+  return notifier;
+});

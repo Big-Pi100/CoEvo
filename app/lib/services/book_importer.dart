@@ -36,6 +36,7 @@ import 'package:sqflite_common/sqlite_api.dart';
 import 'ebook/book_raw_store.dart';
 
 import 'ebook/book_import_plan.dart';
+import 'ebook/book_marker_sync.dart';
 import 'ebook/book_progress_sync.dart';
 import 'ebook/book_text.dart';
 import 'ebook/epub_parser.dart';
@@ -251,6 +252,16 @@ Future<BookImportResult> _persistBook({
     await claimPendingForBook(db, bookId: plan.bookId);
   } catch (_) {
     // 见上：失败自愈（pending 行未删，下次 pull 重试）
+  }
+
+  // 🆕 2026-10-10：**书签**的「导入后认领」（与进度同一条线，同一条自愈判据）。
+  //    🔴 不做它会有个静默缺口：书签在 `book_marker_pending` 里等着，
+  //       而用户「导入后立刻打开书」看不到任何书签（要等下一次 pull 才补上）。
+  //    ⚠️ 与进度**分开 try** —— 一方失败不该连累另一方（两张表各自独立）。
+  try {
+    await claimPendingMarkersForBook(db, bookId: plan.bookId);
+  } catch (_) {
+    // 同进度：pending 行未删 ⇒ 下次 pull 后的批量认领会再试（自愈）
   }
 
   return BookImportSuccess(

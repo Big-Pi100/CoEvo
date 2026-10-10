@@ -280,6 +280,19 @@ CREATE INDEX IF NOT EXISTS idx_uw_pending ON user_word (pending_push)
 --
 -- 🔴 **无 `pending_push`**（照 v1）—— 它是**纯日志**，不是用户意图，
 --    不参与同步（与 `review_log` 有 `synced` 列不同：那个要重放，这个只用于展示）。
+-- 🆕 v10（2026-10-10）：**本表纳入跨设备同步** —— 它驱动成就 `lookupCount`
+--    （查词总次数）与「最近查了什么」/「1 小时查词峰值」。
+--    此前不同步 ⇒ 换设备后查词次数归零、成就要重查够次数才重新亮。
+--    📌 判据：**同步的粒度必须覆盖「指标的数据源」** —— 只同步生词本不够，
+--       「查了但没加入生词本」的词也在这里。
+--
+-- 🔑 跨设备身份用 `uid`（uuid），**不是**端侧自增 `id` ——
+--    自增 id 在两台设备上各自从 1 开始 ⇒ 必撞（同 `highlight.id` 的判据）。
+--    ⚠️ **老库的 `uid` 为 NULL**：由 `UserWordRepository.backfillLookupUids()`
+--       在 push 前**惰性回填**（只在需要上传时才生成，避免为从不上云的设备白造 uuid）。
+--
+-- ⚠️ 它是**日志**（不可变）⇒ 同步走 `INSERT OR IGNORE`，不需要合并口径
+--    （与 `review_log` 同一形态）。
 CREATE TABLE IF NOT EXISTS lookup_event (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   word_id      TEXT,                                -- 🔴 可空：未命中时留 NULL
@@ -287,13 +300,37 @@ CREATE TABLE IF NOT EXISTS lookup_event (
   article_id   INTEGER,                             -- 哪篇文章（可空）
   sentence     TEXT,                                -- 当时那句（可空）
   position     INTEGER,                             -- 句内位置（可空）
-  looked_up_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+  looked_up_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  -- ── 🆕 v10：同步用（列在末尾 —— `ALTER ADD COLUMN` 只能追加末尾，保持一致）──
+  -- 跨设备身份（端侧生成 uuid）。⚠️ **可空**（老库回填前的行）；回填后非空。
+  uid          TEXT,
+  -- 1 = 待同步。⚠️ 与 `card_review_state` / `bookmark` 同模式。
+  -- 🔴 **老行默认 1** ⇒ 升级后第一次同步会把历史查词记录全部推上去（这是**有意的**：
+  --    否则「查词次数」成就在新设备上缺了历史）。⚠️ 提交端必须**分批**
+  --    （可能有数千条，一次超服务端 `MAX_ITEMS_PER_TABLE` 会 400，且拖垮整批）。
+  pending_push INTEGER NOT NULL DEFAULT 1
+               CHECK (pending_push IN (0, 1))
 );
 
 -- 取某词的**首次语境**（`MIN(looked_up_at)`）→ 回填 `user_word.source_sentence`
 CREATE INDEX IF NOT EXISTS idx_le_word ON lookup_event (word_id, looked_up_at);
 -- 按时间倒查「最近查了什么」（将来的「查词历史」用）
 CREATE INDEX IF NOT EXISTS idx_le_time ON lookup_event (looked_up_at DESC);
+
+-- 🔴🔴 **`uid` 必须唯一** —— 同步的幂等**完全依赖它**（2026-10-10 加）
+--
+-- `sync_service._applyLookupEvents` 用 `INSERT OR IGNORE` 来「重复拉取不重复写」。
+-- 🔴 但本表的 PK 是**自增 `id`**，不是 `uid` ⇒ 若 `uid` **不唯一**，
+--    从云端拉回来的同一条记录**每次都会插入新行**（新 id 不冲突 ⇒ `OR IGNORE` 不触发）
+--    ⇒ **查词次数虚增**（同一件事被数很多遍），而且**不报错**。
+--    ⚠️ 这条不是推断 —— 它是 2026-10-10 的真库断言**实测抓到的**
+--       （`verify_sync_service.dart`【14】①：pull 一次后行数从 3 变 4）。
+--    📌 判据：**「幂等键」必须真的有约束** —— 代码里写 `OR IGNORE` 而表上没有唯一性，
+--       是「看起来幂等、实际不幂等」，属本项目最忌的静默失效。
+--
+-- 🔑 SQLite 的 UNIQUE 索引**允许多个 NULL** ⇒ 老库那些还没回填 `uid` 的行不受影响
+--    （它们之间不互相冲突，回填后自然唯一）。
+CREATE UNIQUE INDEX IF NOT EXISTS idx_le_uid ON lookup_event (uid);
 
 -- ─────────────────────────────────────────────────────────────
 -- 成就解锁记录（v1.4 · Step 3.8 成就体系端侧化）
@@ -310,13 +347,18 @@ CREATE INDEX IF NOT EXISTS idx_le_time ON lookup_event (looked_up_at DESC);
 -- 🔑 表极小（一行 ≈ 40 字节 · 20 个成就全解锁 ≈ 1 KB）——
 --    这不是「为未知需求建表」，是**已定需求的最小持久化**。
 --
--- # ⚠️ 本表**不参与多端同步**（有意如此 · 第一版）
--- 若加 `pending_push` 走既有同步机制，就要处理「两台设备各自解锁」的**合并语义**
--- （unlocked_at 取谁的？A 端解锁 B 端没解锁怎么办？）
--- → 第一版**只本地记录**：换设备后成就会重算（**靠指标能重新算出来**，
---   只是 `unlocked_at` 会变成新设备的首次检查时刻）。
--- 🔑 这是**有意的取舍**：成就内容不丢（指标在端侧库里），丢的只是「首次解锁时间」。
---    将来若要同步，加 `pending_push` 列 + 合并规则即可（同 `bookmark` 的模式）。
+-- # 🆕 v10（2026-10-10）：本表**已纳入跨设备同步**
+--
+-- 第一版**有意不同步**，理由是「内容能靠指标重算」——但实测的缺口是：
+--   换设备后 `unlocked_at` 会变成**新设备的首次检查时刻** ⇒ **成就墙的日期是假的**。
+-- 🔑 内容不丢、时间会假 —— 而「我什么时候拿到的」正是成就的意义之一。
+-- ⇒ 现在加 `pending_push` 走既有同步机制，合并语义已定：
+--   **`unlocked_at` 取较早**（= 首次解锁这一事实，同 `article_read.read_at`）。
+--
+-- ⚠️ 「A 端解锁、B 端还没解锁」**不成问题** —— 解锁记录是**并集**：
+--    只要指标够，`evaluateAchievements` 会重算出来；本表只是保留**时间**。
+-- 🔴 依赖：基于 `lookup_event` 的那几个成就，只有 `lookup_event` **也同步**时
+--    才算得出来（这正是本批同时补 `sync_lookup_event` 的原因）。
 --
 -- # 🔑 与 `achievement_rules.dart` 的关系
 -- 本表的 `key` **必须**是 `kAchievements` 里的 `key`（它也是**主键**）。
@@ -325,9 +367,12 @@ CREATE INDEX IF NOT EXISTS idx_le_time ON lookup_event (looked_up_at DESC);
 CREATE TABLE IF NOT EXISTS achievement_unlock (
   key         TEXT PRIMARY KEY,                     -- 成就 key（见 achievement_rules.dart）
   unlocked_at TEXT NOT NULL                         -- UTC ISO8601（本库硬约束 1）
-              DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-  -- ⚠️ 无索引、无 `pending_push`：本表只有「全表读」与「按 key 插入」两种查询，
-  --    主键即索引；不参与同步（见上）。
+              DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  -- 🆕 v10：1 = 待同步（与 `bookmark` / `user_word` 同模式）。
+  -- ⚠️ 列在末尾（`ALTER ADD COLUMN` 只能追加末尾，与建表语句保持一致）。
+  pending_push INTEGER NOT NULL DEFAULT 1
+               CHECK (pending_push IN (0, 1))
+  -- ⚠️ 无额外索引：本表只有「全表读」与「按 key 插入 / 批量标记」三种查询，主键即索引。
 );
 
 -- ─────────────────────────────────────────────────────────────
@@ -617,6 +662,44 @@ CREATE TABLE IF NOT EXISTS local_meta (
 );
 
 -- ─────────────────────────────────────────────────────────────
+-- 🆕 v10（2026-10-10）`setting_sync` —— 应用设置的**同步载体**
+-- ─────────────────────────────────────────────────────────────
+-- 依据：`docs/review/sync-coverage-audit-2026-10-10.md` §四（设置类是最容易被漏的一类）
+--
+-- # 🔴 它解决什么
+-- 阅读字号 / 痕迹开关 / 兴趣筛选 / TTS 开关与语速 / 显示名都存在 `SharedPreferences`，
+-- **不在任何 DB 表里** ⇒ 换设备后全部丢失（用户要重设一遍）。
+-- ⇒ 本表把「要同步的那几项设置」落到 DB，才能走既有同步通道。
+--
+-- # 🔑 为什么不是「直接把 prefs 推上去」
+-- ① 既有同步通道按**表行**组织（每类数据一张表）⇒ 键值对也要有个表才接得上；
+-- ② 合并需要 **`updated_at`**（LWW），而 prefs **没有时间戳** ⇒ 必须自己记一份。
+--
+-- # 🔴 谁写 `value` / `updated_at`：**采集方**（不是本表，本表无触发器）
+-- 端侧在「采集设置」时（`services/settings_sync.dart::collectSettings`）读 prefs 当前值，
+-- 与表中值比对：
+--   · 不同 ⇒ upsert（`value` = prefs 值、`updated_at` = now、`pending_push` = 1）
+--   · 相同 ⇒ 不动（避免每次同步都产生「假变更」）
+-- 🔑 「比对式采集」的好处：**不必改动每一个设置项的 setter** ——
+--    现值就是唯一真相，用户改的、pull 写回的，一视同仁。
+--
+-- ⚠️ `value` 是 **JSON 文本**（`jsonEncode` 后的值）—— bool / int / double / String / List
+--    统一承载，服务端不必理解语义（见服务端 `sync_setting` 的说明）。
+--
+-- ⚠️ **退出登录 / 换账号要清**（它是账号数据）—— 已登记进 `kUserOwnedTables`。
+CREATE TABLE IF NOT EXISTS setting_sync (
+  key          TEXT PRIMARY KEY,                    -- 设置的 prefs 键名（如 `reading_font_size`）
+  value        TEXT    NOT NULL,                    -- JSON 文本
+  updated_at   TEXT    NOT NULL,                    -- 最后一次变更时刻（LWW 判据）
+  pending_push INTEGER NOT NULL DEFAULT 1
+               CHECK (pending_push IN (0, 1))
+);
+
+-- 待上传（与 `idx_bm_pending` / `idx_uw_pending` 同模式）
+CREATE INDEX IF NOT EXISTS idx_setting_pending ON setting_sync (pending_push)
+  WHERE pending_push = 1;
+
+-- ─────────────────────────────────────────────────────────────
 -- 说明（不在本次范围）
 -- ─────────────────────────────────────────────────────────────
 -- · **`article`** —— v2 已改名为 `content_cache` 并修正语义，属 Phase 3
@@ -692,6 +775,17 @@ CREATE TABLE IF NOT EXISTS local_meta (
 --   · ⚠️ 加表 ⇒ 与 v1.7 同一个坑：**必须升 `kUserDbVersion`**（8→9），
 --     否则真机上「恰好就是 v8」的库**不会触发 `onUpgrade`** ⇒ 表建不出来。
 --     ✅ 守护断言：`scripts/query_verify/bin/verify_userdb_migration.dart` 的 `fromVersion: 8` 路径。
+--
+-- v1.10 (2026-10-10) 同步覆盖面补齐（审计报告 §五 的 P0+P1+P2+P3）：
+--   · 🔴 `lookup_event` **纳入同步** ⇒ 加 `uid`（跨设备身份，老行惰性回填）+ `pending_push`
+--   · 🔴 `achievement_unlock` **纳入同步** ⇒ 加 `pending_push`（保留真实解锁时间）
+--   · 🆕 `setting_sync`（应用设置的同步载体 —— 键值对，换设备不再丢设置）
+--   · 📄 依据：`docs/review/sync-coverage-audit-2026-10-10.md`
+--   🔴 加列 ⇒ 与 v6/v8 同一个坑：**必须**在 `onUpgrade` 里写 `ALTER` 分支（已加，见
+--      `user_db.dart` 的 `oldVersion < 10`）；加表靠重跑全量脚本。
+--   ⚠️ 同时**升 `kUserDbVersion`（9 → 10）** —— 否则真机上「恰好是 v9」的库不触发 `onUpgrade`
+--      ⇒ 两列加不上、新表建不出（**而这是静默的**）。
+--      ✅ 守护断言：`verify_userdb_migration.dart` 的 `fromVersion: 9` 路径。
 --
 -- 🔴🔴 **升级注意（本次起「已有用户库」必须走迁移）**
 --    v1.2 时本库尚无任何端创建，故 version 停在 1。

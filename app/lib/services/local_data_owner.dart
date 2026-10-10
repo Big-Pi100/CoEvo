@@ -102,6 +102,7 @@ const List<String> kUserOwnedTables = [
   'external_word_cache', // 词库外词的词卡缓存（由用户查词产生）
   'achievement_unlock', // 成就解锁
   'translation_cache', // 翻过的句子（行为数据）
+  'setting_sync', // 🆕 v10：应用设置的同步载体（账号数据，换账号要清）
 ];
 
 /// `book.db` 里**属于用户**的表（换账号时清空）。
@@ -110,6 +111,7 @@ const List<String> kUserOwnedTables = [
 ///    **全量推**上去（`_pendingBooks`）⇒ 不清的话旧账号的书名会进新账号的云端书架。
 const List<String> kBookOwnedTables = [
   'book_progress_pending', // 待认领的进度（要先清，它引用 `content_hash`）
+  'book_marker_pending', // 🆕 v5：待认领的远端书签（同族，先清）
   'book_progress', // 阅读进度
   'book_marker', // 书本内的痕迹
   'book_chapter', // 解析出的章节（`book` 的子表）

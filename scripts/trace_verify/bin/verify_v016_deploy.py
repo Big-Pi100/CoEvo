@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""部署后验证 v0.1.6：书架上云 + 整段翻译（**只读**）。
+"""部署后验证（**只读**）—— 覆盖 v0.1.6 书架上云 + 整段翻译，以及 2026-10-10
+新增的 4 类同步表（`lookup_event` / `book_marker` / `achievement_unlock` / `setting`）。
 
 跑法（在 VPS 上执行）：
     ssh -i ~/.ssh/coevo_key ubuntu@<vps> "python3 -" < scripts/trace_verify/bin/verify_v016_deploy.py
@@ -148,6 +149,17 @@ for label, needle in [
     ("④-4 含 `blob_size`（云端文件大小的权威列）", b"blob_size"),
     ("④-5 阳性对照：含 `wordlib_contract.md`（旧代码也有 ⇒ 证明检测器能报 ≥1）",
      b"wordlib_contract.md"),
+    # ── 2026-10-10 本批新增：4 类同步表 ──
+    #    🔴 子串必须带 `IF NOT EXISTS ` 前缀 + ` (` 后缀：只搜 `sync_setting` 会在
+    #       `sync_setting_xx` 之类的同族名上**假绿**；带括号则唯一指向这张表的建表语句。
+    ("④-6 含 `IF NOT EXISTS sync_lookup_event (`（本批 · 划词历史）",
+     b"IF NOT EXISTS sync_lookup_event ("),
+    ("④-7 含 `IF NOT EXISTS sync_book_marker (`（本批 · 书内书签）",
+     b"IF NOT EXISTS sync_book_marker ("),
+    ("④-8 含 `IF NOT EXISTS sync_achievement_unlock (`（本批 · 成就解锁时间）",
+     b"IF NOT EXISTS sync_achievement_unlock ("),
+    ("④-9 含 `IF NOT EXISTS sync_setting (`（本批 · 应用设置键值）",
+     b"IF NOT EXISTS sync_setting ("),
 ]:
     n = bin_count(needle)
     check(label, n >= 1, f"{n} 次")
@@ -173,7 +185,11 @@ try:
     conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     names = {r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'")}
-    for t in ("sync_book", "translation_usage"):
+    # 🔴 老库靠 `init_database` 的 `CREATE TABLE IF NOT EXISTS` 补建 —— 若这批漏进
+    #    `init_database`，则「新库有、老库没有」⇒ 这条断言正是抓这种半成品的。
+    for t in ("sync_book", "translation_usage",
+              "sync_lookup_event", "sync_book_marker",
+              "sync_achievement_unlock", "sync_setting"):
         check(f"⑥ 表 `{t}` 存在", t in names)
     if "sync_book" in names:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(sync_book)")}

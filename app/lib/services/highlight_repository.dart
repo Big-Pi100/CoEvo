@@ -334,9 +334,9 @@ class HighlightRepository {
   ///    在此之前它**没有调用方**（「表有了、索引有了、查询也有了」但没接线），
   ///    而正是那份缺失造成了「无主划线卡」：`review_log`（复习事件）在同步，
   ///    它引用的划线本体却**从不上去** ⇒ 重装 / 换机的设备拿不到划线本体。
-  Future<List<Highlight>> pending() async {
+  Future<List<Highlight>> pending({int? limit}) async {
     final rows = await _db.query('highlight',
-        where: 'pending_push = 1', orderBy: 'updated_at ASC');
+        where: 'pending_push = 1', orderBy: 'updated_at ASC', limit: limit);
     return rows.map(_fromRow).toList(growable: false);
   }
 

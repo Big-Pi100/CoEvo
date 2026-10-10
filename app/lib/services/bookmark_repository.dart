@@ -229,11 +229,12 @@ class BookmarkRepository {
   /// ⚠️ 当前**无调用方**（同步机制属 Phase 3）——
   /// 放在这里是因为「表有了、索引有了、查询也有了」才算一个完整的数据层，
   /// 而少这一块会让后人误以为「同步要从零写」。
-  Future<List<Bookmark>> pending() async {
+  Future<List<Bookmark>> pending({int? limit}) async {
     final rows = await _db.query(
       'bookmark',
       where: 'pending_push = 1',
       orderBy: 'bookmarked_at ASC', // 同步按**发生顺序**推，不是倒序
+      limit: limit,
     );
     return rows.map(_fromRow).toList();
   }

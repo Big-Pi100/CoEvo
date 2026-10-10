@@ -110,6 +110,14 @@ void main() {
     //    「pull 索引」「注销清单」四组断言**自动**覆盖它（不必逐条复制）。
     'sync_highlight',
     'sync_book_progress',
+    // ⚠️ `sync_book` 此前**漏登记**（2026-10-10 补）—— 它一直在同步、却没被这组断言覆盖
+    //    （「PK 含 user_id」「注销清单」都没查它）。同一条判据：**清单漏一项 = 那一项无守护**。
+    'sync_book',
+    // 🆕 2026-10-10：同步覆盖面补齐（审计报告 §五）—— 同样靠清单**自动**覆盖四组断言。
+    'sync_lookup_event',
+    'sync_book_marker',
+    'sync_achievement_unlock',
+    'sync_setting',
   ];
 
   // ══════════════════════════════════════════════════════════════════
@@ -465,10 +473,15 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════
   {
     // ── push 侧 ──
+    // 🔑 断言锁**意图**（「收集了待推划线」），**不锁拼写** ——
+    //    2026-10-10 加入分批循环后调用变成 `hl.pending(limit: kMaxItemsPerTable)`，
+    //    锁字面 `hl.pending()` 会**假红**（而要守的「收集了」这件事根本没变）。
+    //    📌 判据（项目已记）：**断言跟「意图」走、不跟「拼写」走**。
     check('push 收集待推划线（`HighlightRepository.pending()`）',
-        syncService.contains('await hl.pending()'));
+        RegExp(r'await hl\.pending\(').hasMatch(syncService));
+    // ⚠️ 同理：分批循环里计数从 `=` 变成 `+=`（累加各轮）。意图不变。
     check('push 计入 `pushedHighlights`（漏 ⇒ 「本轮只同步了笔记」被判成「什么都没做」）',
-        syncService.contains('r.pushedHighlights = highlights.length'));
+        RegExp(r'r\.pushedHighlights \+= highlights\.length').hasMatch(syncService));
     check('push 请求体带 `highlights`（键名与后端 `PushInput` 一致）',
         syncService.contains("'highlights': ["));
     check('push 成功后标记已同步（漏 ⇒ 每次同步都重推全量）',
@@ -540,6 +553,199 @@ void main() {
     profile.contains('已同步到云端的数据也仍保留'),
     '—— 同步上线后「只保存在本机」不准确；且退出**不会**删除云端那份',
   );
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 【2026-10-10】🆕 同步覆盖面补齐（审计报告 `sync-coverage-audit` §五）
+  //   P0 `lookup_event` · P1 `book_marker` · P2 `achievement_unlock` · P3 `setting`
+  //
+  // # 证伪方式（每条都要能红）
+  // · 删掉 push 里 `await uw.pendingLookups(...)` ⇒ 对应断言必红
+  // · 从 `_buildPushBody` 的 map 删掉 `'lookup_events'` ⇒ 必红
+  // · 删掉 `syncNow` 里某个 `..pushedXxx = ` ⇒ 「复制全部字段」必红
+  // · 把 `kMaxItemsPerTable` 从 pushOnce 里去掉 ⇒ 「分批」必红
+  // · 删掉 `backfillLookupUids()` 调用 ⇒ 必红（空 uid 会互相覆盖）
+  // · 让 `_applyBookMarkers` 直接在没书时写 `book_marker` ⇒ 「先落 pending」必红
+  // · 从后端 `max_received` 表清单删掉一张 ⇒ 必红
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    final settingsSync =
+        stripComments(readFile('../../app/lib/services/settings_sync.dart'));
+    final uwRepo =
+        stripComments(readFile('../../app/lib/services/user_word_repository.dart'));
+    final achSvc =
+        stripComments(readFile('../../app/lib/services/achievement_service.dart'));
+
+    // ── ① 服务端：四类数据的 upsert 形态与 pull 查询 ──
+    check('🔴 `lookup_event` 用 INSERT OR IGNORE（日志不可变，同 review_log）',
+        sync.contains('INSERT OR IGNORE INTO sync_lookup_event'));
+    check('🔴 `book_marker` 的 `deleted` 取 `MAX(...)` = **OR 语义**（本表无 updated_at）',
+        sync.contains('MAX(excluded.deleted, sync_book_marker.deleted)'),
+        '照抄「取较新」会让取消**永远传不出去**');
+    check('🔴 `achievement_unlock` 的 `unlocked_at` 取 MIN（较早 = 首次解锁）',
+        sync.contains('MIN(excluded.unlocked_at, sync_achievement_unlock.unlocked_at)'));
+    check('🔴 `setting` 的 `value` 取较新（LWW）',
+        sync.contains('WHERE excluded.updated_at > sync_setting.updated_at'));
+    check('后端对 4 张新表都做批量上限校验',
+        sync.contains('check_batch_size("lookup_events"') &&
+            sync.contains('check_batch_size("book_markers"') &&
+            sync.contains('check_batch_size("achievement_unlocks"') &&
+            sync.contains('check_batch_size("settings"'));
+    check('🔴 `max_received` 的表清单含 4 张新表（漏一张 ⇒ 只写它时 server_time 不前进）',
+        sync.contains('MAX(received_at) FROM sync_lookup_event') &&
+            sync.contains('MAX(received_at) FROM sync_book_marker') &&
+            sync.contains('MAX(received_at) FROM sync_achievement_unlock') &&
+            sync.contains('MAX(received_at) FROM sync_setting'));
+    check('后端 pull 有 4 张新表的查询',
+        sync.contains('FROM sync_lookup_event') &&
+            sync.contains('FROM sync_book_marker') &&
+            sync.contains('FROM sync_achievement_unlock') &&
+            sync.contains('FROM sync_setting'));
+
+    // ── ② 端侧 push 接线 ──
+    check('🔴 push 前**回填** `lookup_event.uid`（空 uid 会让服务端 PK 互相覆盖）',
+        syncService.contains('await uw.backfillLookupUids()'));
+    check('push 收集 4 类待推',
+        syncService.contains('await uw.pendingLookups(') &&
+            syncService.contains('await ach.pendingUnlocks(') &&
+            syncService.contains('await _pendingBookMarkers()') &&
+            syncService.contains('await _pendingSettings()'));
+    check('push 请求体带 4 个新键（键名与后端 `PushInput` 一致）',
+        syncService.contains("'lookup_events': lookups,") &&
+            syncService.contains("'book_markers': bookMarkers,") &&
+            syncService.contains("'achievement_unlocks': achievementUnlocks,") &&
+            syncService.contains("'settings': settings,"));
+    check('push 成功后标记 4 类已同步（漏 ⇒ 每次同步重推全量）',
+        syncService.contains('await uw.markLookupsSynced(') &&
+            syncService.contains('await ach.markUnlocksSynced(') &&
+            syncService.contains('await markSettingsSynced('));
+
+    // 🔴 分批循环（老库升级后 lookup_event 可能有数千条 ⇒ 一次全推 400 会拖垮整批）
+    check('🔴 `pushOnce` 是**分批循环**（每表 ≤ `kMaxItemsPerTable`）',
+        syncService.contains('while (true)') &&
+            countOf(syncService, 'limit: kMaxItemsPerTable') >= 5,
+        '实得 ${countOf(syncService, 'limit: kMaxItemsPerTable')} 处 limit');
+    check('🔴 终止条件用「**有标记的表都没取满**」（不是「批量为 0」）',
+        syncService.contains('anyMarkedTableFull'),
+        '只靠「批量为 0」会被「设置采集每轮非空」拖成死循环');
+    check('🔴 全量推的表（progress/books/markers）**只在第一轮**带（否则永不终止）',
+        syncService.contains('firstRound') &&
+            countOf(syncService, 'firstRound') >= 4);
+
+    // ── ③ 端侧 pull 接线 ──
+    check('pull 解析 4 个新字段',
+        syncService.contains("_listOf(resp, 'lookup_events')") &&
+            syncService.contains("_listOf(resp, 'book_markers')") &&
+            syncService.contains("_listOf(resp, 'achievement_unlocks')") &&
+            syncService.contains("_listOf(resp, 'settings')"));
+    check('pull 应用 4 类',
+        syncService.contains('await _applyLookupEvents(') &&
+            syncService.contains('await _applyBookMarkers(') &&
+            syncService.contains('await _applyAchievementUnlocks(') &&
+            syncService.contains('await _applySettings('));
+    check('🔴 `lookup_event` 走 `INSERT OR IGNORE`（日志幂等）且 `pending_push=0`（防回声）',
+        syncService.contains('INSERT OR IGNORE INTO lookup_event'),
+        '');
+    // 🔴🔴 这条守的是一个**真实缺陷**（2026-10-10 被真库断言实测抓到）：
+    //    `INSERT OR IGNORE` 只在**有唯一约束**时才是幂等的。本表 PK 是**自增 id**，
+    //    所以必须给 `uid` 建唯一索引 —— 否则重复拉取会**每次插入新行**（查词次数虚增），
+    //    而且**不报错**。
+    check('🔴 `lookup_event.uid` 有**唯一索引**（`INSERT OR IGNORE` 的幂等前提）',
+        stripComments(readFile('../../app/assets/sql/user_db_schema.sql'))
+            .contains('CREATE UNIQUE INDEX IF NOT EXISTS idx_le_uid ON lookup_event (uid)'),
+        '没有它 ⇒ 代码写着 OR IGNORE、实际不幂等（静默）；'
+            'SQLite 的 UNIQUE 允许多个 NULL ⇒ 老库未回填的行不受影响');
+    check('🔴 本地没有那本书时书签先进 `book_marker_pending`（FK 会失败）',
+        syncService.contains("db.insert(\n            'book_marker_pending',") ||
+            syncService.contains("'book_marker_pending',"),
+        '');
+    check('🔴 pull 后**认领**书签（否则写进交换区却永不被应用）',
+        syncService.contains('await claimAllPendingMarkers(db)'));
+    check('🔴 走**直写** `upsertMarkerRow`（不借 `BookMarkerRepository.add()`）',
+        syncService.contains('await upsertMarkerRow(db, bookId: bookId, row: merged);') &&
+            !syncService.contains('BookMarkerRepository('),
+        '`add()` 会把 `deleted` 归零 ⇒ 别端取消的书签在本地**复活**');
+
+    // ── ④ `SyncReport` 计数 + `syncNow` 逐字段复制 ──
+    check('🔴 `pushedTotal` 含 4 个新计数',
+        syncService.contains('pushedLookupEvents +') &&
+            syncService.contains('pushedBookMarkers +') &&
+            syncService.contains('pushedAchievementUnlocks +') &&
+            syncService.contains('pushedSettings +'));
+    check('🔴 `pulledTotal` 含 4 个新计数（+ 认领书签）',
+        syncService.contains('pulledLookupEvents +') &&
+            syncService.contains('pulledBookMarkers +') &&
+            syncService.contains('pulledAchievementUnlocks +') &&
+            syncService.contains('pulledSettings +') &&
+            syncService.contains('claimedBookMarkers;'));
+    // 🔴 这条守的是「加字段忘了在 `syncNow` 复制」——2026-10-10 实测**已漏两处**
+    //    （`pushedHighlights` / `pulledHighlights` / `pulledBooks`）：
+    //    漏了 ⇒ 该字段在 `syncNow()` 后归零 ⇒ `pulledTotal` 变小 ⇒ 不 bump ⇒ 界面不刷新。
+    //    ⚠️ 用**逐字段计数**而不是「存在性」：存在性会被 `SyncReport` 类声明里的
+    //       `int pushedXxx = 0;` 行兜住（那是另一处）⇒ 假绿。
+    final syncNowSeg = between(syncService, 'Future<SyncReport> syncNow()', '/// **退出登录前**');
+    final copiedFields = RegExp(r'\.\.(pushed|pulled)\w+ = ').allMatches(syncNowSeg).length;
+    final declaredFields =
+        RegExp(r'int (pushed|pulled)\w+ =').allMatches(syncService).length;
+    check('切片有效（截到了 `syncNow` 函数体）',
+        syncNowSeg.isNotEmpty && syncNowSeg.contains('pushReport'),
+        '切片长 ${syncNowSeg.length}');
+    check(
+      '🔴 `syncNow` **逐字段复制了全部** pushed/pulled 计数（漏一个 ⇒ 该字段归零 ⇒ 不 bump）',
+      copiedFields == declaredFields,
+      '声明 $declaredFields 个 · 复制 $copiedFields 个',
+    );
+
+    // ── ⑤ 设置同步（P3）──
+    check('端侧注入了 prefs 读写（`buildSyncService`）',
+        syncProvider.contains('readPrefSetting: (key) async => prefs.get(key)') &&
+            syncProvider.contains('writePrefSetting:'));
+    check('🔴 `settings_sync.dart` 是**纯 Dart**（不 import Flutter / shared_preferences）',
+        !settingsSync.contains("package:flutter") &&
+            !settingsSync.contains('shared_preferences') &&
+            settingsSync.contains('kSyncedSettingKeys'));
+    check('🔴 换账号时**复位**同步设置 prefs（否则跨账号泄漏：字号/兴趣/显示名）',
+        stripComments(readFile('../../app/lib/providers/local_data_owner_provider.dart'))
+            .contains('resetSyncedSettingPrefs('));
+    // 🔑 「字面量键清单」与来源一致性（本文件不能 import 那些来源 ⇒ 靠断言补编译期约束）
+    final readingSrc =
+        stripComments(readFile('../../app/lib/services/reading_settings.dart'));
+    final interestSrc =
+        stripComments(readFile('../../app/lib/providers/interest_provider.dart'));
+    final ttsSrc = stripComments(readFile('../../app/lib/services/tts_service.dart'));
+    for (final key in ['reading_font_size', 'reading_trace_enabled']) {
+      check('设置键 `$key` 与 `reading_settings.dart` 一致', readingSrc.contains(key));
+    }
+    check('设置键 `interest_categories` 与 `interest_provider.dart` 一致',
+        interestSrc.contains('interest_categories'));
+    for (final key in ['tts_enabled', 'tts_speech_rate']) {
+      check('设置键 `$key` 与 `tts_service.dart` 一致', ttsSrc.contains(key));
+    }
+    check('设置键 `display_name` 与 `profile_screen.dart` 一致',
+        profile.contains('display_name'));
+    // 每个键都要在清单里出现过一次（防「加了常量忘了加进清单」）
+    for (final key in [
+      'reading_font_size',
+      'reading_trace_enabled',
+      'interest_categories',
+      'tts_enabled',
+      'tts_speech_rate',
+      'display_name',
+    ]) {
+      check('`kSyncedSettingKeys` 含 `$key`', settingsSync.contains("'$key'"));
+    }
+    check('🔴 `applySettings` 写回 prefs（只写表 ⇒「同步了、界面没变」）',
+        settingsSync.contains('await writePref(key,'));
+
+    // ── ⑥ 端侧仓储/服务的方法确实存在（防「接线写了、方法没写」）──
+    check('`UserWordRepository` 有 `pendingLookups`/`markLookupsSynced`/`backfillLookupUids`',
+        uwRepo.contains('Future<List<LookupEvent>> pendingLookups(') &&
+            uwRepo.contains('Future<void> markLookupsSynced(') &&
+            uwRepo.contains('Future<int> backfillLookupUids('));
+    check('`AchievementService` 有 `pendingUnlocks`/`markUnlocksSynced`',
+        achSvc.contains('Future<List<Map<String, Object?>>> pendingUnlocks(') &&
+            achSvc.contains('Future<void> markUnlocksSynced('));
+  }
+
   _report();
 }
 

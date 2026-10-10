@@ -17,9 +17,11 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common/sqlite_api.dart';
 
 import '../services/local_data_owner.dart';
+import '../services/settings_sync.dart' show resetSyncedSettingPrefs;
 import 'book_provider.dart' show bookDbProvider, bookDbRevisionProvider;
 import 'book_raw_dir_provider.dart';
 import 'sync_provider.dart';
@@ -117,6 +119,24 @@ Future<void> _wipeForNewAccount(
     debugPrint('[owner] 已删 $userId 的 pull 游标（下次全量拉取）');
   } catch (e) {
     debugPrint('[owner] 删游标失败（下次全量拉取的保证会弱一点）：$e');
+  }
+
+  // ── ④b 🆕 2026-10-10：复位**同步过的设置 prefs** ──
+  //
+  // 🔴 为什么必须做（一个跨账号泄漏）：`setting_sync` 表在上面的 `clearUserOwnedData`
+  //    里被清了，但**写回 prefs 的设置值不会**（prefs 不归 `local_meta` 管）。
+  //    若不复位，新账号的「首次采集」会把**上一个账号的设置值**当成「本地用户设置」
+  //    推上去 ⇒ 字号 / 兴趣 / **显示名**跑到别人账号，**且不报错**。
+  // 🔑 复位 = **移除**这些键（不是写默认值 —— 写了会被采集端当成「用户设过」）。
+  // 📌 与 ④（删游标）同一族的收尾动作，理由同：**用复位优于「靠人记得」**。
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await resetSyncedSettingPrefs((key) async {
+      await prefs.remove(key);
+    });
+    debugPrint('[owner] 已复位同步设置 prefs（换账号不残留）');
+  } catch (e) {
+    debugPrint('[owner] 复位同步设置 prefs 失败（可能残留上个账号的设置）：$e');
   }
 
   // ── ⑤ 最后写归属 ──

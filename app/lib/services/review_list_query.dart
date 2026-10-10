@@ -377,11 +377,16 @@ class ReviewListQuery {
   /// ⚠️ `ReviewEvent.fromRow` 要求 `rating` 是**合法档位（1–4）** ——
   ///    表上有 CHECK 约束，所以库里不会出现非法值；这里不再兜底（多一层兜底
   ///    会让「约束失效」这种真问题被静默吞掉）。
-  Future<List<({int rowId, ReviewEvent event})>> pendingReviews() async {
+  ///
+  /// ⚠️ [limit]：单次最多取多少条 —— 离线多天可能积压**上千条**，
+  ///    一次全推会超服务端 `MAX_ITEMS_PER_TABLE`(1000) ⇒ 400 ⇒ 拖垮整批。
+  ///    ⇒ 调用方分批循环（见 `sync_service.pushOnce`）。
+  Future<List<({int rowId, ReviewEvent event})>> pendingReviews({int? limit}) async {
     final rows = await _db.query(
       'review_log',
       where: 'synced = 0',
       orderBy: 'reviewed_at ASC',
+      limit: limit,
     );
     return rows
         .map((r) => (

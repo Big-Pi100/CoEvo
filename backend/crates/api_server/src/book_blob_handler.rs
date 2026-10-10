@@ -608,6 +608,11 @@ mod tests {
                 updated_at: "2099-01-01T00:00:00Z".into(), // 更新 ⇒ 触发 DO UPDATE
                 deleted: 0,
             }],
+            // 🆕 2026-10-10：`PushInput` 新增的 4 类字段（本书单测试不涉及）
+            lookup_events: vec![],
+            book_markers: vec![],
+            achievement_unlocks: vec![],
+            settings: vec![],
         };
         crate::sync_handlers::push_changes(&conn, "u1", "devA", "2099-01-01T00:00:01.000Z", &input)
             .unwrap();

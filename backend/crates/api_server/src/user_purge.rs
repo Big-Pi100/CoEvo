@@ -161,6 +161,16 @@ pub const DELETE_TARGETS: &[(&str, &str)] = &[
     ("sync_highlight", "user_id"),
     ("sync_book_progress", "user_id"),
     ("sync_book", "user_id"),
+    // 🆕 2026-10-10：同步覆盖面补齐的 4 张表 —— 同属「整体是用户学习数据」⇒ **删除**。
+    //    · `sync_lookup_event` —— `sentence` 是「用户读到的那句话」⇒ 私人内容
+    //    · `sync_book_marker`  —— `excerpt` 是「用户读到的书里某段」⇒ 私人内容
+    //    · `sync_achievement_unlock` —— 学习行为派生，无留存价值
+    //    · `sync_setting`      —— 🔴 含 `display_name`（用户昵称）⇒ 尤其不能留
+    //    ⚠️ 漏任一张 ⇒ 隐私政策 §2.1「注销一并删除」失实。
+    ("sync_lookup_event", "user_id"),
+    ("sync_book_marker", "user_id"),
+    ("sync_achievement_unlock", "user_id"),
+    ("sync_setting", "user_id"),
     // ⚠️ 最后
     ("users", "id"),
 ];

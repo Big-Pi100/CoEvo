@@ -53,16 +53,29 @@
 
 import 'package:sqflite_common/sqlite_api.dart';
 
+import 'achievement_service.dart';
 import 'article_read_repository.dart';
 import 'bookmark_repository.dart';
+import 'ebook/book_marker_sync.dart';
 import 'ebook/book_progress_sync.dart';
 import 'ebook/cloud_book_repository.dart';
 import 'fsrs_service.dart';
 import 'highlight_repository.dart';
 import 'review_list_query.dart';
 import 'review_spelling.dart';
+import 'settings_sync.dart';
 import 'sync_merge.dart' as m;
 import 'user_word_repository.dart';
+
+/// 单次 push 里**每张表**的最大条数。
+///
+/// 🔴 必须与后端 `sync_handlers.rs` 的 `MAX_ITEMS_PER_TABLE` **一致** ——
+///    超了服务端会**明确回 400**（设计如此，不是静默截断）。
+///    ⚠️ 因此 `pushOnce` 必须**分批循环**：老库升级后 `lookup_event` 可能有数千条
+///       待推（`pending_push` 默认 1），一次全推 ⇒ 400 ⇒ **整批都推不上去**
+///       （review / word / bookmark … 全被连累）。
+///    📌 判据：**一个请求里的多张表是「同生共死」的** ⇒ 任何一张超限都会拖垮其余。
+const int kMaxItemsPerTable = 1000;
 
 /// 推送（**依赖注入** —— 让本文件能脱离 `http` 包独立验证）。
 typedef SyncPushHttp = Future<Map<String, dynamic>> Function(
@@ -96,11 +109,25 @@ class SyncReport {
   ///    （同 `pulledBooks` 那条注释里记的坑）。
   int pushedHighlights = 0;
 
+  /// 🆕 2026-10-10：同步覆盖面补齐（审计报告 §五）。
+  /// 🔑 每一项都**必须计入 [pushedTotal]/[pulledTotal]** —— 漏一项 ⇒「本轮只同步了那一项」
+  ///    会被判成「什么都没做」⇒ 不 bump ⇒ **界面不刷新**（静默，本项目最忌）。
+  int pushedLookupEvents = 0;
+  int pushedBookMarkers = 0;
+  int pushedAchievementUnlocks = 0;
+  int pushedSettings = 0;
+
   /// 本次**认领**（把「别端的电子书进度」应用到本地已导入的书）的本数。
   ///
   /// 🔑 单列而不是并进 `pulledBookProgress`：后者是「交换区写入数」，
   ///    这个是「**真正生效**的书数」。两者不等是正常的（书还没导入时后者 > 0、前者 = 0）。
   int claimedBooks = 0;
+
+  /// 🆕 2026-10-10：本次**认领**（把「待认领书签」写进本地已导入的书）的**条**数。
+  ///
+  /// ⚠️ 与 [claimedBooks] 分开：那个是「认领的**书**数」，这个是「认领的书签**条**数」——
+  ///    混在一起会让日志撒谎（一本书可以有几十条书签）。
+  int claimedBookMarkers = 0;
 
   /// 本次**拉回来并写入本地**的条数（按表分）。
   int pulledReviewEvents = 0;
@@ -111,6 +138,14 @@ class SyncReport {
 
   /// 🆕 2026-10-09：划线记忆（`highlight`）。
   int pulledHighlights = 0;
+
+  /// 🆕 2026-10-10：同步覆盖面补齐。
+  int pulledLookupEvents = 0;
+  int pulledBookMarkers = 0;
+  int pulledAchievementUnlocks = 0;
+  /// 🔑 这个不是「写了几行」，而是**真正改变了 prefs 的键数** ——
+  ///    它才是「要不要刷新读数 provider」的依据（写表不算）。
+  int pulledSettings = 0;
 
   /// 🆕 书架上云：本轮**合并进 `cloud_book`** 的条数（含删除）。
   int pulledBooks = 0;
@@ -125,7 +160,12 @@ class SyncReport {
       pushedArticleReads +
       pushedBookmarks +
       pushedHighlights +
-      pushedBookProgress;
+      pushedBookProgress +
+      // 🆕 2026-10-10
+      pushedLookupEvents +
+      pushedBookMarkers +
+      pushedAchievementUnlocks +
+      pushedSettings;
 
   /// 🔴 2026-10-09 修正：原先**漏了 `pulledBooks` 与 `claimedBooks`** ——
   ///    它们是「书架上云」之后新加的两项，而这个 getter 没跟着更新。
@@ -146,7 +186,13 @@ class SyncReport {
       pulledHighlights +
       pulledBookProgress +
       pulledBooks +
-      claimedBooks;
+      claimedBooks +
+      // 🆕 2026-10-10
+      pulledLookupEvents +
+      pulledBookMarkers +
+      pulledAchievementUnlocks +
+      pulledSettings +
+      claimedBookMarkers;
 
   /// 本次**什么都没做**（无待推 + 无新拉）。
   ///
@@ -158,7 +204,8 @@ class SyncReport {
   String toString() => ok
       ? 'SyncReport(推 $pushedTotal: 复习$pushedReviewEvents 词$pushedUserWords '
           '读$pushedArticleReads 藏$pushedBookmarks 划线$pushedHighlights '
-          '书$pushedBookProgress | '
+          '书$pushedBookProgress 查词$pushedLookupEvents 书签$pushedBookMarkers '
+          '成就$pushedAchievementUnlocks 设置$pushedSettings | '
           '拉 $pulledTotal${claimedBooks > 0 ? ' 认领书$claimedBooks' : ''})'
       : 'SyncReport(失败: $error)';
 }
@@ -195,7 +242,14 @@ class SyncService {
     /// 拼写解析的诊断输出（可选）。**本文件不 import flutter**（保持纯 Dart），
     /// 所以由调用方把 `debugPrint` 传进来。
     void Function(String message)? onSpellingLog,
+    /// 🆕 2026-10-10：**设置同步**的两个 IO 注入（`SharedPreferences` 读写）。
+    /// 两者**都不传** ⇒ 跳过设置同步（其余数据照常）—— 与 `bookDb` 可空同一取向。
+    /// ⚠️ 本文件不 import `shared_preferences`（那是 Flutter 插件）⇒ 只能注入。
+    PrefsRead? readPrefSetting,
+    PrefsWrite? writePrefSetting,
   })  : _userDb = userDb,
+        _readPrefSetting = readPrefSetting,
+        _writePrefSetting = writePrefSetting,
         _bookDb = bookDb,
         _pushHttp = pushHttp,
         _pullHttp = pullHttp,
@@ -224,6 +278,10 @@ class SyncService {
   final SyncLog? _log;
   final FsrsService _fsrs;
 
+  /// 🆕 2026-10-10：设置同步的 IO 注入（见构造参数说明）。
+  final PrefsRead? _readPrefSetting;
+  final PrefsWrite? _writePrefSetting;
+
   /// `word_id` → 真拼写的**唯一解析处**（`review_spelling.dart`）。
   ///
   /// ⚠️ 由构造参数构建（不是每次现 new）—— 解析器持有 `userDb` 与注入的词库查询，
@@ -246,18 +304,36 @@ class SyncService {
   Future<SyncReport> syncNow() async {
     final pushReport = await pushOnce();
     final pullReport = await pullOnce();
+    // 🔴 **逐字段复制 —— 这里漏一个字段 = 该字段的计数在 `syncNow()` 之后归零**
+    //    ⇒ `pulledTotal` 变小 ⇒ 调用方（`sync_provider`）判「什么都没拉回」⇒ **不 bump**
+    //    ⇒「数据同步了、界面不刷新」（静默）。本项目的判据：
+    //    **「写端逐个通知读端」是必漏结构** —— 这里的「逐个复制」是同一种病。
+    //    ⚠️ 2026-10-10 实测发现**已漏两处**（`pushedHighlights` / `pulledHighlights`
+    //       与 `pulledBooks`）—— 已补。守护断言见 `verify_sync_service.dart`。
     return SyncReport()
       ..pushedReviewEvents = pushReport.pushedReviewEvents
       ..pushedUserWords = pushReport.pushedUserWords
       ..pushedArticleReads = pushReport.pushedArticleReads
       ..pushedBookmarks = pushReport.pushedBookmarks
+      ..pushedHighlights = pushReport.pushedHighlights
       ..pushedBookProgress = pushReport.pushedBookProgress
+      ..pushedLookupEvents = pushReport.pushedLookupEvents
+      ..pushedBookMarkers = pushReport.pushedBookMarkers
+      ..pushedAchievementUnlocks = pushReport.pushedAchievementUnlocks
+      ..pushedSettings = pushReport.pushedSettings
       ..pulledReviewEvents = pullReport.pulledReviewEvents
       ..pulledUserWords = pullReport.pulledUserWords
       ..pulledArticleReads = pullReport.pulledArticleReads
       ..pulledBookmarks = pullReport.pulledBookmarks
+      ..pulledHighlights = pullReport.pulledHighlights
       ..pulledBookProgress = pullReport.pulledBookProgress
+      ..pulledBooks = pullReport.pulledBooks
+      ..pulledLookupEvents = pullReport.pulledLookupEvents
+      ..pulledBookMarkers = pullReport.pulledBookMarkers
+      ..pulledAchievementUnlocks = pullReport.pulledAchievementUnlocks
+      ..pulledSettings = pullReport.pulledSettings
       ..claimedBooks = pullReport.claimedBooks
+      ..claimedBookMarkers = pullReport.claimedBookMarkers
       ..ok = pushReport.ok && pullReport.ok
       ..error = pushReport.error ?? pullReport.error;
   }
@@ -279,6 +355,24 @@ class SyncService {
   // ════════════════════════════════════════════════════════════
 
   /// 收集各类待推数据 → 推上去 → **成功后**标记已同步。
+  ///
+  /// # 🔴 分批循环（2026-10-10 加）
+  ///
+  /// 一次请求里**多张表是同生共死**的 ⇒ 任何一张超过服务端 `MAX_ITEMS_PER_TABLE`(1000)
+  /// 都会让**整批回 400**（其余表的待推数据也一起推不上去）。
+  /// 老库升级后 `lookup_event` 的 `pending_push` 默认 1 ⇒ 可能有**数千条**待推 ⇒ 必然触发。
+  /// ⇒ 每轮每表最多取 [kMaxItemsPerTable] 条，推成功并标记后再取下一批。
+  ///
+  /// ## 两类表的处理**不同**（循环里最容易写错的一处）
+  /// | 类 | 表 | 每轮 |
+  /// |---|---|---|
+  /// | **有 `pending_push` 标记** | review/word/read/bookmark/highlight/lookup/achievement/setting | 逐轮取到空 |
+  /// | **全量推**（无标记） | `book_progress` / `books` / `book_markers` | 🔴 **只在第一轮带** |
+  /// ⇒ 若让全量表也参与循环，它会**每轮都带同样的内容** ⇒ **永不终止**。
+  ///
+  /// ## 🔴 终止条件
+  /// 「本轮**没有任何一张有标记的表取满**」⇒ 已推完。
+  /// ⚠️ **不能**只靠「批量为 0」—— 若设置采集异常导致其每轮都返回非空，就会死循环。
   Future<SyncReport> pushOnce() async {
     final r = SyncReport();
     try {
@@ -287,50 +381,107 @@ class SyncService {
       final ar = ArticleReadRepository(_userDb);
       final bm = BookmarkRepository(_userDb);
       final hl = HighlightRepository(_userDb);
+      final ach = AchievementService(_userDb);
 
-      final reviews = await q.pendingReviews();
-      final words = await uw.pending();
-      final reads = await ar.pending();
-      final marks = await bm.pending();
-      final highlights = await hl.pending();
-      final progress = await _pendingBookProgress();
+      // 🔴🔴 查词记录的 `uid` **必须先回填** —— 空 `uid` 的行推上去会让服务端
+      //     PK `(user_id, uid)` 把它们**互相覆盖**（只剩最后一条），**且不报错**。
+      await uw.backfillLookupUids();
 
-      r.pushedReviewEvents = reviews.length;
-      r.pushedUserWords = words.length;
-      r.pushedArticleReads = reads.length;
-      r.pushedBookmarks = marks.length;
-      r.pushedHighlights = highlights.length;
-      r.pushedBookProgress = progress.length;
+      var firstRound = true;
+      while (true) {
+        final reviews = await q.pendingReviews(limit: kMaxItemsPerTable);
+        final words = await uw.pending(limit: kMaxItemsPerTable);
+        final reads = await ar.pending(limit: kMaxItemsPerTable);
+        final marks = await bm.pending(limit: kMaxItemsPerTable);
+        final highlights = await hl.pending(limit: kMaxItemsPerTable);
+        final lookups = await uw.pendingLookups(limit: kMaxItemsPerTable);
+        final unlocks = await ach.pendingUnlocks(limit: kMaxItemsPerTable);
+        final settings = await _pendingSettings();
 
-      // 🔑 **空批次不发请求** —— 一次网络往返有成本（电量/流量/延迟），
-      //    而「什么都没变」是最常见的情形（用户刚打开 App）。
-      if (r.pushedTotal == 0) {
-        _say('sync.push: 无待推数据，跳过');
-        return r;
+        // 🔑 全量推的表**只在第一轮**带（否则每轮重复 ⇒ 永不终止）
+        final progress = firstRound
+            ? await _pendingBookProgress()
+            : const <Map<String, Object?>>[];
+        final books =
+            firstRound ? await _pendingBooks() : const <Map<String, Object?>>[];
+        final markers = firstRound
+            ? await _pendingBookMarkers()
+            : const <Map<String, Object?>>[];
+
+        final batchTotal = reviews.length +
+            words.length +
+            reads.length +
+            marks.length +
+            highlights.length +
+            lookups.length +
+            unlocks.length +
+            settings.length +
+            progress.length +
+            books.length +
+            markers.length;
+        // 🔑 **空批次不发请求** —— 一次网络往返有成本（电量/流量/延迟），
+        //    而「什么都没变」是最常见的情形（用户刚打开 App）。
+        if (batchTotal == 0) {
+          if (firstRound) _say('sync.push: 无待推数据，跳过');
+          break;
+        }
+
+        await _pushHttp(_buildPushBody(
+          reviews: reviews.map((e) => e.event).toList(),
+          words: words,
+          reads: reads,
+          marks: marks,
+          highlights: highlights,
+          lookups:
+              lookups.map((l) => m.lookupEventToPushJson(l.toPushRow())).toList(),
+          progress: progress,
+          // 🆕 书架上云：书单**先到**（服务端上传文件时会校验书单行存在）
+          books: books,
+          bookMarkers: markers,
+          achievementUnlocks: unlocks,
+          settings: settings,
+        ));
+
+        // ── 只有 **push 成功** 才标记（失败则不标记 ⇒ 下次重试）──
+        await q.markReviewsSynced(reviews.map((e) => e.rowId));
+        await uw.markSynced(words.map((w) => w.id));
+        await ar.markSynced(reads.map((e) => e.articleId));
+        await bm.markSynced(marks.map((b) => b.contentId));
+        await hl.markSynced(highlights.map((h) => h.id));
+        await uw.markLookupsSynced(lookups.map((l) => l.uid ?? ''));
+        await ach.markUnlocksSynced(unlocks.map((u) => u['key'] as String? ?? ''));
+        if (settings.isNotEmpty) {
+          await markSettingsSynced(
+              _userDb, settings.map((s) => s['key'] as String? ?? ''));
+        }
+        // ⚠️ `book_progress` / `books` / `book_markers` **没有待推标记** ⇒ 全量带上。
+        //    代价可忽略（行数少）+ 服务端 UPSERT 的 `WHERE` 保证
+        //    「值没变就不刷新 received_at」⇒ **不会产生回声**。
+
+        r.pushedReviewEvents += reviews.length;
+        r.pushedUserWords += words.length;
+        r.pushedArticleReads += reads.length;
+        r.pushedBookmarks += marks.length;
+        r.pushedHighlights += highlights.length;
+        r.pushedLookupEvents += lookups.length;
+        r.pushedAchievementUnlocks += unlocks.length;
+        r.pushedSettings += settings.length;
+        r.pushedBookProgress += progress.length;
+        r.pushedBookMarkers += markers.length;
+
+        // 🔴 终止：**没有任何一张「有标记的表」取满** ⇒ 已推完（见方法头说明）
+        final anyMarkedTableFull = reviews.length >= kMaxItemsPerTable ||
+            words.length >= kMaxItemsPerTable ||
+            reads.length >= kMaxItemsPerTable ||
+            marks.length >= kMaxItemsPerTable ||
+            highlights.length >= kMaxItemsPerTable ||
+            lookups.length >= kMaxItemsPerTable ||
+            unlocks.length >= kMaxItemsPerTable;
+        firstRound = false;
+        if (!anyMarkedTableFull) break;
       }
 
-      await _pushHttp(_buildPushBody(
-        reviews: reviews.map((e) => e.event).toList(),
-        words: words,
-        reads: reads,
-        marks: marks,
-        highlights: highlights,
-        progress: progress,
-        // 🆕 书架上云：书单**先到**（服务端上传文件时会校验书单行存在）
-        books: await _pendingBooks(),
-      ));
-
-      // ── 只有 **push 成功** 才标记（失败则不标记 ⇒ 下次重试）──
-      await q.markReviewsSynced(reviews.map((e) => e.rowId));
-      await uw.markSynced(words.map((w) => w.id));
-      await ar.markSynced(reads.map((e) => e.articleId));
-      await bm.markSynced(marks.map((b) => b.contentId));
-      await hl.markSynced(highlights.map((h) => h.id));
-      // ⚠️ `book_progress_pending` **没有待推标记** ⇒ 每次全量带上。
-      //    代价可忽略（一本书一行）+ 服务端 UPSERT 的 `WHERE` 保证
-      //    「值没变就不刷新 received_at」⇒ **不会产生回声**。
-
-      _say('sync.push: ${r.pushedTotal} 条');
+      if (r.pushedTotal > 0) _say('sync.push: ${r.pushedTotal} 条');
     } catch (e) {
       r.ok = false;
       r.error = '$e';
@@ -351,8 +502,16 @@ class SyncService {
     required List<({int articleId, String readAt})> reads,
     required List<Bookmark> marks,
     required List<Highlight> highlights,
+    /// 🆕 2026-10-10：查词记录（已转成推送 JSON 形状）。
+    required List<Map<String, Object?>> lookups,
     required List<Map<String, Object?>> progress,
     required List<Map<String, Object?>> books,
+    /// 🆕 2026-10-10：书本内书签（已带 `content_hash` —— 跨设备书身份）。
+    required List<Map<String, Object?>> bookMarkers,
+    /// 🆕 2026-10-10：成就解锁记录。
+    required List<Map<String, Object?>> achievementUnlocks,
+    /// 🆕 2026-10-10：应用设置。
+    required List<Map<String, Object?>> settings,
   }) {
     return {
       'device_id': _deviceId,
@@ -389,6 +548,13 @@ class SyncService {
       // 🆕 书单（书架上云）。⚠️ 它必须**先于文件上传**到达服务端，
       //    否则上传会被 400 拒（「这本书还没在书单里」）。
       'books': books,
+      // 🆕 2026-10-10：同步覆盖面补齐的 4 类。
+      // ⚠️ 键名与字段顺序**必须与后端 `PushInput` 一致**（错了是**静默传空**：
+      //    serde 忽略未知字段、两端都不报错）。
+      'lookup_events': lookups,
+      'book_markers': bookMarkers,
+      'achievement_unlocks': achievementUnlocks,
+      'settings': settings,
     };
   }
 
@@ -449,6 +615,54 @@ class SyncService {
     }
   }
 
+  /// 🆕 2026-10-10：书本内书签的待推行（**全量** —— 与书单同一取舍）。
+  ///
+  /// 🔴 `book_marker.book_id` 是**端侧 uuid** ⇒ 必须 `JOIN book` 拿 `content_hash`
+  ///    （**书**的跨设备身份）。不 join 就推 `book_id` 的话，别端根本无法把书签
+  ///    对到「同一本书」上（同一本书在两台设备上是两个 uuid）。
+  /// ⚠️ 没有指纹的书签**不参与**（同 `_pendingBooks` 的判据：
+  ///    拿一个错误的身份去匹配比不同步更糟）。
+  ///
+  /// 🔑 为什么走**全量**而不是增量：书签是用户手动标的，**低频**且**行数少**，
+  ///    而 `book_marker` 表**没有 `pending_push` 列**（见其 schema）——
+  ///    为它加列要再走一次迁移，收益不抵成本。服务端 UPSERT 的 `WHERE` 保证
+  ///    「值没变就不刷新 `received_at`」⇒ 全量推不会产生回声。
+  Future<List<Map<String, Object?>>> _pendingBookMarkers() async {
+    final db = _bookDb;
+    if (db == null) return const [];
+    try {
+      final rows = await db.rawQuery('''
+        SELECT m.id, b.content_hash, m.chapter_idx, m.scroll_ratio, m.excerpt,
+               m.created_at, m.deleted
+          FROM book_marker m
+          JOIN book b ON b.id = m.book_id
+         WHERE b.content_hash IS NOT NULL AND b.content_hash <> ''
+      ''');
+      return rows.map((r) => <String, Object?>{...r}).toList();
+    } catch (e) {
+      _say('sync.push: 读书签失败（跳过书签）: $e');
+      return const [];
+    }
+  }
+
+  /// 🆕 2026-10-10：设置类的待推行。
+  ///
+  /// 🔴 走「**采集式**」：读 prefs 现值与 `setting_sync` 表比对，变了才标脏 ——
+  ///    这样**不必改动每一个设置项的 setter**（漏一处就会让那项永不同步，且静默）。
+  ///    口径在 `settings_sync.dart`（唯一一处）。
+  /// ⚠️ 未注入 prefs 读写（`_readPrefSetting == null`）⇒ 返回空，**跳过设置同步**，
+  ///    其余数据照常（与 `bookDb` 可空同一取向）。
+  Future<List<Map<String, Object?>>> _pendingSettings() async {
+    final read = _readPrefSetting;
+    if (read == null) return const [];
+    try {
+      return await collectSettings(_userDb, readPref: read);
+    } catch (e) {
+      _say('sync.push: 采集设置失败（跳过设置）: $e');
+      return const [];
+    }
+  }
+
   // ════════════════════════════════════════════════════════════
   // pull
   // ════════════════════════════════════════════════════════════
@@ -467,6 +681,11 @@ class SyncService {
       final highlights = _listOf(resp, 'highlights');
       final progress = _listOf(resp, 'book_progress');
       final books = _listOf(resp, 'books');
+      // 🆕 2026-10-10：同步覆盖面补齐的 4 类
+      final lookups = _listOf(resp, 'lookup_events');
+      final markers = _listOf(resp, 'book_markers');
+      final unlocks = _listOf(resp, 'achievement_unlocks');
+      final settings = _listOf(resp, 'settings');
 
       // 🔴 **这两行的顺序有语义**（2026-10-09 修）：`user_words` 必须**先**落库。
       //
@@ -491,6 +710,14 @@ class SyncService {
       r.pulledBookmarks = await _applyBookmarks(marks);
       r.pulledBookProgress = await _applyBookProgress(progress);
       r.pulledBooks = await _applyCloudBooks(books);
+      // 🆕 2026-10-10：4 类新数据。
+      // 🔑 `lookup_events` / `achievement_unlocks` / `settings` 都是「并集 / LWW」，
+      //    彼此**无依赖顺序**；`book_markers` 依赖本地 `book` 表（已导入的书）——
+      //    没有的书先进 `book_marker_pending`，由下面的认领兜底。
+      r.pulledLookupEvents = await _applyLookupEvents(lookups);
+      r.pulledBookMarkers = await _applyBookMarkers(markers);
+      r.pulledAchievementUnlocks = await _applyAchievementUnlocks(unlocks);
+      r.pulledSettings = await _applySettings(settings);
 
       // 🔴🔴 **pull 之后必须认领一次** —— 否则对**已导入**的书，
       //    别端刚推来的进度会被写进交换区却**永远不被应用**
@@ -500,6 +727,10 @@ class SyncService {
       //    导入后 → 覆盖「书还没导入时那段窗口」；pull 后 → 覆盖「书已导入」的情形。
       //    设计文档 §3.4.3 只画了前者 ⇒ 后者是实测时才发现的缺口。
       r.claimedBooks = await _claimBookProgress();
+      // 🆕 2026-10-10：书签的认领（同 `book_progress` 的两条线）。
+      // ⚠️ 它**不并入 claimedBooks** —— 那个计数是「认领的**书**数」，
+      //    而这里是「认领的书签**条**数」，语义不同（混一起会让日志撒谎）。
+      r.claimedBookMarkers = await _claimBookMarkers();
 
       // 🔴 **推进游标用服务端返回的 `server_time`**，不是「当前时间」：
       //    它 = 本次数据里最大的 `received_at`。若用当前时间，
@@ -980,5 +1211,175 @@ class SyncService {
       _say('sync.pull: 电子书进度写入失败（跳过）: $e');
     }
     return n;
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // 🆕 2026-10-10：同步覆盖面补齐的 4 类（pull 侧）
+  // ════════════════════════════════════════════════════════════
+
+  /// 查词记录 → `lookup_event`（**日志，按 `uid` 幂等**）。
+  ///
+  /// 🔑 `INSERT OR IGNORE`（与 `review_log` 同一形态：事件不可变，PK 相同即重复）。
+  /// ⚠️ `pending_push = 0` —— 拉回来的是**服务端已经知道的** ⇒ 不再推回去（防回声）。
+  /// ⚠️ 显式列名（不依赖表的物理列顺序 —— `uid` / `pending_push` 是 `ALTER` 追加的）。
+  Future<int> _applyLookupEvents(List<Map<String, dynamic>> rows) async {
+    if (rows.isEmpty) return 0;
+    var n = 0;
+    for (final j in rows) {
+      final merged = m.lookupEventFromPullJson(j);
+      final uid = merged['uid'] as String? ?? '';
+      if (uid.isEmpty) continue;
+      final changed = await _userDb.rawUpdate(
+        'INSERT OR IGNORE INTO lookup_event '
+        '(uid, word_id, spelling, article_id, sentence, position, looked_up_at, pending_push) '
+        'VALUES (?,?,?,?,?,?,?,0)',
+        [
+          uid,
+          merged['word_id'],
+          merged['spelling'] ?? '',
+          merged['article_id'],
+          merged['sentence'],
+          merged['position'],
+          merged['looked_up_at'],
+        ],
+      );
+      // `INSERT OR IGNORE` 被忽略时 affected = 0 ⇒ 不计数（幂等，不虚报）
+      n += changed;
+    }
+    return n;
+  }
+
+  /// 书本内书签 → `book_marker`（本地有这本书）**或** `book_marker_pending`（还没有）。
+  ///
+  /// # 🔴 为什么分两条路
+  /// `book_marker` 有 `FK → book(id) ON DELETE CASCADE` ⇒ 本地**没导入**那本书时
+  /// 直接写会 **FK 失败**。而用户的真实流程是「新设备 → 同步 → 导入书 → 打开」，
+  /// 同步往往**早于**导入 ⇒ 若丢弃，书签**永久丢失**（同 `book_progress` 的判据）。
+  /// ⇒ 没有这本书时先按 `content_hash` 接住，等导入后由 [_claimBookMarkers] 认领。
+  ///
+  /// 🔑 合并用 [m.mergeBookMarker]（`deleted` 取 **OR** —— 本表没有 `updated_at`，
+  ///    「谁更新谁赢」没有判据；而「取消书签」是终局意愿）。详见 `sync_merge.dart`。
+  Future<int> _applyBookMarkers(List<Map<String, dynamic>> rows) async {
+    final db = _bookDb;
+    if (db == null || rows.isEmpty) return 0;
+    var n = 0;
+    try {
+      for (final j in rows) {
+        final remote = m.bookMarkerFromPullJson(j);
+        final id = remote['id'] as String? ?? '';
+        final hash = remote['content_hash'] as String? ?? '';
+        if (id.isEmpty || hash.isEmpty) continue;
+
+        final local = await db.query('book',
+            columns: ['id'],
+            where: 'content_hash = ?',
+            whereArgs: [hash],
+            limit: 1);
+        if (local.isEmpty) {
+          // 🔴 本地还没导入这本书 ⇒ 先接住（等导入后认领）
+          await db.insert(
+            'book_marker_pending',
+            {
+              'id': id,
+              'content_hash': hash,
+              'chapter_idx': remote['chapter_idx'],
+              'scroll_ratio': remote['scroll_ratio'],
+              'excerpt': remote['excerpt'],
+              'created_at': remote['created_at'],
+              'deleted': remote['deleted'] ?? 0,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+          n++;
+          continue;
+        }
+
+        final bookId = local.first['id'] as String;
+        // ⚠️ 取**整行**（`mergeBookMarker` 的「首次事实」那组要读本地值 ——
+        //    少取一列会让 `Map` 取不存在的键返回 `null`，**静默**覆盖真值）。
+        final existing = await db
+            .query('book_marker', where: 'id = ?', whereArgs: [id], limit: 1);
+        final Map<String, Object?>? localRow =
+            existing.isEmpty ? null : {...existing.first};
+        // 🔑 本地行没有 `content_hash`（它在 `book` 表）⇒ 补上再合并，
+        //    这样 [m.mergeBookMarker] 的两侧形状一致（它按 `created_at` 取较早端）。
+        final merged = localRow != null
+            ? m.mergeBookMarker({...localRow, 'content_hash': hash}, remote)
+            : {...remote};
+        await upsertMarkerRow(db, bookId: bookId, row: merged);
+        n++;
+      }
+    } catch (e) {
+      _say('sync.pull: 书签写入失败（跳过）: $e');
+    }
+    return n;
+  }
+
+  /// 把「本地已有这本书」的待认领书签写进 `book_marker`，并删掉 pending 行。
+  ///
+  /// 🔑 实现委托给 `book_marker_sync.dart::claimAllPendingMarkers`（**口径一处**）——
+  ///    它与「导入后认领」（`book_importer`）**共用同一份实现**，差别只在筛选范围。
+  /// ⚠️ 失败**不抛**（同步是后台行为）：pending 行仍在 ⇒ 下次 pull 会再试（自愈）。
+  Future<int> _claimBookMarkers() async {
+    final db = _bookDb;
+    if (db == null) return 0;
+    try {
+      final n = await claimAllPendingMarkers(db);
+      if (n > 0) _say('sync.pull: 认领书签 $n 条');
+      return n;
+    } catch (e) {
+      _say('sync.pull: 认领书签失败（下次重试）: $e');
+      return 0;
+    }
+  }
+
+  /// 成就解锁 → `achievement_unlock`（`unlocked_at` 取**较早**）。
+  Future<int> _applyAchievementUnlocks(List<Map<String, dynamic>> rows) async {
+    if (rows.isEmpty) return 0;
+    var n = 0;
+    for (final j in rows) {
+      final remote = m.achievementUnlockFromPullJson(j);
+      final key = remote['key'] as String? ?? '';
+      if (key.isEmpty) continue;
+      final existing = await _userDb.query('achievement_unlock',
+          where: 'key = ?', whereArgs: [key], limit: 1);
+      final Map<String, Object?>? localRow =
+          existing.isEmpty ? null : {...existing.first};
+      final merged =
+          localRow != null ? m.mergeAchievementUnlock(localRow, remote) : {...remote};
+      final pending = m.pendingPushAfterPull(
+        localExisted: localRow != null,
+        localWasPending:
+            localRow != null && (localRow['pending_push'] as num?)?.toInt() == 1,
+      );
+      await _userDb.rawInsert(
+        'INSERT INTO achievement_unlock (key, unlocked_at, pending_push) '
+        'VALUES (?,?,?) '
+        'ON CONFLICT (key) DO UPDATE SET '
+        '  unlocked_at = excluded.unlocked_at, pending_push = excluded.pending_push',
+        [key, merged['unlocked_at'], pending ? 1 : 0],
+      );
+      n++;
+    }
+    return n;
+  }
+
+  /// 应用设置 → `setting_sync` 表（LWW）+ **写回 prefs**。
+  ///
+  /// 🔑 返回的是**真正改变了 prefs 的键数** —— 它才是「要不要刷新读数 provider」的依据
+  ///    （只写表不算：用户看到的是 prefs 驱动的设置项）。
+  /// ⚠️ `_writePrefSetting == null`（未注入）⇒ 跳过，其余数据照常。
+  ///
+  /// ⚠️ 口径在 `settings_sync.dart::applySettings`（唯一一处）。
+  Future<int> _applySettings(List<Map<String, dynamic>> rows) async {
+    final write = _writePrefSetting;
+    if (write == null || rows.isEmpty) return 0;
+    try {
+      final changed = await applySettings(_userDb, rows, writePref: write);
+      return changed.length;
+    } catch (e) {
+      _say('sync.pull: 应用设置失败（跳过）: $e');
+      return 0;
+    }
   }
 }

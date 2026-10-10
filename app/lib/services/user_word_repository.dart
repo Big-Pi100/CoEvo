@@ -20,6 +20,7 @@
 // **查词链路**调用，没有 `importWords()` 这类方法（语义纯净靠接口形状保证）。
 
 import 'package:sqflite_common/sqlite_api.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/article.dart' show ArticleLookup;
 import 'bookmark_repository.dart' show kSqlNowUtc, parseUserDbUtc;
@@ -142,6 +143,11 @@ class UserWord {
 /// 🔑 **这是「语境记录」，不是「生词」** —— 同一个词可有多条（在不同句子被查）。
 class LookupEvent {
   final int id;
+
+  /// 🆕 v10：**跨设备身份**（uuid）。⚠️ 老库的行为 `null`（由
+  /// [UserWordRepository.backfillLookupUids] 在 push 前惰性回填）。
+  final String? uid;
+
   final String? wordId;
   final String spelling;
   final int? articleId;
@@ -151,6 +157,7 @@ class LookupEvent {
 
   const LookupEvent({
     required this.id,
+    this.uid,
     this.wordId,
     required this.spelling,
     this.articleId,
@@ -159,10 +166,27 @@ class LookupEvent {
     required this.lookedUpAt,
   });
 
+  /// 转成**与 `lookup_event` 同步字段一致**的行（供 push 用）。
+  ///
+  /// 🔑 与 `UserWord.toPushRow()` 同一职责：列名只在这一个类里出现（改名时只改一处）。
+  /// ⚠️ 时间用 `toUtc().toIso8601String()` —— 与 §同步判定一致（毫秒）。
+  ///    ⚠️ `looked_up_at` 是**秒精度**列（DDL 默认 `%S`），读回再序列化不会补毫秒 ——
+  ///    但本表**不靠时间戳做合并判定**（日志，按 uid 去重）⇒ 无影响。
+  Map<String, Object?> toPushRow() => {
+        'uid': uid,
+        'word_id': wordId,
+        'spelling': spelling,
+        'article_id': articleId,
+        'sentence': sentence,
+        'position': position,
+        'looked_up_at': lookedUpAt.toUtc().toIso8601String(),
+      };
+
   @override
   bool operator ==(Object other) =>
       other is LookupEvent &&
       other.id == id &&
+      other.uid == uid &&
       other.wordId == wordId &&
       other.spelling == spelling &&
       other.articleId == articleId &&
@@ -172,7 +196,7 @@ class LookupEvent {
 
   @override
   int get hashCode => Object.hash(
-      id, wordId, spelling, articleId, sentence, position, lookedUpAt);
+      id, uid, wordId, spelling, articleId, sentence, position, lookedUpAt);
 
   @override
   String toString() => 'LookupEvent(#$id "$spelling"'
@@ -358,9 +382,9 @@ class UserWordRepository {
 
   /// 待同步的生词（`pending_push = 1`）—— 供将来的增量 push 用。
   /// ⚠️ 当前**无调用方**（同步属 Phase 3）；放着是为了「表 + 索引 + 查询」齐备。
-  Future<List<UserWord>> pending() async {
+  Future<List<UserWord>> pending({int? limit}) async {
     final rows = await _db.query('user_word',
-        where: 'pending_push = 1', orderBy: 'added_at ASC');
+        where: 'pending_push = 1', orderBy: 'added_at ASC', limit: limit);
     return rows.map(_fromRow).toList();
   }
 
@@ -383,7 +407,11 @@ class UserWordRepository {
   ///    `word_id` 可空正是为「查了但词库里没有」预留的（v1 原文即可空）。
   ///    也让「我查过哪些词」完整，将来能做「查词历史」。
   ///
-  /// ⚠️ 本方法是**纯日志**：无 `pending_push`、不参与同步（照 v1）。
+  /// 🆕 v10：**本表已纳入跨设备同步** ⇒ 写入时生成 `uid`（跨设备身份）。
+  ///    它驱动成就 `lookupCount`（查词总次数）—— 此前不同步 ⇒ 换设备后次数归零、
+  ///    成就要重查够次数才重新亮。
+  ///    ⚠️ 仍然「命中与未命中都记」：未命中的词（`word_id` = NULL）也要跨设备。
+  ///    🔑 `uid` 用 **uuid**（不是自增 id）—— 自增在两台设备上各自从 1 开始必撞。
   Future<int> recordLookup({
     String? wordId,
     required String spelling,
@@ -392,6 +420,7 @@ class UserWordRepository {
     int? position,
   }) async {
     return _db.insert('lookup_event', {
+      'uid': const Uuid().v4(),
       'word_id': wordId,
       'spelling': spelling,
       'article_id': articleId,
@@ -426,6 +455,63 @@ class UserWordRepository {
     final rows =
         await _db.rawQuery('SELECT count(*) AS n FROM lookup_event');
     return (rows.first['n'] as num).toInt();
+  }
+
+  // ───────────────────────────────────────────────────────────
+  // 查词记录：同步（🆕 v10）
+  // ───────────────────────────────────────────────────────────
+
+  /// 待同步的查词记录（`pending_push = 1`）。
+  ///
+  /// 🔴 **调用前必须保证 `uid` 已回填**（见 [backfillLookupUids]）：
+  ///    `uid` 为空串的行若被推上去，服务端 PK `(user_id, uid)` 会让它们**互相覆盖**
+  ///    （只剩最后一条）—— **且不报错**。
+  ///    ⚠️ 因此 `sync_service.pushOnce` 的顺序是：**先回填，再取待推**。
+  ///
+  /// ⚠️ [limit]：单次最多取多少条 —— 老库升级时可能有**数千条**历史查词，
+  ///    一次全推会超服务端 `MAX_ITEMS_PER_TABLE`（1000）⇒ 400 ⇒ **拖垮整批**。
+  ///    ⇒ 调用方分批循环（见 `sync_service`）。
+  Future<List<LookupEvent>> pendingLookups({int? limit}) async {
+    final rows = await _db.query('lookup_event',
+        where: 'pending_push = 1', orderBy: 'id ASC', limit: limit);
+    return rows.map(_lookupFromRow).toList(growable: false);
+  }
+
+  /// 标记查词记录已同步（push 成功后调用）。
+  ///
+  /// ⚠️ 按 **`uid`** 标记（不是自增 `id`）—— 与推送身份一致。
+  Future<void> markLookupsSynced(Iterable<String> uids) async {
+    final list = uids.where((u) => u.isNotEmpty).toList();
+    if (list.isEmpty) return;
+    final ph = List.filled(list.length, '?').join(',');
+    await _db.update('lookup_event', {'pending_push': 0},
+        where: 'uid IN ($ph)', whereArgs: list);
+  }
+
+  /// 给**还没有 `uid`** 的行生成 uuid（幂等）。
+  ///
+  /// # 🔴 为什么必须有它
+  /// 老库（v10 升级上来）的 `lookup_event` 行没有 `uid` —— 若直接 push，
+  /// 服务端会把所有 `uid=''` 的行**互相覆盖**（只剩一条），**且不报错**。
+  ///
+  /// # 🔑 为什么是「惰性回填」而不是迁移时一次性回填
+  /// ① SQLite 的 DDL **无法生成** uuid（`ALTER`/`UPDATE` 里做不到标准 uuid）；
+  /// ② 只在**真要 push** 时才值得生成 —— 永不上云的设备（未订阅）不必白造几千个 uuid。
+  ///
+  /// ⚠️ 幂等：只更新 `uid IS NULL` 或空串的行 ⇒ 重复调用无害。
+  /// ⚠️ 老库**未升级**时 `uid` 列不存在 ⇒ 这里会抛（**有意不吞**）：
+  ///    吞掉会让「库没升到 v10」伪装成「同步正常但没数据」，属最忌的静默失败。
+  Future<int> backfillLookupUids() async {
+    final rows = await _db.query('lookup_event',
+        columns: ['id'], where: "uid IS NULL OR uid = ''");
+    if (rows.isEmpty) return 0;
+    final batch = _db.batch();
+    for (final r in rows) {
+      batch.update('lookup_event', {'uid': const Uuid().v4()},
+          where: 'id = ?', whereArgs: [r['id']]);
+    }
+    await batch.commit(noResult: true);
+    return rows.length;
   }
 
   /// **这篇文章里我查过哪些词**（+ 各自的 FSRS 状态）—— **痕迹的数据源**。
@@ -494,6 +580,7 @@ class UserWordRepository {
 
   LookupEvent _lookupFromRow(Map<String, Object?> r) => LookupEvent(
         id: (r['id'] as num).toInt(),
+        uid: r['uid'] as String?,
         wordId: r['word_id'] as String?,
         spelling: r['spelling'] as String,
         articleId: (r['article_id'] as num?)?.toInt(),

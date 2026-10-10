@@ -150,12 +150,13 @@ class ArticleReadRepository {
   /// 🔑 返回 **record** 而不是新造一个类：调用方（`sync_service`）只需要
   /// 「有什么要推」，而这个形状（id + 时间）恰好与后端 `ArticleReadInput` 同构
   /// ⇒ 不必为它维护一个只有两个字段的类（同 `fsrs_service.review()` 用 record 的理由）。
-  Future<List<({int articleId, String readAt})>> pending() async {
+  Future<List<({int articleId, String readAt})>> pending({int? limit}) async {
     final rows = await _db.query(
       'article_read',
       columns: ['article_id', 'read_at'],
       where: 'pending_push = 1',
       orderBy: 'read_at ASC', // 按**发生顺序**推，便于服务端时间轴单调
+      limit: limit,
     );
     return rows
         .map((r) => (

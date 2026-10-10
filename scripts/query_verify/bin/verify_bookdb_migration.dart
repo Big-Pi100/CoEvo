@@ -155,6 +155,30 @@ CREATE TABLE IF NOT EXISTS book_marker (
 CREATE INDEX IF NOT EXISTS idx_book_marker ON book_marker(book_id, chapter_idx, scroll_ratio);
 ''';
 
+/// **v4 的 schema 快照**（2026-10-08 时点的样子）= v3 + `cloud_book`。
+///
+/// 🔴 这是**真机此刻所处的版本**（书架上云那次把版本升到了 4）⇒
+///    「**v4 → 当前版本**」是**最真实的升级路径**，不是历史路径。
+/// ⚠️ v5 的变更是**加表**（`book_marker_pending`）⇒ 本快照必须**不含**它，
+///    否则「升级后它存在」那条断言失去意义（本来就存在）。
+/// 📌 判据（同 `user.db` 那两次）：**测试要覆盖「用户此刻真实所处的状态」**。
+const String _v4Schema = '''
+$_v3Schema
+CREATE TABLE IF NOT EXISTS cloud_book (
+  content_hash  TEXT PRIMARY KEY,
+  title         TEXT NOT NULL,
+  author        TEXT,
+  language      TEXT,
+  chapter_count INTEGER NOT NULL DEFAULT 0,
+  blob_size     INTEGER NOT NULL DEFAULT 0,
+  size_bytes    INTEGER NOT NULL DEFAULT 0,
+  added_at      TEXT NOT NULL,
+  seen_at       TEXT NOT NULL
+                DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_cloud_book_added ON cloud_book(added_at DESC);
+''';
+
 Future<List<String>> _columnsOf(Database db, String table) async {
   final rows = await db.rawQuery('PRAGMA table_info($table)');
   return rows.map((r) => r['name'] as String).toList();
@@ -237,9 +261,19 @@ Future<void> runCase({
     check('🔴 前提成立：老库**不含** book_marker（v3 才加）',
         !oldTables.contains('book_marker'));
   }
-  // 🆕 v4（2026-10-08）：云端书单镜像 —— **两条路径都会跑这条**
-  check('🔴 前提成立：老库**不含** cloud_book（v4 才加）',
-      !oldTables.contains('cloud_book'));
+  // 🆕 v4（2026-10-08）：云端书单镜像
+  //    ⚠️ 2026-10-10 改为**条件式** —— 加了 `fromVersion: 4` 路径后，v4 老库
+  //       **本来就含** `cloud_book` ⇒ 写死「不含」会让那条路径**假红**。
+  //       📌 同 v2/v3 两条的判据：「前提检查」是**路径相关**的，不能跟断言体一起复用。
+  if (fromVersion < 4) {
+    check('🔴 前提成立：老库**不含** cloud_book（v4 才加）',
+        !oldTables.contains('cloud_book'));
+  }
+  // 🆕 v5（2026-10-10）：待认领书签
+  if (fromVersion < 5) {
+    check('🔴 前提成立：老库**不含** book_marker_pending（v5 才加）',
+        !oldTables.contains('book_marker_pending'));
+  }
   check('老库已有 1 本书 + 1 章 + 1 条进度',
       (await old.rawQuery('SELECT count(*) AS n FROM book')).first['n'] == 1);
   await old.close();
@@ -287,6 +321,12 @@ Future<void> runCase({
       await _hasIndex(db, 'idx_cloud_book_added'));
   check('🔴 `idx_book_hash` 索引已创建（新增索引同样靠重跑脚本）',
       await _hasIndex(db, 'idx_book_hash'));
+  // 🆕 v5（2026-10-10）：待认领书签（`book_marker` 纳入同步后的桥接表）。
+  //    🔴 同样**逐条列举**（理由见上面 v4 那条注释：漏列举 ⇒ 覆盖是空的、输出一样漂亮）。
+  check('🔴 `book_marker_pending` 表已创建（v5 · 待认领书签）',
+      tables.contains('book_marker_pending'), tables.join(','));
+  check('🔴 `idx_bmp_hash` 索引已创建',
+      await _hasIndex(db, 'idx_bmp_hash'));
   check('user_version 已升到 $kBookDbVersion',
       (await db.rawQuery('PRAGMA user_version')).first.values.first ==
           kBookDbVersion);
@@ -373,10 +413,21 @@ Future<void> main() async {
     oldSchema: _v3Schema,
   );
 
+  // 🔴🆕 **v4 → 当前**（2026-10-10 加）：真机上此刻**恰好是 v4** 的库最多
+  //    （10-08 出的包把 book.db 版本升到了 4）。
+  //    v5 的变更是**加表 + 加索引**（`book_marker_pending`）⇒ 靠重跑全量脚本即可，
+  //    但**仍必须升版本号**——否则 `onUpgrade` 不触发 ⇒ 表永远建不出来（静默失败）。
+  await runCase(
+    factory: factory,
+    schemaSql: schemaSql,
+    fromVersion: 4,
+    oldSchema: _v4Schema,
+  );
+
   print('');
   print('═' * 74);
   if (_failures.isEmpty) {
-    print('✅ 全部通过：$_pass 项（v1 → v$kBookDbVersion）');
+    print('✅ 全部通过：$_pass 项（v1 / v3 / v4 → v$kBookDbVersion）');
   } else {
     print('🔴 失败 ${_failures.length} 项 / 通过 $_pass 项：');
     for (final f in _failures) {

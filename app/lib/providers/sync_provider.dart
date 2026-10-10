@@ -15,6 +15,9 @@
 // ⇒ 改成普通函数：谁要用谁调，token 由调用方传入。
 //   好处：没有缓存失效问题（token 变了自然用新的），也没有循环。
 
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,6 +25,7 @@ import 'package:sqflite_common/sqlite_api.dart' show Database;
 
 import '../api/sync_client.dart';
 import '../services/sync_service.dart';
+import '../services/tts_service.dart' show ttsServiceProvider;
 import 'auth_provider.dart';
 import 'book_cloud_provider.dart' show kickBookUpload, bookUploadQueueProvider;
 import 'book_provider.dart';
@@ -122,7 +126,43 @@ Future<SyncService?> buildSyncService(
       return svc.service.spellingOfId(wordId);
     },
     onSpellingLog: (m) => debugPrint('[sync] $m'),
+    // 🆕 2026-10-10：**设置同步**的两个 IO 注入（`SharedPreferences` 只在这里碰）。
+    // 🔑 读：`prefs.get(key)` → `Object?`；**`null` = 这个键没设过** ⇒ 采集端会跳过它
+    //    （否则会把「默认值」当成用户设置推给别端）。
+    // 🔑 写：先 `jsonDecode`，再**按类型** set —— 类型必须保持：
+    //    `int` 被写成 `double` 会让「下次采集」把它误判成「已变更」（回声）。
+    readPrefSetting: (key) async => prefs.get(key),
+    writePrefSetting: (key, value) => _writeSyncedSetting(prefs, key, value),
   );
+}
+
+/// 把一个**同步设置**写回 prefs（`value` 是 `jsonEncode` 后的文本）。
+///
+/// 🔴 **必须按 JSON 解码后的类型写**（不是一律 `setString`）：
+///    `reading_font_size` 的消费方读 `getInt`、`tts_enabled` 读 `getBool`——
+///    写成 String 会让它们**静默回落到默认值**（读不到就是默认），
+///    而「类型漂了」还会让下次采集误判为变更（回声）。
+Future<void> _writeSyncedSetting(
+  SharedPreferences prefs,
+  String key,
+  String value,
+) async {
+  final Object? decoded = jsonDecode(value);
+  if (decoded is bool) {
+    await prefs.setBool(key, decoded);
+  } else if (decoded is int) {
+    await prefs.setInt(key, decoded);
+  } else if (decoded is double) {
+    await prefs.setDouble(key, decoded);
+  } else if (decoded is String) {
+    await prefs.setString(key, decoded);
+  } else if (decoded is List) {
+    await prefs.setStringList(key, decoded.map((e) => '$e').toList());
+  } else {
+    // 不认识的值类型（JSON 里不会有，除非将来加新设置项）⇒ **留痕不抛**：
+    // 抛出去会让整次同步报失败，而这条设置只是没写回去（其余数据都已落库）。
+    debugPrint('[sync] 设置的值的类型不认识，跳过写回：$key = $value');
+  }
 }
 
 /// 🆕 2026-10-09：删掉**某个账号**的 pull 游标。
@@ -257,6 +297,28 @@ Future<void> _runSync(
     if (!pushOnly && report.pulledTotal > 0) {
       ref.read(userDbRevisionProvider.notifier).bump();
       ref.read(bookDbRevisionProvider.notifier).bump();
+    }
+
+    // 🆕 2026-10-10：**设置**被写回 prefs ⇒ 通知读数端重算。
+    //
+    // ⚠️ 判据用 `pulledSettings`（= **真正改变了 prefs 的键数**）而不是 `pulledTotal`：
+    //    只拉回一条书签不该让「字号 / 兴趣 / TTS」的 provider 白重算一遍。
+    // ⚠️ `pushOnly`（登出前 flush / 进后台）只推不拉 ⇒ 不涉及。
+    //
+    // 🔑 两条通知路径（为什么不能合成一条）：
+    //    · 字号 / 兴趣 —— 是 **provider**，它们 `watch(settingsRevisionProvider)`
+    //      ⇒ bump 即重算（反转依赖）。
+    //    · **TTS** —— 是 `ChangeNotifier`（服务对象是 method channel，不是 widget 树），
+    //      没有可 `watch` 的 provider 形态 ⇒ 只能**显式**调它的重读方法。
+    //      📌 这是本批唯一一处「点名叫读端」—— 理由已写进 `TtsService.reloadSyncedSettings`。
+    //    ⚠️ TTS 重读是 IO（prefs）⇒ `unawaited`：不该让同步等它（同步是后台行为）。
+    if (!pushOnly && report.pulledSettings > 0) {
+      ref.read(settingsRevisionProvider.notifier).bump();
+      unawaited(
+        ref.read(ttsServiceProvider).reloadSyncedSettings().catchError((e) {
+          debugPrint('[sync] TTS 重读设置失败（不影响同步结论）：$e');
+        }),
+      );
     }
 
     // 🆕 2026-10-10：**「书单同步后」补一次上传尝试**（`kickBookUpload` 文档承诺的触发点 ②）。

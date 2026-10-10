@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/interest_selection.dart';
+import 'user_db_provider.dart' show settingsRevisionProvider;
 
 /// 持久化键（**读写都用这一个常量** —— 两处各写一份字面量必然漂移）。
 const String kInterestPrefsKey = 'interest_categories';
@@ -46,6 +47,9 @@ String interestKeyOf(InterestSelection? sel) =>
 class InterestNotifier extends AsyncNotifier<InterestSelection> {
   @override
   Future<InterestSelection> build() async {
+    // 🆕 2026-10-10：云端同步写回 prefs 后重算（`settingsRevisionProvider` 是唯一信号源）。
+    // 🔑 `AsyncNotifier.build()` 里 `watch` ⇒ revision 变则**重建整个 provider**（重读 prefs）。
+    ref.watch(settingsRevisionProvider);
     try {
       final prefs = await SharedPreferences.getInstance();
       return InterestSelection.parse(prefs.getString(kInterestPrefsKey));

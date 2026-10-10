@@ -457,6 +457,197 @@ Map<String, Object?> mergeBookProgress(
   };
 }
 
+// ───────────────────────── ⑤ lookup_event（查词记录）─────────────────────────
+//
+// 🔑 它是**日志**（内容一旦写入不再改）⇒ 合并 = **并集**（按 `uid` 去重）。
+//    与 `review_log` 同一形态 —— 那边由 `fsrs_service` 负责（因为要重放派生状态），
+//    这边内容不可变 ⇒ 本文件直接给出「整行取一端」的确定结果即可。
+//
+// 🔴 跨设备身份是 `uid`（端侧 uuid），**不是**端侧自增 id；老库的 `uid` 由
+//    `UserWordRepository.backfillLookupUids()` 在 push 前惰性回填。
+
+/// `lookup_event` 的合并键：`uid`。
+String lookupEventKey(Map<String, Object?> r) => r['uid'] as String? ?? '';
+
+Map<String, Object?> lookupEventToPushJson(Map<String, Object?> r) => {
+      'uid': r['uid'],
+      'word_id': r['word_id'],
+      'spelling': r['spelling'],
+      'article_id': r['article_id'],
+      'sentence': r['sentence'],
+      'position': r['position'],
+      'looked_up_at': r['looked_up_at'],
+    };
+
+Map<String, Object?> lookupEventFromPullJson(Map<String, dynamic> j) => {
+      'uid': j['uid'],
+      'word_id': j['word_id'],
+      'spelling': j['spelling'],
+      'article_id': j['article_id'],
+      'sentence': j['sentence'],
+      'position': j['position'],
+      'looked_up_at': j['looked_up_at'],
+    };
+
+/// `lookup_event` 合并：**事件不可变** ⇒ 整行取 `looked_up_at` **较早**那端。
+///
+/// 🔑 同一 `uid` 的两端副本内容本该一致（同一条查词记录）⇒ 取较早保证结果
+///    **稳定、可交换**（同一对输入永远同一输出）。服务端用 `INSERT OR IGNORE`
+///    表达同一语义（首写胜）；这里显式选「较早端」是为了让纯函数对任何输入都有确定输出。
+///
+/// ⚠️ `word_id` 可空（查了但词库没有）—— 沿用「较早端为 null 时退到另一端」的宽松口径
+///    （同 `mergeUserWord.source_sentence`：`null` 表示「这一端没这份信息」，不是「信息是空」）。
+Map<String, Object?> mergeLookupEvent(
+  Map<String, Object?> local,
+  Map<String, Object?> remote,
+) {
+  final first = _earlierSideBy(local, remote, 'looked_up_at');
+  return {
+    'uid': local['uid'] ?? remote['uid'],
+    'word_id': first['word_id'] ?? local['word_id'] ?? remote['word_id'],
+    'spelling':
+        _strOrNull(first['spelling']) ?? _strOrNull(local['spelling']) ?? _strOrNull(remote['spelling']) ?? '',
+    'article_id':
+        first['article_id'] ?? local['article_id'] ?? remote['article_id'],
+    'sentence': first['sentence'] ?? local['sentence'] ?? remote['sentence'],
+    'position': first['position'] ?? local['position'] ?? remote['position'],
+    'looked_up_at':
+        _pickEarlierTs(local['looked_up_at'], remote['looked_up_at']),
+  };
+}
+
+// ───────────────────────── ⑥ book_marker（书本内书签）─────────────────────────
+//
+// 🔴 这张表的合并规则与其余表**不一样**，是本批唯一一处：
+//    · `deleted` 取 **OR**（任一端删过即删）
+//    · 其余字段取 `created_at` **较早**端
+//
+// # 为什么 `deleted` 不是「取较新」
+// 本表**没有 `updated_at`**（取消书签只翻 `deleted` 标志，不刷时间戳）⇒
+// 「谁更新谁赢」在这里**没有判据**。而书签的「取消」是**终局意愿** ——
+// 用户不会「取消后又想把同一条恢复」（他会重新打一条，那是**新的 uuid**）⇒ OR 恰好正确。
+// ⚠️ 若照抄 `mergeBookmark` 的「取较新」：两端时间戳同值 ⇒ 都不算「更新」
+//    ⇒ 取消**永远传不出去** ⇒「取消了的书签又自己回来」。
+
+/// `book_marker` 的合并键：`id`（端侧 uuid v4）。
+String bookMarkerKey(Map<String, Object?> r) => r['id'] as String? ?? '';
+
+/// 书签一行 → 待推送 JSON（字段名与后端 `BookMarkerInput` **逐字一致**）。
+///
+/// 🔑 `content_hash` 是**书**的跨设备身份（`book.content_hash`）——
+///    由 repository 在 push 前从 `book` 表 join 出来，**不是** `book_marker.book_id`
+///    （那是端侧 uuid，同一本书在两台设备上是两个 id）。
+Map<String, Object?> bookMarkerToPushJson(Map<String, Object?> r) => {
+      'id': r['id'],
+      'content_hash': r['content_hash'],
+      'chapter_idx': r['chapter_idx'],
+      'scroll_ratio': r['scroll_ratio'],
+      'excerpt': r['excerpt'],
+      'created_at': r['created_at'],
+      'deleted': r['deleted'] ?? 0,
+    };
+
+Map<String, Object?> bookMarkerFromPullJson(Map<String, dynamic> j) => {
+      'id': j['id'],
+      'content_hash': j['content_hash'],
+      'chapter_idx': j['chapter_idx'],
+      'scroll_ratio': j['scroll_ratio'],
+      'excerpt': j['excerpt'],
+      'created_at': j['created_at'],
+      'deleted': j['deleted'] ?? 0,
+    };
+
+/// `book_marker` 合并：`deleted` 取 **OR** + 其余取 `created_at` **较早**端。
+///
+/// 📌 判据：**合并规则要匹配「这一列能表达什么」** —— 没有时间列时不要硬造 LWW。
+Map<String, Object?> mergeBookMarker(
+  Map<String, Object?> local,
+  Map<String, Object?> remote,
+) {
+  final first = _earlierSideBy(local, remote, 'created_at');
+  // `|` = 位或：任一端为 1 即 1（OR 语义，等价于 MAX）。0/1 两值。
+  final deleted = ((local['deleted'] ?? 0) as num).toInt() |
+      ((remote['deleted'] ?? 0) as num).toInt();
+  return {
+    'id': local['id'] ?? remote['id'],
+    'content_hash': first['content_hash'] ??
+        local['content_hash'] ??
+        remote['content_hash'] ??
+        '',
+    'chapter_idx': first['chapter_idx'] ?? local['chapter_idx'] ?? remote['chapter_idx'],
+    'scroll_ratio':
+        first['scroll_ratio'] ?? local['scroll_ratio'] ?? remote['scroll_ratio'],
+    'excerpt':
+        _strOrNull(first['excerpt']) ?? _strOrNull(local['excerpt']) ?? _strOrNull(remote['excerpt']) ?? '',
+    'created_at': _pickEarlierTs(local['created_at'], remote['created_at']),
+    'deleted': deleted,
+  };
+}
+
+// ───────────────────────── ⑦ achievement_unlock（成就解锁）─────────────────────────
+
+/// `achievement_unlock` 的合并键：`key`（成就 key，主键）。
+String achievementUnlockKey(Map<String, Object?> r) => r['key'] as String? ?? '';
+
+Map<String, Object?> achievementUnlockToPushJson(Map<String, Object?> r) => {
+      'key': r['key'],
+      'unlocked_at': r['unlocked_at'],
+    };
+
+Map<String, Object?> achievementUnlockFromPullJson(Map<String, dynamic> j) => {
+      'key': j['key'],
+      'unlocked_at': j['unlocked_at'],
+    };
+
+/// `achievement_unlock` 合并：`unlocked_at` 取**较早**（= **首次解锁**这一事实）。
+///
+/// 🔑 与 `mergeArticleRead` 同一判据（那边的 `read_at` = 首次读完）。
+///    ⚠️ 一端改了时间不得改掉「什么时候第一次拿到」。
+Map<String, Object?> mergeAchievementUnlock(
+  Map<String, Object?> local,
+  Map<String, Object?> remote,
+) =>
+    {
+      'key': local['key'] ?? remote['key'],
+      'unlocked_at': _pickEarlierTs(local['unlocked_at'], remote['unlocked_at']),
+    };
+
+// ───────────────────────── ⑧ setting（应用设置 · LWW）─────────────────────────
+//
+// 🔑 形态与其余表不同：**键值对**（不是固定行形状）⇒ 单开一类。
+//    `value` 是 JSON 文本（bool / int / double / String / List 统一承载）。
+
+/// `setting` 的合并键：`key`（设置项名）。
+String settingKey(Map<String, Object?> r) => r['key'] as String? ?? '';
+
+Map<String, Object?> settingToPushJson(Map<String, Object?> r) => {
+      'key': r['key'],
+      'value': r['value'],
+      'updated_at': r['updated_at'],
+    };
+
+Map<String, Object?> settingFromPullJson(Map<String, dynamic> j) => {
+      'key': j['key'],
+      'value': j['value'],
+      'updated_at': j['updated_at'],
+    };
+
+/// `setting` 合并：`value` 取 `updated_at` **较新**端（LWW，同 `mergeBookProgress`）。
+///
+/// 🔴 **整体替换**（不是字段级合并）—— 一个设置项就是一个原子值，
+///    「较新的那端说了算」。端侧在**采集时**刷新 `updated_at`（见 `settings_sync.dart`）。
+Map<String, Object?> mergeSetting(
+  Map<String, Object?> local,
+  Map<String, Object?> remote,
+) {
+  final winner = _latestUpdatedSide(local, remote);
+  return {
+    'key': local['key'] ?? remote['key'],
+    'value': winner['value'],
+    'updated_at': winner['updated_at'],
+  };
+}
+
 // ───────────────────────── 合并后的同步标记 ─────────────────────────
 
 /// **pull 并合并之后**，这一行是否还需要推给服务端？
@@ -553,6 +744,38 @@ const Map<String, List<(String table, String column)>> kSyncFieldSources = {
     ('book_progress', 'scroll_ratio'),
     ('book_progress', 'updated_at'),
   ],
+  // 🆕 2026-10-10：查词记录（user.db —— 注意 `word_id` 可空）
+  'lookup_event': [
+    ('lookup_event', 'uid'),
+    ('lookup_event', 'word_id'),
+    ('lookup_event', 'spelling'),
+    ('lookup_event', 'article_id'),
+    ('lookup_event', 'sentence'),
+    ('lookup_event', 'position'),
+    ('lookup_event', 'looked_up_at'),
+  ],
+  // 🆕 2026-10-10：书本内书签（book.db）
+  'book_marker': [
+    ('book_marker', 'id'),
+    // 🔴 跨设备身份是**书**的指纹，在 `book` 表 —— 不是 `book_marker.book_id`（端侧 uuid）
+    ('book', 'content_hash'),
+    ('book_marker', 'chapter_idx'),
+    ('book_marker', 'scroll_ratio'),
+    ('book_marker', 'excerpt'),
+    ('book_marker', 'created_at'),
+    ('book_marker', 'deleted'),
+  ],
+  // 🆕 2026-10-10：成就解锁（user.db）
+  'achievement_unlock': [
+    ('achievement_unlock', 'key'),
+    ('achievement_unlock', 'unlocked_at'),
+  ],
+  // 🆕 2026-10-10：应用设置（user.db 的 `setting_sync` 表 —— 键值对）
+  'setting': [
+    ('setting_sync', 'key'),
+    ('setting_sync', 'value'),
+    ('setting_sync', 'updated_at'),
+  ],
 };
 
 /// 推送 JSON 的键（**必须与后端 `sync_handlers.rs` 的 `*Input` 结构一致**）。
@@ -590,4 +813,28 @@ const Map<String, List<String>> kPushJsonContract = {
     'updated_at',
   ],
   'book_progress': ['content_hash', 'chapter_idx', 'scroll_ratio', 'updated_at'],
+  // 🆕 2026-10-10：与后端 `LookupEventInput` 的字段**逐字一致**
+  'lookup_event': [
+    'uid',
+    'word_id',
+    'spelling',
+    'article_id',
+    'sentence',
+    'position',
+    'looked_up_at',
+  ],
+  // 🆕 2026-10-10：与后端 `BookMarkerInput` 的字段**逐字一致**
+  'book_marker': [
+    'id',
+    'content_hash',
+    'chapter_idx',
+    'scroll_ratio',
+    'excerpt',
+    'created_at',
+    'deleted',
+  ],
+  // 🆕 2026-10-10：与后端 `AchievementUnlockInput` 逐字一致
+  'achievement_unlock': ['key', 'unlocked_at'],
+  // 🆕 2026-10-10：与后端 `SettingInput` 逐字一致
+  'setting': ['key', 'value', 'updated_at'],
 };

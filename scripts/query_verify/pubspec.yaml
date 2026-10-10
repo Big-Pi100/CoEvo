@@ -19,3 +19,12 @@ dependencies:
   # ⚠️ 版本必须与 `app/pubspec.yaml` 一致（同 `fsrs_verify`）——
   #    否则「验收用的行为」与「App 里的行为」可能不是同一个包。
   fsrs: ^2.0.1
+  # 🆕 2026-10-10 加：`user_word_repository`（`lookup_event`）现在会生成 uuid
+  #    —— 查词记录纳入跨设备同步后，它需要**跨设备身份**（自增 id 在两台设备上必撞）。
+  #
+  # 🔑 为什么放在 service 层而不是 UI 层：uuid 是**纯 Dart**（无 Flutter 依赖），
+  #    所以放在仓储里**不破坏**「service 层可离线断言」这条约束。
+  #    ⚠️ 但它是一个**新依赖** ⇒ 验收子项目必须显式声明（否则 `Couldn't resolve`）。
+  #    版本与 `app/pubspec.yaml` 一致（同上面 `fsrs` 那条判据：
+  #    **验收用的行为必须与 App 里是同一个包**）。
+  uuid: ^3.0.7
