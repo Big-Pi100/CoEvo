@@ -568,4 +568,57 @@ GET  /api/sync/pull + 假 token   → 401   （不 500）
 ① 复习后另一端（回前台/切回来）是否 4 秒内可见 · ② 点云朵是否出现转圈弹窗
 ③ 「我的」页不再整页失败 —— **这些都要新包**（端侧 C1~C7 **尚未出包**）。
 
+---
+
+## 8.8 ✅ iOS 出包完成（2026-10-11 00:20）
+
+| 项 | 值 |
+|---|---|
+| 改公开前置审计 | ✅ 工作区干净 · HEAD == origin/main · `check_no_secrets.py` 无明文凭据 · 历史审计与上次公开窗口**同状态** |
+| CI | run **38066732694** · 全步骤 ✓ · **6m39s** |
+| 出包 commit | `833da73` = **本地 HEAD** ✅ |
+| 产物 | `E:\CoEvo_backups\ios-20261011-sync-ui\coevo_app.ipa` · **36042431 B** · `sha256=390a2241ce1c4f9a…` |
+| 包信息 | `com.coevo.coevoApp` · 1.0.0 (build 2) · 最低 iOS 13.0 |
+| 可见性 | 已复核 **`isPrivate: true`** ✅ |
+
+### 进包验证：**四方对照**（10-10 09:54 / 21:13 / 22:40 → 10-11 00:20）
+
+| 标记 | ①09:54 | ②21:13 | ③22:40 | **④本批** |
+|---|---|---|---|---|
+| `scheduleSyncAfterChange`（AOT）| 0 | 0 | 0 | **1** ✅ |
+| `syncWithProgressDialog`（AOT）| 0 | 0 | 0 | **1** ✅ |
+| `syncWhenAppPaused`（AOT）| 0 | 0 | 0 | **1** ✅ |
+| **`pushWhenAppPaused`（🔴 反向判据）** | 1 | 1 | 1 | **0** ✅ |
+| `本地改动后`（**新增中文串** · UTF-16LE）| 0 | 0 | 0 | **1** ✅ |
+| `syncWhenAppResumed` / `_pullToRefresh`（回归）| 0 | 0 | 0 | 1 / 1 ✅ |
+| `userDbRevisionProvider`（回归）| 2 | 2 | 2 | 2 ✅ |
+| `sync_cursor` / `idx_le_uid` / `setting_sync`（SQL 资产回归）| 0/0/0 | 0/1/4 | 3/1/4 | **3/1/4** ✅ |
+| IPA 尺寸 | 36020390 | 36036914 | 36045683 | 36042431 |
+
+**四方比三方更强**：只有「**本批 ≥1 且上一批 = 0**」才能证明是**本批的**包；
+而 `pushWhenAppPaused` 的「**上批 ≥1 → 本批 = 0**」是**反向判据**（证明旧实现被真正替换掉）。
+
+### 🔑 三个「0」不是缺陷 —— 是 **Dart AOT 的符号消除**（已用正向证据排除）
+
+`registerAppSyncRef` / `_appLevelRef` / `_kTimeout` 在 AOT 里**搜不到**。若只看这三条，
+会误判成「代码没进包」⇒ **假红**。
+
+**正向证据（决定性）**：本批**新增的中文 tag** `本地改动后`（UTF-16LE）→
+**上批 0 / 本批 1** ✅ —— 它是 `scheduleSyncAfterChange` **函数体内唯一的字符串**
+⇒ **函数体确实在包里**。
+
+⇒ 那三个符号为 0 是**优化的结果**，不是缺码。规律（本批实测得出）：
+
+| 符号形态 | AOT 是否保留名字 | 实例 |
+|---|---|---|
+| **公开**顶层函数 | ✅ 保留 | `scheduleSyncAfterChange` / `syncWithProgressDialog` / `syncWhenAppPaused` |
+| **私有**顶层变量 / 常量 | ❌ 消除或重命名 | `_appLevelRef` / `_changeSyncTimer` / `_kTimeout` |
+| **一行小函数**（body 仅赋值）| ❌ 内联 | `registerAppSyncRef` |
+| **私有实例方法** | ✅ 保留 | `_pullToRefresh` |
+
+📌 **判据（新增）**：**验包时不要用「私有顶层变量 / 小工具函数」当标记** ——
+它们会被 AOT 消除而**造成假红**。优先用 ① **公开顶层函数名** ② **新增的字符串字面量**
+（后者最可靠：它证明的是**函数体真的在**，而不只是符号名）。
+
+
 
