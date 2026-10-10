@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""部署后验证（**只读**）—— 覆盖 v0.1.6 书架上云 + 整段翻译，以及 2026-10-10
-新增的 4 类同步表（`lookup_event` / `book_marker` / `achievement_unlock` / `setting`）。
+"""部署后验证（**只读**）—— 覆盖 v0.1.6 书架上云 + 整段翻译，以及 2026-10-10 两批改动：
+① 4 类同步表（`lookup_event` / `book_marker` / `achievement_unlock` / `setting`）
+② **多端登录（最多 3 台）** —— 「单端登录」的解耦，见
+   `docs/review/device-sync-and-profile-failure-2026-10-10.md`
 
 跑法（在 VPS 上执行）：
     ssh -i ~/.ssh/coevo_key ubuntu@<vps> "python3 -" < scripts/trace_verify/bin/verify_v016_deploy.py
@@ -160,9 +162,26 @@ for label, needle in [
      b"IF NOT EXISTS sync_achievement_unlock ("),
     ("④-9 含 `IF NOT EXISTS sync_setting (`（本批 · 应用设置键值）",
      b"IF NOT EXISTS sync_setting ("),
+    # ── 2026-10-10 第二批：多端登录（最多 3 台）──
+    #    🔑 用**日志字面量**而不是函数名：第 3 步 `strip` 会删符号表 ⇒ 函数名不在二进制里，
+    #       而 `tracing::warn!` 的格式串留在 `.rodata`（这是本脚本既有的取串原则）。
+    #    ⚠️ tracing 宏会把字面量**在 `{...}` 占位符处切开** ⇒ 只能搜占位符**之前**那一段。
+    #       这里 `enforce_token_limit 失败（user_id=…）` 的 `（user_id=` 之前正是所搜的子串。
+    ("④-10 含 `enforce_token_limit 失败`（本批 · 多端登录的限额清理）",
+     "enforce_token_limit 失败".encode("utf-8")),
 ]:
     n = bin_count(needle)
     check(label, n >= 1, f"{n} 次")
+
+# 🔴 **反向判据**（单列 —— 上面那个循环的语义是「必须有」，表达不了「必须归零」）。
+#
+# 为什么要**双向**：单向「新增串命中」可能只是历史批次的巧合（本项目踩过：
+# 「字符串字面量会一直命中」⇒ 证明不了是本批的包）。而「**旧实现的串归零**」
+# 是本批**特有**的判别 —— 它同时证明「新逻辑在」+「旧的被真正替换掉」。
+_old_cleanup = bin_count(b"Failed to clean old tokens")
+check("④-11 旧「登录删全部 token」的日志串**已归零**（部署前实测为 1）",
+      _old_cleanup == 0,
+      f"{_old_cleanup} 次" + ("（🔴 仍在新版里 ⇒ 包不对，或旧函数没删净）" if _old_cleanup else ""))
 
 # ══════════════════════════════════════════════════════════════
 print("")
@@ -201,6 +220,30 @@ try:
     conn.close()
 except Exception as e:  # noqa: BLE001
     check("⑥ 能只读打开 coevo.db 并查表", False, str(e))
+
+# ══════════════════════════════════════════════════════════════
+print("")
+print("⑧ 多端登录「最多 3 台」的**行为现状**（🟠 信息性，**不计入成败**）")
+#
+# 🔴 为什么是「信息性」而不是断言：
+#    `enforce_token_limit` 只在 **登录时** 收敛 ⇒ 部署完的那一刻，
+#    库里仍是「每用户 1 行」（**这是正常的**）。要看到 3 行，必须
+#    **各设备各登录一次** —— 那是真机的动作，脚本不代为创建/登录账号。
+# 判据（部署后人工确认）：真机上第二台、第三台登录后，本处应显示 ≥2。
+MAX_TOKENS_PER_USER = 3  # 与 backend `auth.rs` 的 `MAX_TOKENS_PER_USER` 保持一致
+try:
+    conn2 = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    rows = list(conn2.execute(
+        "SELECT user_id, COUNT(*) AS n FROM tokens GROUP BY user_id ORDER BY n DESC"))
+    mx = max((r[1] for r in rows), default=0)
+    print(f"    tokens 表 {len(rows)} 个用户 · 单用户最多 {mx} 个 token"
+          f"（上限 {MAX_TOKENS_PER_USER}）")
+    print("    ⚠️ 已存在的「1 用户 1 行」**不会自动**变成 3 行 —— 需各设备各登录一次。")
+    if mx > MAX_TOKENS_PER_USER:
+        print(f"    🔴 已超过上限 {MAX_TOKENS_PER_USER}：限额逻辑没生效？")
+    conn2.close()
+except Exception as e:  # noqa: BLE001
+    print(f"    （跳过：{e}）")
 
 # ══════════════════════════════════════════════════════════════
 print("")
