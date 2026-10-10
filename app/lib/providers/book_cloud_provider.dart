@@ -201,12 +201,23 @@ Future<void> kickBookUpload({
 ///
 /// ⚠️ 扩展名未知（后端书单没有 ext）⇒ 用 [BookBlobClient.downloadAuto]
 ///    依次试 epub / txt。
+///
+/// 🔴 2026-10-10：**试出来的那个 `ext` 必须用上**（它随 [BlobDownloaded] 带回来）——
+///    此前这里用 `_guessExt()` 硬编码 `'epub'`，于是 **txt 书被当成 epub 解析** ⇒
+///    `notEpub`（真机实测）。📌 答案在手上时**不要猜**。
+///
+/// 🔴 同批修的第二个 bug：[newId] 是**生成器**（`String Function()`），
+///    不是「一个 id 值」。`importBook` 会为**每一章**都调它一次
+///    （见 `buildImportPlan`）⇒ 传常量会让**所有章节共用一个 id**
+///    ⇒ `UNIQUE constraint failed: book_chapter.id`（真机实测的 iOS 报错）。
+///    ⚠️ 正常导入路径本来就传生成器（`const Uuid().v4`），**只有这里传错了**。
 Future<BookDownloadOutcome> downloadCloudBook({
   required String token,
   required BookBlobClient client,
   required Database db,
   required String? rawDir,
-  required String newId,
+  /// id 生成器 —— **每次调用都要产生新值**（见上方 🔴）。
+  required String Function() newId,
   required CloudBook book,
 }) async {
   if (token.isEmpty) return const BookDownloadNeedLogin();
@@ -228,15 +239,16 @@ Future<BookDownloadOutcome> downloadCloudBook({
     case BlobQuotaExceeded():
       // 不会出现在下载路径上；归到失败而不是静默吞掉（同 `book_upload_queue` 的处理）
       return const BookDownloadFailed('意外的响应类型');
-    case BlobDownloaded(:final bytes):
+    case BlobDownloaded(:final bytes, :final ext):
       // 🔑 先落**原始文件**：即使接下来的导入失败，这份文件也能让「上传」与
       //    「重试导入」省掉一次下载。⚠️ 但 `importBook` 自己也会存一次
       //    （同一路径、覆盖式）—— 这里显式先存是为了**导入失败也不丢下载结果**。
       final result = await importBook(
         db: db,
         bytes: bytes,
-        fileName: '${book.title}.${_guessExt(book)}',
-        newId: () => newId,
+        // 🔑 用**实际下载到的格式**拼文件名（不再猜）—— 根因见本函数的文档注释。
+        fileName: '${book.title}.$ext',
+        newId: newId,
         addedAt: DateTime.now().toUtc().toIso8601String(),
         rawDir: rawDir,
       );
@@ -276,5 +288,11 @@ class BookDownloadFailed extends BookDownloadOutcome {
   final String message;
 }
 
-/// 猜扩展名（**只用于生成一个像样的文件名**；真正的格式判定在解析层看魔数）。
-String _guessExt(CloudBook b) => 'epub';
+// 🔴 2026-10-10 删除 `_guessExt()`（此前是 `String _guessExt(CloudBook b) => 'epub';`）：
+//
+//  · 它上方的注释写「真正的格式判定在解析层看魔数」—— **那半句不成立**：
+//    `pickFormat` 只在「魔数是 PK」时靠魔数说话，**不是 PK 时最终由扩展名定**
+//    ⇒ 猜错就把 txt 书当成 epub ⇒ `notEpub`（真机实测）。
+//  · ✅ 现在 ext 由 `BlobDownloaded.ext` 从下载层**带上来（真实值）** ——
+//    连「推」都不需要，**不留一个能猜错的地方**。
+//  📌 判据：坏输入要「**让它产生不出来**」，而不是「让判据容忍它」。

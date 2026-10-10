@@ -25,7 +25,9 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../../app/lib/services/book_db.dart';
 import '../../../app/lib/services/ebook/book_blob_parse.dart';
+import '../../../app/lib/services/ebook/book_import_plan.dart';
 import '../../../app/lib/services/ebook/book_raw_store.dart';
+import '../../../app/lib/services/ebook/book_text.dart';
 import '../../../app/lib/services/ebook/book_upload_queue.dart';
 import '../../../app/lib/services/ebook/cloud_book_repository.dart';
 import '_repo_paths.dart';
@@ -92,16 +94,21 @@ Future<void> main() async {
   check('上传 413 ⇒ 也认作配额（后端将来若改用规范码）',
       parseUploadResponse(413, '') is BlobQuotaExceeded);
 
-  check('下载 404 ⇒ NotFound（确定的状态，不是失败）',
-      parseDownloadResponse(404, Uint8List(0), null) is BlobNotFound);
-  check('下载 200 但 0 字节 ⇒ Failed（空文件不是合法书）',
-      parseDownloadResponse(
-              200, Uint8List(0), 'application/epub+zip') is
-          BlobFailed);
-  final dl = parseDownloadResponse(
-      200, Uint8List.fromList([1, 2, 3]), 'application/epub+zip');
-  check('下载 200 ⇒ 原样拿到字节（**不是**按 UTF-8 解码后的）',
-      dl is BlobDownloaded && dl.bytes.length == 3 && dl.bytes[0] == 1);
+    check('下载 404 ⇒ NotFound（确定的状态，不是失败）',
+        parseDownloadResponse(404, Uint8List(0), null, ext: 'epub')
+            is BlobNotFound);
+    check('下载 200 但 0 字节 ⇒ Failed（空文件不是合法书）',
+        parseDownloadResponse(200, Uint8List(0), 'application/epub+zip',
+            ext: 'epub') is BlobFailed);
+    final dl = parseDownloadResponse(
+        200, Uint8List.fromList([1, 2, 3]), 'application/epub+zip',
+        ext: 'epub');
+    check('下载 200 ⇒ 原样拿到字节（**不是**按 UTF-8 解码后的）',
+        dl is BlobDownloaded && dl.bytes.length == 3 && dl.bytes[0] == 1);
+    // 🆕 2026-10-10：成功结果必须**附带本次实际用的 ext**（根因见【6】）
+    check('🔴 下载成功 ⇒ 带回实际命中的 ext（否则下游只能猜格式）',
+        dl is BlobDownloaded && dl.ext == 'epub',
+        dl is BlobDownloaded ? 'ext=${dl.ext}' : '$dl');
 
   check('删除 200 ⇒ 解析出 freed_bytes',
       parseDeleteResponse(200, '{"ok":true,"freed_bytes":900}') is BlobDeleted &&
@@ -465,6 +472,76 @@ Future<void> main() async {
 
   await db.close();
   await dir.delete(recursive: true);
+
+  // ══════════════════════════════════════════════════════════════════════
+  section('【6】下载链：真实 ext 必须带出来 · 章节 id 必须各不相同');
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // 🔴 两个真实 bug（2026-10-10 · 真机实测）：
+  //   A) `downloadAuto` 依次试 epub/txt，**却把命中的 ext 丢掉了** ⇒ 下游只能猜
+  //      ⇒ txt 书被猜成 epub ⇒ `notEpub`（文件头不是 zip 签名）。
+  //   B) `downloadCloudBook` 把 id **生成器**当成「一个 id 值」传给 `importBook`
+  //      ⇒ 每一章拿到同一个 id ⇒ `UNIQUE constraint failed: book_chapter.id`。
+
+  // ── A：下载方**不得**再「猜」格式 ──
+  //
+  // ⚠️ 这里必须**切片**：`ext: ext,` 在 `book_blob_client.dart` 里有**两处**
+  //    （`download()` 里回传给解析器 + `downloadAuto()` 里传给 `download()`）
+  //    ⇒ 整文件 `contains` 会被**另一处同名行兜住** = 假绿。
+  //    📌 判据：**能切片就切片**；`ext: ext,` 这类短串尤其。
+  final blobSrc = _readLib('api/book_blob_client.dart');
+  final dlStart = blobSrc.indexOf('Future<BlobResult> download(');
+  final dlEnd = blobSrc.indexOf('Future<BlobResult> delete(');
+  final dlBody =
+      (dlStart >= 0 && dlEnd > dlStart) ? blobSrc.substring(dlStart, dlEnd) : '';
+  check('…能切出 `download()` 方法体（下面两条断言的前提）', dlBody.isNotEmpty);
+  check('🔴 `download()` 把本次用的 ext 交给解析（否则 ext 会丢）',
+      dlBody.contains('parseDownloadResponse(') && dlBody.contains('ext: ext,'));
+  final provSrc = _readLib('providers/book_cloud_provider.dart');
+  check('🔴 落库文件名用**真实 ext**（不再硬编码 epub）',
+      provSrc.contains(r"'${book.title}.$ext'"));
+  check('🔴 **不再有 `_guessExt`**（反向断言：猜扩展名的入口已删除）',
+      !provSrc.contains('_guessExt'));
+
+  // ── B-1：生成器 vs 常量（真跑，直接锁住 iOS 那条 UNIQUE 冲突的根因）──
+  final dlDraft = BookDraft(
+    title: 'T',
+    author: null,
+    language: 'en',
+    sourceFormat: 'epub',
+    chapters: [
+      for (var i = 0; i < 3; i++) ChapterDraft(title: 'C$i', text: 't$i'),
+    ],
+  );
+  final badPlan = buildImportPlan(
+    draft: dlDraft,
+    fileName: 'x.epub',
+    addedAt: '2026-10-10T00:00:00Z',
+    newId: () => 'same-id',
+    contentHash: 'h',
+  );
+  check('🔴 常量生成器 ⇒ 书与各章 id **全部相同**（这正是真机那条 UNIQUE 冲突）',
+      {badPlan.bookId, ...badPlan.chapters.map((c) => c.id)}.length == 1);
+  var seq = 0;
+  final goodPlan = buildImportPlan(
+    draft: dlDraft,
+    fileName: 'x.epub',
+    addedAt: '2026-10-10T00:00:00Z',
+    newId: () => 'id-${seq++}',
+    contentHash: 'h',
+  );
+  check('✅ 生成器 ⇒ 书与各章 id **互不相同**（能成功落库）',
+      {goodPlan.bookId, ...goodPlan.chapters.map((c) => c.id)}.length ==
+          goodPlan.chapters.length + 1);
+
+  // ── B-2：源码级 —— 下载路径必须**透传生成器** ──
+  check('🔴 `downloadCloudBook` 的 newId 声明为**生成器**（不是 String）',
+      provSrc.contains('required String Function() newId'));
+  check('🔴 且**直接透传**（`newId: newId`，没有包成常量闭包）',
+      provSrc.contains('newId: newId,') && !provSrc.contains('() => newId'));
+  final libSrc = _readLib('screens/book_library_screen.dart');
+  check('🔴 调用方传**函数引用**（`const Uuid().v4` 不带括号）',
+      libSrc.contains('newId: const Uuid().v4,'));
 
   // ══════════════════════════════════════════════════════════
   print('');

@@ -97,6 +97,9 @@ class BookBlobClient {
         resp.statusCode,
         resp.bodyBytes,
         resp.headers['content-type'],
+        // 🔑 把**本次实际用的** ext 带出来 —— 根因见 `BlobDownloaded.ext` 的长说明：
+        //    下载方（`downloadCloudBook`）不能猜格式，否则 txt 书会被当 epub 解析。
+        ext: ext,
       );
     } on TimeoutException {
       return const BlobFailed('下载超时（网络慢）');

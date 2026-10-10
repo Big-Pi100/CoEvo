@@ -54,12 +54,33 @@ class BlobUploaded extends BlobResult {
 
 /// 下载成功。
 class BlobDownloaded extends BlobResult {
-  const BlobDownloaded({required this.bytes, required this.contentType});
+  const BlobDownloaded({
+    required this.bytes,
+    required this.contentType,
+    required this.ext,
+  });
 
   final Uint8List bytes;
 
   /// 服务端的 `Content-Type`（用它**推测扩展名**时只能当参考 —— 见 `extFromName`）。
   final String? contentType;
+
+  /// 🔑 **本次下载实际使用**的扩展名（`epub` / `txt`），由 `download(ext:)` 带下来。
+  ///
+  /// # 🔴 为什么必须带出来（2026-10-10 · 真机实测的 bug）
+  ///
+  /// 后端书单（`sync_book`）**没有 `ext` 列** ⇒ [`downloadAuto`] 只能**依次试**
+  /// `epub` / `txt`。而「只有云端」的书**本地没有任何记录** ⇒ 下载方
+  /// **必须知道最终命中的是哪个**，否则只能猜。
+  ///
+  /// 实测后果：一本 **txt** 书被猜成 `epub` ⇒ 文件名拼成 `.epub`
+  /// ⇒ [`pickFormat`] 按扩展名判 epub ⇒ `parseEpub` 报
+  /// 「文件头不是 zip 签名（期望 PK，实际 0x54 0x68）」⇒ **下载失败**。
+  ///
+  /// 📌 判据：**答案本来就在手上**（`downloadAuto` 的循环变量），**不要往外丢**。
+  ///    同 [`extFromName`] 的注释：「推不出时返回 null 而不是猜一个」——
+  ///    这里更进一步：**连「推」都不需要**。
+  final String ext;
 }
 
 /// 删除成功。
@@ -170,16 +191,21 @@ BlobResult parseUploadResponse(int statusCode, String body) {
 /// 解析下载响应。
 ///
 /// ⚠️ 传的是**原始字节**而不是字符串 —— 书籍是二进制（epub 是 zip）。
+///
+/// [ext] = **本次请求实际使用的扩展名**（见 [BlobDownloaded.ext]）。
+///   🔴 **必填**而不是可选：调用方（`download()`）本来就拿着它，
+///   设成可选只会留一个「下游拿到 null 又开始猜」的口子。
 BlobResult parseDownloadResponse(
   int statusCode,
   Uint8List body,
-  String? contentType,
-) {
+  String? contentType, {
+  required String ext,
+}) {
   if (statusCode == 401) return const BlobNeedLogin();
   if (statusCode == 404) return const BlobNotFound();
   if (statusCode == 200) {
     if (body.isEmpty) return const BlobFailed('云端文件是空的（0 字节）');
-    return BlobDownloaded(bytes: body, contentType: contentType);
+    return BlobDownloaded(bytes: body, contentType: contentType, ext: ext);
   }
   return BlobFailed(
       'HTTP $statusCode：${_messageOf(utf8.decode(body, allowMalformed: true))}');

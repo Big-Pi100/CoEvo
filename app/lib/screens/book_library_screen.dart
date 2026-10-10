@@ -433,7 +433,12 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
       //    下载这里虽然只是「可能拿到 null」，但同一个判据：
       //    **必需配置要在使用时取，不在构造/渲染时猜**。
       rawDir: await ref.read(bookRawDirProvider.future),
-      newId: const Uuid().v4(),
+      // 🔴 2026-10-10：**必须传「生成器」而不是「一个 id 值」** ——
+      //    `importBook` 会为**每一章**都调它一次（见 `buildImportPlan`）⇒
+      //    传常量会让所有章节共用一个 id ⇒ `UNIQUE constraint failed: book_chapter.id`。
+      //    ⚠️ 不加括号：`const Uuid().v4` 是**函数引用**（每次调用产生新 uuid）；
+      //       `const Uuid().v4()` 是**先调一次、把结果当常量传**（正是原来的 bug）。
+      newId: const Uuid().v4,
       book: b,
     );
 
