@@ -287,6 +287,25 @@ CREATE INDEX IF NOT EXISTS idx_setting_pending ON setting_sync (pending_push)
   WHERE pending_push = 1;
 ''';
 
+/// **v11 的 schema 快照**（2026-10-10 · 同步游标移入本库）。
+///
+/// 🔴 与 `_v10Schema` **同一条理由**：真机上的库此刻可能就是 **v11**
+///    ⇒ 「**v11 → 当前版本**」是**最真实的那条升级路径**。
+///
+/// ⚠️ v12 的变更是**给已有表加列**（`highlight.translation`），而 `ADD COLUMN`
+///    不在 schema 脚本里（它在 `onUpgrade` 的 `oldVersion < 12` 分支里）
+///    ⇒ **本快照必须不含 `translation`**（否则「升级后它存在」那条断言就失去意义
+///    —— 它本来就存在，测不出「迁移到底跑没跑」）。
+///
+/// 📌 判据（同 v6/v7/v9/v10）：**测试路径要覆盖「用户此刻真实所处的状态」**。
+const String _v11Schema = '''
+$_v10Schema
+CREATE TABLE IF NOT EXISTS sync_cursor (
+  id    INTEGER PRIMARY KEY CHECK (id = 1),
+  since TEXT NOT NULL
+);
+''';
+
 /// **v7 的 schema 快照**（2026-10-08 · 划线 + 翻译缓存）。
 ///
 /// 🔴 与 `_v6Schema` **同一条理由**：真机上的 `user.db` 此刻**恰好就是 v7**
@@ -535,6 +554,15 @@ Future<void> runUpgradeCase({
     check('🔴 前提成立：v$fromVersion 老库**不含** sync_cursor（v11 才加）',
         !oldTables.contains('sync_cursor'));
   }
+  // 🔴🆕 **v12 的前提（2026-10-11）** —— 给 `highlight` **加列**（`translation`）。
+  //    📌 同 v8/v10 的判据：**加列查列**（不是查表）——
+  //       「前提类断言」的检查粒度必须等于被测变更的粒度。
+  if (fromVersion < 12) {
+    check(
+        '🔴 前提成立：v$fromVersion 老库的 highlight **不含** translation 列（v12 才加）',
+        !oldHlCols.contains('translation'),
+        oldHlCols.isEmpty ? '（表不存在 ⇒ 天然成立）' : oldHlCols.join(','));
+  }
 
   check('老库已有 bookmark 数据（2 条）',
       firstInt(await old.rawQuery('SELECT count(*) AS n FROM bookmark')) == 2);
@@ -565,12 +593,21 @@ Future<void> runUpgradeCase({
   check('🔴 highlight.paused 列已存在（v8 的 ALTER 生效）',
       hlCols.contains('paused'), hlCols.join(','));
   // 🔑 列顺序：`paused` 必须是**最后一列**。
-  //    `ALTER TABLE ADD COLUMN` 只能追加到末尾，而 schema 文件里它也写在末尾
-  //    ⇒ 「新建的库」与「升级出来的库」列顺序**一致**。
-  //    ⚠️ 少了这条，将来有人在 schema 里把它插到中间 ⇒ 两类库错位 ⇒
-  //       按**下标**取值的代码在两种库上读到不同列（**静默值错位**）。
-  check('🔴 paused 是 highlight 的最后一列（新旧库列顺序一致）',
-      hlCols.isNotEmpty && hlCols.last == 'paused', hlCols.join(','));
+  //    🔄 2026-10-11 更新：`paused` 之后又加了 `translation`（v12）⇒ 现在
+  //    最后一列是 **`translation`**（见下方 v12 那段）。**本条的判据随之改写**，
+  //    否则它会锁住一个**已废止的事实**（改对了反而红）。
+  check('🔴 highlight 的列末尾是 `translation`（v12 之后的最新一列）',
+      hlCols.isNotEmpty && hlCols.last == 'translation', hlCols.join(','));
+  // 🆕 v12（2026-10-11）：`highlight.translation` —— **「加列」的守护**。
+  //    🔴 它守护的是一条**静默**失效路径：`translation` 加不上 ⇒
+  //       复习页永远只显示骨架（看起来「功能没做」，其实是迁移没跑）。
+  //    ⚠️ 判据必须与「加列」同粒度（查**列**，不是查表）—— 同 v8/v10。
+  check('🔴 highlight.translation 列已存在（v12 的 ALTER 生效 —— 划线卡的译文提示）',
+      hlCols.contains('translation'), hlCols.join(','));
+  // ⚠️ 且列顺序：`translation` 是最后一列（新库 DDL 与老库 ALTER 都必须追加在末尾
+  //    ⇒ 两种库的列顺序一致；否则按**下标**取值的代码会在两种库上读到不同列）。
+  check('🔴 translation 是 highlight 的最后一列（新旧库列顺序一致）',
+      hlCols.isNotEmpty && hlCols.last == 'translation', hlCols.join(','));
   // 🆕 v9（2026-10-09）：`local_meta` —— **「加表」的守护**（与 v7 同族）。
   //    它是「本地数据归属账号」的判据表：建不出来 ⇒ 归属读不到 ⇒
   //    换账号时**不清空**（静默地把上一个账号的数据留在新账号名下）。
@@ -1036,10 +1073,25 @@ Future<void> main() async {
     expectedTables: expectedTables,
   );
 
+  // ══════════════════════════════════════════════════════════════════════
+  // v11 → 当前（🆕 2026-10-11 · `highlight.translation`）
+  //
+  // 🔴 v12 是**给已有表加列** ⇒ **必须**有 `oldVersion < 12` 分支。
+  //    这正是 v11 那段注释预言过的场景（「若哪天给本表加列，就必须在这里补分支」）。
+  // ⚠️ 它同时也是**最容易被漏的一条路径**：用户此刻恰好就在 v11。
+  // ══════════════════════════════════════════════════════════════════════
+  await runUpgradeCase(
+    factory: factory,
+    schemaSql: schemaSql,
+    fromVersion: 11,
+    oldSchema: _v11Schema,
+    expectedTables: expectedTables,
+  );
+
   print('');
   print('═' * 74);
   if (_failures.isEmpty) {
-    print('✅ 全部通过：$_pass 项（v1…v10 → v$kUserDbVersion 十条路径）');
+    print('✅ 全部通过：$_pass 项（v1…v11 → v$kUserDbVersion 十一条路径）');
   } else {
     print('🔴 失败 ${_failures.length} 项 / 通过 $_pass 项：');
     for (final f in _failures) {

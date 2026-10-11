@@ -98,6 +98,16 @@ class Highlight {
   ///       不是「待复习队列」；**恢复入口也在那里**（见 `highlights_screen`）。
   final bool paused;
 
+  /// 🆕 v1.12（2026-10-11）**该划线片段的中文译文** —— 复习时的**提示之一**。
+  ///
+  /// 🔑 与首字母骨架**同时显示**（白哥定 · **不是替换关系**）：译文考「用英文表达
+  ///    这个意思」（产出），骨架考「回忆原文措辞」（记忆）—— 两者考察的能力不同。
+  ///
+  /// ⚠️ **`null` / 空串 = 合法常态**（还没翻译/补译过）⇒ 复习页只显示骨架。
+  /// ⚠️ 与 [note] 不同：笔记**判定前不得显示**（可能写着答案），而译文**必须一开始就给** ——
+  ///    它就是提示本身。
+  final String? translation;
+
   final bool pendingPush;
 
   const Highlight({
@@ -113,6 +123,7 @@ class Highlight {
     required this.updatedAt,
     this.deleted = false,
     this.paused = false,
+    this.translation,
     required this.pendingPush,
   });
 
@@ -123,6 +134,9 @@ class Highlight {
   }
 
   /// 带笔记的副本（不可变模型 —— 改笔记走这里而不是原地改）。
+  ///
+  /// 🔴 **复制时必须带上每一个字段** —— 漏一个就是「改笔记把那个字段静默清空」。
+  ///    （本项目已踩过同类：`syncNow()` 逐字段复制漏 3 个计数 ⇒ 界面不刷新。）
   Highlight withNote(String? newNote) => Highlight(
         id: id,
         sourceType: sourceType,
@@ -136,6 +150,7 @@ class Highlight {
         updatedAt: updatedAt,
         deleted: deleted,
         paused: paused,
+        translation: translation,
         pendingPush: pendingPush,
       );
 
@@ -159,6 +174,7 @@ class Highlight {
         'note': note,
         'paused': paused ? 1 : 0,
         'deleted': deleted ? 1 : 0,
+        'translation': translation,
         'created_at': createdAt.toUtc().toIso8601String(),
         'updated_at': updatedAt.toUtc().toIso8601String(),
       };
@@ -168,7 +184,8 @@ class Highlight {
       'Highlight($id · ${sourceType.wire}:$sourceId'
       '${chapterIdx == null ? '' : '#$chapterIdx'}@$startOffset-$endOffset'
       '${deleted ? ' · 已取消' : ''}${paused ? ' · 已暂停' : ''}'
-      '${note == null ? '' : ' · 有笔记'})';
+      '${note == null ? '' : ' · 有笔记'}'
+      '${translation == null ? '' : ' · 有译文'})';
 }
 
 /// 划线仓储。
@@ -270,6 +287,41 @@ class HighlightRepository {
     );
   }
 
+  /// 写 / 清**译文**（`null` 或空白 = 清除）—— 🆕 v1.12（2026-10-11）。
+  ///
+  /// 🔑 **必须刷新 `updated_at` + `pending_push`**（与 [setNote] 同规矩，理由更要紧）：
+  ///    服务端 UPSERT 的 `WHERE excluded.updated_at > sync_highlight.updated_at OR ...`
+  ///    ⇒ **只写译文而不刷时间戳，这次更新会被整条跳过**
+  ///    ⇒ 静默形态：**本地有译文、云端永远没有、别端永远拉不到**。
+  Future<void> setTranslation(String id, String? translation) async {
+    final v = (translation == null || translation.trim().isEmpty)
+        ? null
+        : translation.trim();
+    await _db.rawUpdate(
+      'UPDATE highlight SET translation = ?, updated_at = $kSqlNowUtc, pending_push = 1 '
+      'WHERE id = ?',
+      [v, id],
+    );
+  }
+
+  /// 还**没有译文**的划线（供「批量补译」用）—— 🆕 v1.12。
+  ///
+  /// 判据：`translation IS NULL OR TRIM(translation) = ''` —— **空串也算缺**
+  ///    （复习页对空串与 NULL 一视同仁，判据必须与消费点一致）。
+  ///
+  /// ⚠️ **只取 `deleted = 0`**：已取消的划线不再复习 ⇒ 补它的译文是**白花钱**。
+  /// ⚠️ **`paused` 的要补** —— 它仍在笔记页列着（显示「暂停」），用户可能恢复
+  ///    ⇒ 补了才有用。这与上面那条**一取一舍**，两条都是有意为之。
+  Future<List<Highlight>> withoutTranslation({int? limit}) async {
+    final rows = await _db.query(
+      'highlight',
+      where: "deleted = 0 AND (translation IS NULL OR TRIM(translation) = '')",
+      orderBy: 'created_at DESC',
+      limit: limit,
+    );
+    return rows.map(_fromRow).toList(growable: false);
+  }
+
   /// 取消划线（**软删**）。
   ///
   /// 🔴 同样**必须刷新 `updated_at`**：同步按「谁的时间戳更新谁赢」判定，
@@ -368,6 +420,8 @@ class HighlightRepository {
         updatedAt: parseUserDbUtc(r['updated_at'] as String),
         deleted: (r['deleted'] as num?)?.toInt() == 1,
         paused: (r['paused'] as num?)?.toInt() == 1,
+        // ⚠️ `as String?`：老库的 `SELECT *` 可能尚未含该列（升级前的调用栈）
+        translation: r['translation'] as String?,
         pendingPush: (r['pending_push'] as num).toInt() == 1,
       );
 }

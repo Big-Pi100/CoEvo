@@ -714,9 +714,24 @@ void main() {
 
   // ── 列名契约（Rust 侧字段存在性在【8】自动覆盖）──
   check('契约表已登记 `highlight`', M.kSyncFieldSources.containsKey('highlight'));
-  check('契约表登记了全部 12 列',
-      M.kSyncFieldSources['highlight']!.length == 12,
-      '${M.kSyncFieldSources['highlight']!.length} 列');
+  // 🔄 2026-10-11 改判：原来断言「== 12 列」是**锁数字** ——
+  //    加一列（`translation`）就假红，而那次改动**是正确的**。
+  //    ⇒ 改为**锁意图**：两个契约表**一一对应**（它们本就该同长），
+  //      再加「关键列必须都在」的具名断言。这样加列不会假红，
+  //      而「只改了一处」仍会被抓住（判据：断言锁语义形状，不锁拼写）。
+  check(
+    '🔴 契约表与 push JSON 契约**一一对应**（只改一处 ⇒ 这里红）',
+    M.kSyncFieldSources['highlight']!.length ==
+        M.kPushJsonContract['highlight']!.length,
+    '${M.kSyncFieldSources['highlight']!.length} 列 vs '
+    '${M.kPushJsonContract['highlight']!.length} 个字段',
+  );
+  check(
+    '🔴 `translation` 在契约里（漏了它 ⇒ 译文不跨设备 ⇒ 别端永远只有骨架）',
+    M.kPushJsonContract['highlight']!.contains('translation') &&
+        M.kSyncFieldSources['highlight']!
+            .any((e) => e.$2 == 'translation'),
+  );
   check(
     '🔴 `paused` 在契约里（漏了它 ⇒ 暂停不跨设备 ⇒「A 暂停、B 上又回来」）',
     M.kPushJsonContract['highlight']!.contains('paused'),

@@ -579,7 +579,30 @@ CREATE TABLE IF NOT EXISTS highlight (
   -- ⚠️ **列顺序**：`ALTER TABLE ADD COLUMN` 只能追加到**末尾** ⇒ 本列必须是最后一列
   --    （与 `bookmark.deleted` 同一条教训：新库与升级库的列顺序必须一致）。
   paused       INTEGER NOT NULL DEFAULT 0
-               CHECK (paused IN (0, 1))
+               CHECK (paused IN (0, 1)),
+  -- 🆕 v1.12 (2026-10-11)：**该划线片段的中文译文** —— 复习时的**提示之一**。
+  --
+  -- # 为什么它必须在这张表里（而不是复用 `translation_cache`）
+  -- `translation_cache` 是**派生缓存**：不参与同步、**退出登录必须清空**、还会被 LRU 淘汰
+  -- ⇒ 换设备即失效（「明明翻过却没记录」）。它承载不了卡片资产。
+  -- 🔑 判据：**「会被重建 / 会被清空」的表不能存用户资产** —— 存之前先问
+  --    「这张表会不会被别人重写或清掉？」。
+  --
+  -- # 提示形态（白哥 2026-10-11 定）
+  -- 复习划线卡时 **译文与首字母骨架「同时」显示**（**不是替换关系**）——
+  -- 两者考察的能力不同：译文考「用英文表达这个意思」（产出），骨架考「回忆原文措辞」（记忆）。
+  --
+  -- # ⚠️ 可空 = 合法常态
+  -- 只有「翻译过 / 批量补译过」的划线才有值 ⇒ **没有值时复习页只显示骨架**（= 原行为），
+  -- 不是缺陷。所以 `translation IS NULL` 与 `''` 一律按「无译文」处理。
+  --
+  -- # 🔴 改这一列必须刷 `updated_at` + `pending_push`（与 `note`/`paused` 同规矩）
+  -- 服务端 UPSERT 的 `WHERE excluded.updated_at > sync_highlight.updated_at OR ...`
+  -- ⇒ **不刷 `updated_at` 的话这次更新会被整条跳过**（静默：本地有译文、云端永远没有）。
+  --
+  -- ⚠️ **列顺序**：`ALTER TABLE ADD COLUMN` 只能追加到末尾 ⇒ 本列必须是最后一列
+  --    （同 `paused` / `bookmark.deleted` 那条教训）。
+  translation  TEXT
 );
 
 -- 清单只读未删的（漏了它界面会显示「已取消的划线」）
@@ -833,6 +856,22 @@ CREATE TABLE IF NOT EXISTS sync_cursor (
 --     「恰好是 v10」的库不升版本就不会建出本表 ⇒ **而这是静默的**
 --   · ✅ 守护断言：`verify_userdb_migration.dart` 的 `fromVersion: 10` 路径
 --   · 📄 依据：`docs/review/device-sync-and-profile-failure-2026-10-10.md` §四 D
+--
+-- v1.12 (2026-10-11) `highlight` 加 `translation` —— 划线卡的**中文译文提示**：
+--   · 白哥定：复习划线卡时 **译文与首字母骨架「同时」显示**（**不是替换**）
+--     —— 两者考察的能力不同：译文考「用英文表达这个意思」（产出）·
+--        骨架考「回忆原文措辞」（记忆）
+--   · 🔴 **为什么不复用 `translation_cache`**：它是**派生缓存**
+--     （不参与同步 · 退出登录必须清空 · LRU 淘汰）⇒ 换设备即失效。
+--     判据：**「会被重建/会被清空」的表不能存用户资产**。
+--   · ✅ 好消息：`highlight` **本来就在同步类里** ⇒ 加列**不需要新增同步类**，
+--     只需在既有 push/pull 里带上这一列（服务端同步加列 + 迁移）
+--   · ⚠️ **加列必须写 `onUpgrade` 的 `oldVersion < 12` 分支**（`ALTER TABLE ADD COLUMN`）
+--     —— `CREATE TABLE IF NOT EXISTS` 对已存在的表**整条跳过**（v6/v8/v10 的老坑）
+--   · ⚠️ **同时升 `kUserDbVersion`（11 → 12）**：真机上此刻的库可能是 v11
+--     ⇒ 版本不变则不触发 `onUpgrade` ⇒ 列加不上（**静默**：复习页永远只有骨架）
+--   · ✅ 守护断言：`verify_userdb_migration.dart` 的 `fromVersion: 11` 路径
+--   · 📄 依据：`docs/review/highlight-card-translation-hint-2026-10-11.md`
 --
 -- 🔴🔴 **升级注意（本次起「已有用户库」必须走迁移）**
 --    v1.2 时本库尚无任何端创建，故 version 停在 1。

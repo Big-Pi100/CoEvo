@@ -1173,8 +1173,8 @@ class SyncService {
     await _userDb.rawInsert(
       'INSERT INTO highlight '
       '(id, source_type, source_id, chapter_idx, start_offset, end_offset, '
-      ' text, note, created_at, updated_at, deleted, pending_push, paused) '
-      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) '
+      ' text, note, created_at, updated_at, deleted, pending_push, paused, translation) '
+      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) '
       'ON CONFLICT (id) DO UPDATE SET '
       '  source_type  = excluded.source_type, '
       '  source_id    = excluded.source_id, '
@@ -1187,7 +1187,11 @@ class SyncService {
       '  updated_at   = excluded.updated_at, '
       '  deleted      = excluded.deleted, '
       '  pending_push = excluded.pending_push, '
-      '  paused       = excluded.paused',
+      '  paused       = excluded.paused, '
+      // 🆕 v1.12：直接写 `excluded` 是**安全**的 —— 这里的入参是
+      // `mergeHighlight(localRow, remote)` 的**结果**，译文口径已经在
+      // 合并层算完（`_pickTranslation`：有值者胜、两端都有取字典序较大者）。
+      '  translation  = excluded.translation',
       [
         row['id'],
         row['source_type'],
@@ -1202,6 +1206,7 @@ class SyncService {
         row['deleted'] ?? 0,
         row['pending_push'] ?? 0,
         row['paused'] ?? 0,
+        row['translation'],
       ],
     );
   }

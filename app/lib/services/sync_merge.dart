@@ -346,6 +346,7 @@ Map<String, Object?> highlightToPushJson(Map<String, Object?> r) => {
       'note': r['note'],
       'paused': r['paused'] ?? 0,
       'deleted': r['deleted'] ?? 0,
+      'translation': r['translation'],
       'created_at': r['created_at'],
       'updated_at': r['updated_at'],
     };
@@ -362,6 +363,7 @@ Map<String, Object?> highlightFromPullJson(Map<String, dynamic> j) => {
       'note': j['note'],
       'paused': j['paused'] ?? 0,
       'deleted': j['deleted'] ?? 0,
+      'translation': j['translation'],
       'created_at': j['created_at'],
       'updated_at': j['updated_at'],
     };
@@ -413,8 +415,50 @@ Map<String, Object?> mergeHighlight(
     'note': latest['note'],
     'paused': latest['paused'] ?? 0,
     'deleted': latest['deleted'] ?? 0,
+    // ── 🆕 v1.12 译文（后补的派生值 · 自成一档）──
+    'translation': _pickTranslation(local, remote),
     'updated_at': latest['updated_at'],
   };
+}
+
+/// 🆕 v1.12「译文」的合并口径 —— **有值者胜**。
+///
+/// ## 为什么它不属于「最新意愿」也不属于「首次事实」
+/// * 不是**最新意愿**（`note`/`paused`/`deleted` 那种「用户主动改的状态」）——
+///   译文是**后补的派生值**，用户没有「改译文 / 清空译文」这个动作
+/// * 不是**首次事实**（`text`/offsets）—— 它**不是划线时就有的**，
+///   先补出译文的那一端未必是 `created_at` 更早的那一端
+///
+/// ## 🔑 两端都有值时：取**字典序较大**者（不是为了「更对」，是为了**收敛**）
+/// merge 必须是**对称**的：`f(a,b) == f(b,a)`。否则两台设备各自 merge 会得到
+/// **不同结果** ⇒ 每次都认为「对方有更新」⇒ **永远同步不完**。
+/// · 译文是**确定性派生**（同一句的译文语义等价）⇒ 取哪一个都对；
+/// · 关键是**两端取同一个** ⇒ 字典序是比较里面最简单的**对称**函数。
+/// ⚠️ 所以**不能**用 `_latestUpdatedSide`：它在时间戳相同时 `return a`
+///    —— 那是**不对称**的（交换后返回另一边），正好制造不收敛。
+///
+/// ## ⚠️ 与 `note` 的一处关键差异
+/// `note` 取较新时**必须连 `null` 一起取**（「清空笔记」是真实意图）。
+/// 译文**没有「清空」这个动作**（只有「补上」）⇒ 取非空是**安全**的；
+/// 否则「一端补了译文、另一端没有」时会把译文抹掉。
+Object? _pickTranslation(
+  Map<String, Object?> local,
+  Map<String, Object?> remote,
+) {
+  final l = _nonEmptyText(local['translation']);
+  final r = _nonEmptyText(remote['translation']);
+  if (l == null) return r;
+  if (r == null) return l;
+  if (l == r) return l;
+  return l.compareTo(r) > 0 ? l : r; // 对称 ⇒ 收敛
+}
+
+/// `null` 与**空串**一律视为「没有」（消费点也是这个口径，见
+/// `HighlightRepository.withoutTranslation` 的 WHERE）。
+String? _nonEmptyText(Object? v) {
+  if (v is! String) return null;
+  final t = v.trim();
+  return t.isEmpty ? null : t;
 }
 
 // ───────────────────────── ④ book_progress（电子书进度）─────────────────────────
@@ -735,6 +779,7 @@ const Map<String, List<(String table, String column)>> kSyncFieldSources = {
     ('highlight', 'note'),
     ('highlight', 'paused'),
     ('highlight', 'deleted'),
+    ('highlight', 'translation'), // 🆕 v1.12：划线卡的中文译文（复习提示之一）
     ('highlight', 'created_at'),
     ('highlight', 'updated_at'),
   ],
@@ -809,6 +854,7 @@ const Map<String, List<String>> kPushJsonContract = {
     'note',
     'paused',
     'deleted',
+    'translation', // 🆕 v1.12
     'created_at',
     'updated_at',
   ],

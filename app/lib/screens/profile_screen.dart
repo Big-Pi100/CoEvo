@@ -37,6 +37,7 @@ import '../widgets/sync_cloud_badge.dart';
 import '../theme/clay.dart';
 import '../providers/sync_provider.dart';
 import '../providers/subscription_provider.dart';
+import '../providers/highlight_translate_provider.dart';
 import '../theme/co_spacing.dart';
 import '../theme/tokens_ext.dart';
 import '../theme/coevo_tokens.dart';
@@ -105,6 +106,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   ///    同一条判据（它不是「用户偏好」，只是「这一刻面板开着」）。
   /// 🔑 **默认收起**也同上：收起态信息量更大（一行就说完「我是谁、登录着没有」）。
   bool _accountExpanded = false;
+
+  // 🆕 v1.12（2026-10-11）「批量补译划线译文」的运行态。
+  // 🔑 放 `State` 而不是 provider：它是**这一次点击的进度**，
+  //    离开页面就该丢（不是需要跨页共享的状态）。
+  bool _backfillRunning = false;
+  int _backfillDone = 0;
+  int _backfillTotal = 0;
 
   // ── 🗑 2026-09-29 删除的状态（「我的」页重设计 · 白哥定）──
   // · `_hasShownClaimDialog` / `_realName` / `_phone` —— trial 认领与实名（已定不做）
@@ -1255,10 +1263,135 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               ),
             ),
+            // 🆕 v1.12（2026-10-11）批量补译入口。
+            //
+            // # 🔑 为什么放在「记忆」这张卡里
+            // · **语义归属**：它补的是**划线卡默写的提示**（译文）⇒ 属于「记忆」
+            // · **常驻成本**：低频（一次性补齐历史划线）⇒ 进设置页、不占主界面
+            //   判据：「控件放哪」两维度缺一不可 —— 只按语义归属会把它塞进复习页。
+            //
+            // # ⚠️ 为什么不做成「划线时自动翻译」
+            // 翻译是**订阅权益**（免费 10 次/月）⇒ 自动翻译会让成本随划线量线性增长。
+            // 做成**用户显式的一次性动作**，成本可见可控。详见 `highlight_translate_provider.dart`。
+            _buildBackfillRow(t),
           ],
         ),
       ),
     );
+  }
+
+  /// 「补全划线译文」那一行 —— 标题 + 右侧动作（`N 条` 与「补全」）。
+  ///
+  /// 🔑 三种形态**互斥**且都由真实状态驱动：
+  /// | 状态 | 显示 |
+  /// |---|---|
+  /// | 正在补 | 进度 `3/12` + 转圈，**不可点**（防重复触发） |
+  /// | 还有 N 条 | `还有 N 条划线没有译文` + 可点的「补全」 |
+  /// | 已补全 | `划线译文已补全`（**不可点** —— 没有可做的事就不给按钮） |
+  Widget _buildBackfillRow(CoEvoTokens t) {
+    final pendingAsync = ref.watch(highlightTranslationPendingCountProvider);
+    final count = pendingAsync.valueOrNull ?? 0;
+    final busy = _backfillRunning;
+
+    final label = busy
+        ? '正在补译 ${_backfillDone}/${_backfillTotal}…'
+        : (count == 0 ? '划线译文已补全' : '还有 $count 条划线没有译文');
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 32, right: 8, bottom: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 11.5,
+                color: Color(t.ink3.argb32),
+              ),
+            ),
+          ),
+          if (busy)
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.6,
+                color: Color(t.accent.argb32),
+              ),
+            )
+          else if (count > 0)
+            // ⚠️ 只有**真的有事可做**时才给可点文字 ——
+            //    「没有可做的事」还画一个按钮，是让用户白点一次（本项目「有动作、无出口」的反面）
+            GestureDetector(
+              onTap: _runBackfill,
+              behavior: HitTestBehavior.opaque,
+              child: Text(
+                '补全',
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(t.accent.argb32),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 跑一次「批量补译」，并把结果**如实**告诉用户。
+  ///
+  /// 🔴 三种结局必须分开说（不能都收成「完成了」）：
+  ///   ① 全补完 ② **额度用尽中断**（说清补了几条 + 什么时候恢复）
+  ///   ③ 部分失败（说清成功/失败各几条）
+  Future<void> _runBackfill() async {
+    if (_backfillRunning) return;
+    // 🔑 先取 messenger（异步之后 `context` 可能已失效）
+    final messenger = ScaffoldMessenger.of(context);
+
+    setState(() {
+      _backfillRunning = true;
+      _backfillDone = 0;
+      _backfillTotal = 0;
+    });
+
+    try {
+      final r = await backfillHighlightTranslations(
+        ref,
+        onProgress: (done, total) {
+          if (mounted) {
+            setState(() {
+              _backfillDone = done;
+              _backfillTotal = total;
+            });
+          }
+        },
+      );
+
+      final msg = r.nothingToDo
+          ? '没有需要补译的划线'
+          : r.stopped
+              ? '已补 ${r.ok} 条后停止：${r.stopMessage}'
+              : (r.failed > 0
+                  ? '补译结束：成功 ${r.ok} 条 · 失败 ${r.failed} 条（可再点一次重试）'
+                  : '已补全 ${r.ok} 条划线译文');
+
+      messenger.showSnackBar(SnackBar(content: Text(msg)));
+      // 计数重算（否则那一行还停在旧数字）
+      ref.invalidate(highlightTranslationPendingCountProvider);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('补译失败：$e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _backfillRunning = false;
+          _backfillDone = 0;
+          _backfillTotal = 0;
+        });
+      }
+    }
   }
 
   /// 退出前二次确认。

@@ -819,6 +819,9 @@ void main() async {
             'note',
             'paused',
             'deleted',
+            // 🆕 v1.12（2026-10-11）：划线卡的中文译文 —— 漏了它 ⇒ 译文不跨设备
+            //    （而复习页只在有译文时显示译文提示 ⇒ 别端永远只有骨架）
+            'translation',
             'created_at',
             'updated_at'
           }.toString(),
@@ -826,6 +829,8 @@ void main() async {
     );
     check('🔴 `paused = 1` 带出去（漏 ⇒「A 暂停、换台设备又回来」）', hl['paused'] == 1);
     check('`note` 带出去（漏 ⇒ 笔记不跨设备）', hl['note'] == '记一下');
+    check('🔴 `translation` 键**必须存在**（值可空 —— 这条只验「带了这个字段」）',
+        hl.containsKey('translation'));
     check('`chapter_idx` 是 null（文章没有章节号，**不是 0**）', hl['chapter_idx'] == null);
     check(
       'push 成功后标记已同步（漏 ⇒ 每次同步都重推全量）',

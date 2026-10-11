@@ -664,6 +664,10 @@ class _HighlightPrompt extends StatelessWidget {
     //    （`SkeletonReveal.none` / `firstTwo`）—— 将来要做难度档，改这里一处。
     final skeleton = skeletonFor(highlight.text);
 
+    // 🆕 v1.12（2026-10-11）：划线的**中文译文**（可能没有 —— 那是合法常态）。
+    final translation = highlight.translation?.trim();
+    final hasTranslation = translation != null && translation.isNotEmpty;
+
     return SingleChildScrollView(
       controller: scrollController,
       padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
@@ -679,6 +683,34 @@ class _HighlightPrompt extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
+
+          // ── 🆕 译文：**语义提示**（中文）──
+          //
+          // 🔴 白哥 2026-10-11 定：译文与骨架**同时显示**，**不是替换关系**。
+          //    · 译文考「**用英文表达这个意思**」（产出/翻译能力）
+          //    · 骨架考「**回忆出原文措辞**」（记忆）
+          //    ⇒ 两者考察的能力不同，谁也替代不了谁。
+          //
+          // ⚠️ 没有译文时**什么都不画**（不占位、不显示「暂无译文」）——
+          //    「空态不是错误态」：绝大多数老划线都还没补译，弹一句提示
+          //    只会让用户以为「坏了」。
+          if (hasTranslation) ...[
+            Text(
+              translation,
+              // 用 `uiSans`（中文字体），与下面 `latinSerif` 的骨架**天然区分**，
+              // 不必再加标签或分割线（少一个元素就少一处对齐问题）。
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 17,
+                height: 1.7,
+                // 有译文时它是**主提示** ⇒ 用 `ink`；骨架退为 `ink2`（见下）。
+                color: Color(t.ink.argb32),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // ── 骨架：**结构提示**（首字母 + 长度）──
           // 🔑 骨架与原文字号**同档**（17，对齐阅读正文）——
           //    差太多会让「看着骨架回忆原文」变成另一种排版任务。
           Text(
@@ -687,7 +719,8 @@ class _HighlightPrompt extends StatelessWidget {
               fontFamily: CoFonts.latinSerif,
               fontSize: 17,
               height: 1.75,
-              color: Color(t.ink.argb32),
+              // 有译文时退为次要（主提示已经是译文）；没译文时它就是唯一提示 ⇒ 用 `ink`。
+              color: Color((hasTranslation ? t.ink2 : t.ink).argb32),
             ),
           ),
         ],

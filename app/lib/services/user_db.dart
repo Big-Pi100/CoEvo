@@ -166,7 +166,7 @@ import 'package:sqflite_common/sqlite_api.dart';
 ///    版本不变 ⇒ `onUpgrade` 根本不触发 ⇒ 表建不出（**静默**）。
 /// ✅ 守护断言：`verify_userdb_migration.dart` 的 `fromVersion: 10` 路径。
 /// 📄 依据：`docs/review/device-sync-and-profile-failure-2026-10-10.md` §四 D
-const int kUserDbVersion = 11;
+const int kUserDbVersion = 12;
 
 /// `user.db` 的文件名（调用方拼路径用）。
 const String kUserDbFileName = 'user.db';
@@ -344,10 +344,26 @@ Future<Database> openUserDb({
           );
         }
 
+        // 🆕 v12（2026-10-11）：`highlight` 加 `translation` —— 划线卡的中文译文提示。
+        //    🔴 这正是**下一段注释预言过的**那种改动（「给已有表加列」）⇒ 必须写版本分支。
+        //    ⚠️ 可空、**不给 DEFAULT** —— `NULL` 正是「这条划线还没有译文」的**可辨识状态**
+        //       （复习页据此回退成「只显示骨架」）。给 `''` 默认值会丢掉这个区分。
+        //    ⚠️ 同时必须升版本号（11 → 12）：真机上此刻的库可能是 v11 ⇒
+        //       版本不变则不触发 `onUpgrade` ⇒ **列加不上，而复习页永远只有骨架**（静默）。
+        if (oldVersion < 12) {
+          await addColumnIfMissing(
+            db,
+            table: 'highlight',
+            column: 'translation',
+            ddl: 'TEXT',
+          );
+        }
+
         // ✅ v11（`sync_cursor`）**故意不写分支**：它是**纯新增表**，
         //    下面的第 ② 步重跑全量幂等脚本就会建出它。
         //    📌 判据：**只有「改已有表的列」才需要版本分支**；新增表靠幂等脚本。
         //    ⚠️ 反过来说：若哪天给本表**加列**，就必须在这里补 `oldVersion < 12` 分支。
+        //    → 🆕 2026-10-11：上面那个 `oldVersion < 12` 就是这条预言的兑现。
 
         // ── ② **再**重跑全量幂等脚本：建出缺失的表 / 索引 ──
         // 🔑 位置在「补列」**之后**（理由见上）。

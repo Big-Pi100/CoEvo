@@ -128,6 +128,12 @@ pub struct HighlightInput {
     pub created_at: String,
     /// 最后一次改变该条状态的时刻（改笔记 / 暂停 / 取消都要刷新）。
     pub updated_at: String,
+    /// 🆕 2026-10-11 该划线片段的中文译文（复习提示之一）。
+    ///
+    /// 🔴 **必须 `#[serde(default)]`（可空）** —— 老版本端侧不会带这个字段，
+    ///    缺了它 serde 会直接**反序列化失败**（整个批次 400），而不是当成「没有译文」。
+    #[serde(default)]
+    pub translation: Option<String>,
 }
 
 /// 电子书进度（按**内容指纹**，不是 `book_id` —— 书籍 id 是端侧 uuid）。
@@ -321,6 +327,8 @@ pub struct HighlightOut {
     pub deleted: i64,
     pub created_at: String,
     pub updated_at: String,
+    /// 🆕 2026-10-11 该划线片段的中文译文（复习提示之一）。`None` = 还没翻译/补译过。
+    pub translation: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -717,8 +725,8 @@ pub fn push_changes(
             .execute(
                 "INSERT INTO sync_highlight
                    (user_id, id, source_type, source_id, chapter_idx, start_offset, end_offset,
-                    text, note, paused, deleted, created_at, updated_at, received_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                    text, note, paused, deleted, created_at, updated_at, received_at, translation)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
                  ON CONFLICT (user_id, id) DO UPDATE SET
                    deleted      = CASE WHEN excluded.updated_at > sync_highlight.updated_at
                                        THEN excluded.deleted ELSE sync_highlight.deleted END,
@@ -740,6 +748,15 @@ pub fn push_changes(
                    chapter_idx  = CASE WHEN excluded.created_at < sync_highlight.created_at
                                        THEN excluded.chapter_idx ELSE sync_highlight.chapter_idx END,
                    created_at   = MIN(excluded.created_at, sync_highlight.created_at),
+                   -- 🆕 2026-10-11 译文：**有值者胜**（`COALESCE(NULLIF(TRIM(...)))`）。
+                   -- 🔴 **绝不能用 `excluded.translation` 直取** —— 端侧送来 `NULL`
+                   --    （本端与它上次拉的远端都没有译文）时，会把**别端刚补上的译文抹掉**。
+                   -- 🔴🔴 `TRIM` **不是装饰**：只用 `NULLIF(x,'')` 的话，**空白串 `'   '`
+                   --    会被当成有效译文写进去**（本批的测试实测抓到了这一点）。
+                   --    端侧判空用的是 `trim().isEmpty` ⇒ SQL 必须 `TRIM` 后再比，否则
+                   --    **三处口径不一致**（端侧当「没有」、服务端当「有」）——
+                   --    表现是「复习页看不到译文，而云端存着三个空格」。
+                   translation  = COALESCE(NULLIF(TRIM(excluded.translation), ''), sync_highlight.translation),
                    received_at  = excluded.received_at
                  WHERE excluded.updated_at > sync_highlight.updated_at
                     OR excluded.created_at < sync_highlight.created_at",
@@ -757,7 +774,8 @@ pub fn push_changes(
                     h.deleted,
                     &h.created_at,
                     &h.updated_at,
-                    &received_at
+                    &received_at,
+                    h.translation
                 ],
             )
             .map_err(|e| AppError::Internal(format!("upsert highlight: {e}")))?;
@@ -1142,7 +1160,7 @@ pub fn pull_changes(
         let mut stmt = conn
             .prepare(
                 "SELECT id, source_type, source_id, chapter_idx, start_offset, end_offset,
-                        text, note, paused, deleted, created_at, updated_at
+                        text, note, paused, deleted, created_at, updated_at, translation
                    FROM sync_highlight
                   WHERE user_id = ?1 AND received_at > ?2
                   ORDER BY received_at ASC",
@@ -1163,6 +1181,7 @@ pub fn pull_changes(
                     deleted: r.get(9)?,
                     created_at: r.get(10)?,
                     updated_at: r.get(11)?,
+                    translation: r.get(12)?,
                 })
             })
             .map_err(|e| AppError::Internal(format!("query pull highlight: {e}")))?;
@@ -1968,6 +1987,8 @@ mod tests {
                 deleted,
                 created_at: created.into(),
                 updated_at: updated.into(),
+                // 🆕 v1.12：本 helper 默认「无译文」；译文相关的用例自带字面量。
+                translation: None,
             }
         }
 
@@ -2087,11 +2108,88 @@ mod tests {
             deleted: 0,
             created_at: "2026-10-01T00:00:00.000Z".into(),
             updated_at: "2026-10-01T00:00:00.000Z".into(),
+            translation: None,
         }];
         let err = push_changes(&conn, "u1", "devA", RECV1, &a).unwrap_err();
         assert!(
             matches!(err, AppError::BadRequest(_)),
             "应为 400（客户端数据问题），实际 {err:?}"
+        );
+    }
+
+    /// 🆕 v1.12（2026-10-11）划线卡**译文**的合并口径 —— **有值者胜**，绝不丢。
+    ///
+    /// # 🔴 这条测试为什么必须存在
+    /// 若把 upsert 写成 `translation = excluded.translation` **直取**，那么
+    /// 「本端没有译文（送 `None`）」就会把**别端刚补上的译文抹掉** —— 而且是**静默**的：
+    /// 本地看不出、云端也看不出，用户只会发现「译文自己没了」。
+    ///
+    /// ✅ 正确写法是 `COALESCE(NULLIF(excluded.translation, ''), sync_highlight.translation)`：
+    ///    · 送来的有值 ⇒ 用它
+    ///    · 送来 `NULL` **或空串** ⇒ **保留原有的**
+    ///
+    /// ⚠️ 这个口径必须与端侧**三处**一致（`sync_merge._pickTranslation` ·
+    ///    `HighlightRepository.withoutTranslation` 的 WHERE · 本处）。
+    #[test]
+    fn test_highlight_translation_survives_a_null_push() {
+        let conn = setup();
+        seed_user(&conn, "u1", Some("2099-01-01"));
+
+        let mk = |translation: Option<&str>, updated: &str| HighlightInput {
+            id: "h1".into(),
+            source_type: "article".into(),
+            source_id: "42".into(),
+            chapter_idx: None,
+            start_offset: 0,
+            end_offset: 5,
+            text: "hello".into(),
+            note: None,
+            paused: 0,
+            deleted: 0,
+            created_at: "2026-10-01T00:00:00.000Z".into(),
+            updated_at: updated.into(),
+            translation: translation.map(|s| s.into()),
+        };
+
+        // ① 设备 A 推上译文
+        let mut a = base_push("devA");
+        a.highlights = vec![mk(Some("你好"), "2026-10-01T00:00:00.000Z")];
+        push_changes(&conn, "u1", "devA", RECV1, &a).unwrap();
+
+        // ② 设备 B **没有译文**，但时间戳更新（模拟「B 改了别的字段」）
+        let mut b = base_push("devB");
+        b.highlights = vec![mk(None, "2026-10-02T00:00:00.000Z")];
+        push_changes(&conn, "u1", "devB", RECV2, &b).unwrap();
+
+        // ③ 译文必须**还在**
+        let got: Option<String> = conn
+            .query_row(
+                "SELECT translation FROM sync_highlight WHERE user_id='u1' AND id='h1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            got.as_deref(),
+            Some("你好"),
+            "🔴 译文被空值抹掉了 —— upsert 用了直取而不是 COALESCE(NULLIF(...))"
+        );
+
+        // ④ 空串同样按「没有」处理（三处口径必须一致）
+        let mut c = base_push("devC");
+        c.highlights = vec![mk(Some("   "), "2026-10-03T00:00:00.000Z")];
+        push_changes(&conn, "u1", "devC", "2026-10-06T10:10:00.000Z", &c).unwrap();
+        let got2: Option<String> = conn
+            .query_row(
+                "SELECT translation FROM sync_highlight WHERE user_id='u1' AND id='h1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            got2.as_deref(),
+            Some("你好"),
+            "🔴 空白串必须按「没有」处理（与端侧 _pickTranslation / withoutTranslation 同口径）"
         );
     }
 

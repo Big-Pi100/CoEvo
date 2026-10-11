@@ -1138,6 +1138,10 @@ CREATE TABLE IF NOT EXISTS sync_highlight (
     created_at   TEXT    NOT NULL,
     updated_at   TEXT    NOT NULL,                 -- 最后一次改变该条状态的时刻（改笔记/暂停也要刷）
     received_at  TEXT    NOT NULL,
+    -- 🆕 2026-10-11 划线卡的中文译文（复习时的**提示之一**，与首字母骨架**同时**显示）。
+    -- 🔴 可空 = 合法常态（还没翻译/补译过）。⚠️ 列放在**末尾** —— 与老库
+    --    `ALTER TABLE ... ADD COLUMN` 追加的位置一致（新库/老库列顺序必须一致）。
+    translation  TEXT,
     PRIMARY KEY (user_id, id)
 );
 CREATE INDEX IF NOT EXISTS idx_sync_highlight_pull ON sync_highlight(user_id, received_at);

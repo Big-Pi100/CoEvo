@@ -316,8 +316,16 @@ async fn main() {
             // 🔑 用 `INSERT OR IGNORE`：管理端可改套餐（`plans_handlers`），
             //    无条件 UPDATE 会**覆盖管理员改动**。改价走 ASC，不依赖本 seed。
             // 🔑 id 直接用 Apple Product ID，省掉「本地 id ↔ productId」映射层。
-            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.monthly', 'CoEvo 专业版 · 月度', 30, 990, 0, 1, datetime('now'))",
-            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.yearly', 'CoEvo 专业版 · 年度', 365, 7800, 1, 1, datetime('now'))",
+            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.monthly', '记忆之书 专业版 · 月度', 30, 990, 0, 1, datetime('now'))",
+            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.yearly', '记忆之书 专业版 · 年度', 365, 7800, 1, 1, datetime('now'))",
+            // 🔴 2026-10-11 补：**老库的名字要单独 UPDATE 一次**。
+            //    上面两条是 `INSERT OR IGNORE` ⇒ 对**已存在的行是空操作**
+            //    ⇒ 老库的 `name` 会**永久停在 `CoEvo 专业版 · *`**（线上就是这种）。
+            //    📌 判据：**配置类 seed 若是唯一权威，不能只靠 `OR IGNORE`/`DO NOTHING`**
+            //       —— 必须配一条 `UPDATE ... WHERE 有变化`，否则老库永远漂移。
+            //    （`WHERE name <> 新值` 让它在已更新后成为 0 行影响的空操作 ⇒ 幂等。）
+            "UPDATE subscription_plans SET name = '记忆之书 专业版 · 月度' WHERE id = 'com.coevo.coevoApp.pro.monthly' AND name <> '记忆之书 专业版 · 月度'",
+            "UPDATE subscription_plans SET name = '记忆之书 专业版 · 年度' WHERE id = 'com.coevo.coevoApp.pro.yearly' AND name <> '记忆之书 专业版 · 年度'",
             // 🔴 微信「买断 N 天」档位**下架**（不是删除）——
             //    `distribution_handler.rs` 会按 plan_id 查 price 算佣金原价，删行会断链。
             //    幂等：已下架的档位再跑一次 `is_active` 已是 0 ⇒ 0 行受影响。
@@ -329,7 +337,15 @@ async fn main() {
             //    `phone_hash` 列已移除。留着它们会在**启动时直接报 `no such column: phone_hash`**
             //    → 服务起不来。（这段的容错只放行 `duplicate column` / `already exists`，
             //    所以它会**炸出来**而不是被吞 —— 这比静默更好。）
-
+            //
+            // 🆕 2026-10-11 `sync_highlight.translation` —— 划线卡的中文译文（复习提示之一）。
+            // 🔴 **必须与 `schema.rs` 那份同时存在**（同 `password_reset` 的理由）：
+            //    `schema.rs` 管**新库**，这里管**老库升级** —— 而生产库正是后者。
+            //    顺序安全：`sync_highlight` 由 `schema::init_database()` 无条件建出
+            //    （它跑在本列表**之前**）⇒ 此处 ALTER 时表必定已存在。
+            //    ⚠️ 服务端**没有** `duplicate column` 之外的容错 ⇒ 列名写错会**炸出来**，
+            //       不会静默（这正是我们要的）。
+            "ALTER TABLE sync_highlight ADD COLUMN translation TEXT",
         ];
 
         for sql in migrations {
