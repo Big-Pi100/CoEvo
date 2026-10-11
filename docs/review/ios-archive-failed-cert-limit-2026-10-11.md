@@ -117,12 +117,87 @@ workflow 里 `security import` + 指定 `CODE_SIGN_IDENTITY` / `PROVISIONING_PRO
 
 ## 五、我的建议顺序
 
-| 顺序 | 动作 | 谁做 |
+| 顺序 | 动作 | 谁做 | 结果 |
+|---|---|---|---|
+| 1 | **撤销多余的 Development 证书**（方案 A）| **你** | ✅ 已完成（现仅 1 张 Development + 1 张 Distribution）|
+| 2 | ~~改 workflow 加 `CODE_SIGN_IDENTITY="Apple Distribution"`（方案 B）~~ | 我 | ❌ **已试，行不通 —— 见 §七** |
+| 3 | **用原配置 + 清理后的证书重跑** | 我 | ⏳ run 38112115154 |
+| 4 | 排进下次迭代：**固定证书 + 手动签名**（方案 C）| 我 + 你导出证书 | ⏳ |
+
+---
+
+## 七、⚠️ 方案 B 的尝试失败 —— **错在我**（2026-10-11 12:29）
+
+你同意方案 B 后，我在 archive 命令里加了：
+
+```yaml
+CODE_SIGN_IDENTITY="Apple Distribution" \
+"CODE_SIGN_IDENTITY[sdk=iphoneos*]"="Apple Distribution" \
+```
+
+run **38111750123** → **仍失败**（exit 65），而错误**是我引入的**：
+
+```
+CODE_SIGN_IDENTITY = iphoneos*]=Apple Distribution        ← key 被截断了！
+error: Runner is automatically signed, but code signing identity
+       iphoneos*]=Apple Distribution has been manually specified.
+```
+
+### 两个错，都很典型
+
+| # | 错 | 原因 |
 |---|---|---|
-| 1 | **撤销多余的 Development 证书**（方案 A）| **你** |
-| 2 | 我重跑出包（本批代码已在 main）| 我 |
-| 3 | 改 workflow 加 `CODE_SIGN_IDENTITY="Apple Distribution"`（方案 B）| 我（**等你批**）|
-| 4 | 排进下次迭代：固定证书（方案 C）| 我 + 你导出证书 |
+| 1 | `"CODE_SIGN_IDENTITY[sdk=iphoneos*]"=...` **没被当成赋值**，而是普通参数 ⇒ key 被截断 | POSIX shell 的**赋值词**要求 name 是**合法标识符**，且**引号不能包住 name**（只能写成 `name="value"`）。`[` `]` `*` 都不是标识符字符 |
+| 2 | `Automatic` + **手动指定 identity** 本身**冲突** | `pbxproj` 是 `CODE_SIGN_STYLE = Automatic`；Xcode 明确拒绝这个组合（报 `conflicting provisioning settings`）|
+
+### 🔑 三条教训（已写入判据库）
+
+1. **命令行覆盖 `[sdk=…]` 条件键这条路是错的** —— Xcode 的 build setting 覆盖只对**简单键名**可靠。
+2. **「Automatic + 手动指定 identity」是自相矛盾** —— 要指定 identity 必须同时
+   `CODE_SIGN_STYLE=Manual`，而那又要求先有 profile 名。
+3. **最重要**：**「推理出来的修法」必须先小成本验证** —— 我基于「命令行优先级最高」的推断
+   直接改了 CI 并触发，**白白浪费一次出包**。
+   而**原配置在证书充足时已被实测证明能成功 4 次** ⇒ 当时正确的动作是
+   **先回滚、用清理后的证书重跑**，而不是引入一个没验证过的改动。
+   📌 判据：**当「原路径已知可通、只差一个前提」时，先补前提、别改路径**。
+
+### 已处置
+
+- ✅ **`git revert`**（`d12b414` → `097464b`）：与改动前**逐字一致**（`git diff` 为空）
+- ✅ 用**原配置 + 你清理后的证书**重跑：run **38112115154**
+- ⛔ 方案 B 作废；根治改走**方案 C（固定证书 + 手动签名）**
+
+---
+
+## 八、✅ 最终结果：回滚后**一次通过**（2026-10-11 12:43）
+
+| 项 | 值 |
+|---|---|
+| run | **38112115154** · 全步骤 ✓ · **6m5s** |
+| 出包 commit | **`097464b`**（= 回滚后的 HEAD）|
+| 产物 | `E:\CoEvo_backups\ios-20261011-card-backfill\coevo_app.ipa` · **36045998 B** · `sha256=a09f6b2ceab5d12d…` |
+| 可见性 | 已复核 **`isPrivate: true`** ✅ |
+
+### 🔑 这次「一次通过」本身就是一个结论
+
+**原配置（`CODE_SIGN_IDENTITY = iPhone Developer` + Automatic）在证书充足时完全可用** ——
+前面 4 次成功 + 这次成功后，共 **5 次**。
+
+⇒ **§三 的诊断成立**：失败的原因**只是证书被 Development 那堆占满了**，
+**不是**签名配置本身有错。（白哥清理证书后，**一个字都没改**就直接通过了。）
+
+⇒ 这也反证了 §七 的方案 B：**那是一个不必要的改动** ——
+当时正确的动作就是**补上「证书」这个前提**，而不是改路径。
+
+### ⏳ 根治（下次迭代 · 方案 C）
+
+「Development 证书会随每次 CI 归档堆积」这个**机制**仍在（`-allowProvisioningUpdates` 未变）。
+⇒ 若不加处理，**出几次包之后还会再撞上限**。
+⇒ 真正根治 = **固定证书 + 手动签名**（导出 `.p12` + `.mobileprovision` 存 Secrets，
+   指定 `CODE_SIGN_STYLE=Manual` + `CODE_SIGN_IDENTITY` + `PROVISIONING_PROFILE_SPECIFIER`，
+   去掉 `-allowProvisioningUpdates`）。**⚠️ 注意 Manual 必须三者齐备**（§七 的教训 2）。
+
+
 
 
 ## 六、本轮已做的（agent 侧）

@@ -212,3 +212,44 @@ sync_review_log 里 hl: 事件共 2 条，**全部**是 hl:8613b24d-…（另一
 - 真机验证：两端的复习列表应**逐条一致**（含那张「Beyond the ReAct Loop」）
 - §五 的「无主卡可见性判据」复核（建议项，未做）
 
+---
+
+## 八、✅ iOS 出包完成（2026-10-11 12:43）
+
+> ⚠️ 中间因 **Apple 账号证书达上限**挂了两次（一次是账号侧、一次是**我改法有 bug**）——
+> 完整过程与教训见 `docs/review/ios-archive-failed-cert-limit-2026-10-11.md`。
+> 最终用**原配置 + 白哥清理后的证书**通过。
+
+| 项 | 值 |
+|---|---|
+| 出包 commit | **`097464b`** = 本地 HEAD ✅ |
+| run | **38112115154** · 全步骤 ✓ · **6m5s** |
+| 产物 | `E:\CoEvo_backups\ios-20261011-card-backfill\coevo_app.ipa` · **36045998 B** · `sha256=a09f6b2ceab5d12d…` |
+| 包信息 | `com.coevo.coevoApp` · 1.0.0 (build 2) · 最低 iOS 13.0 |
+| 可见性 | 已复核 **`isPrivate: true`** ✅ |
+
+### 进包验证（三方对照：22:40 / 00:20 → 本批）
+
+| 标记 | ③ 22:40 | ④ 00:20 | **⑤ 本批** |
+|---|---|---|---|
+| `backfillCardsAfterPull`（AOT）| 0 | 0 | **1** ✅ |
+| `highlightCardDisplayName`（AOT）| 0 | 0 | **1** ✅ |
+| `insertStateIfAbsent`（AOT）| 0 | 0 | **1** ✅ |
+| `补建排期行`（**新增中文串** · UTF-16LE）| 0 | 0 | **2** ✅ |
+| `scheduleSyncAfterChange`（上批 · 回归）| 0 | 1 | 1 ✅ |
+| `syncWithProgressDialog`（上批 · 回归）| 0 | 1 | 1 ✅ |
+| `syncWhenAppPaused`（上批 · 回归）| 0 | 1 | 1 ✅ |
+| `userDbRevisionProvider`（更早批 · 回归）| 2 | 2 | 2 ✅ |
+
+> 🔑 **`补建排期行` 是本批唯一的新增中文串**，命中 **2 次** ⇒ 证明
+> `_say('sync.pull: 补建排期行 $n 条…')` 的**函数体确实在包里**（不只是符号名）。
+> 🔑 另外印证了上一批总结的 AOT 规律：**公开实例方法 `insertStateIfAbsent` 被保留** ✅
+>    （私有顶层变量 / 一行小函数才会被消除）。
+
+### ⏳ 真机验证（本批的重点）
+
+1. 安卓上划一条新线（或新加一个生词）→ **iOS 回前台/切回来**后，复习列表应**出现同一张卡**
+2. 两端「**今天该复习**」的计数应一致
+3. 那张「**Beyond the ReAct Loop**」（`8ae98a41`）应自动出现在 iOS 上（它此前从未复习过）
+
+
