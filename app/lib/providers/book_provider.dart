@@ -27,6 +27,9 @@ import 'package:sqflite_common/sqlite_api.dart'
 import '../services/book_db.dart';
 import '../services/ebook/book_progress_sync.dart';
 
+// 🆕 2026-10-11：「本地数据变更」的外部钩子（同 `user_db_provider.dart` 的理由）
+import 'local_change_hook.dart';
+
 /// 已打开的 `book.db`（**全局唯一**）。
 final bookDbProvider = FutureProvider<Database>((ref) async {
   try {
@@ -255,7 +258,13 @@ class BookDbRevision extends Notifier<int> {
 
   /// 在**写库成功之后**调用（顺序重要：先写库再 bump —— 反过来的话，
   /// 读端可能在写入完成前就重查，然后再也不会自动刷新）。
-  void bump() => state = state + 1;
+  void bump() {
+    state = state + 1;
+    // 🆕 2026-10-11：本地数据变更 ⇒ 安排一次同步（节流 4 秒）。
+    //    与 `userDbRevisionProvider.bump()` **同一处理**（理由见 `local_change_hook.dart`）：
+    //    挂在一处即覆盖全部书库写操作（导入 / 删除 / 进度 / 云端书架回写）。
+    onLocalDataChanged?.call();
+  }
 }
 
 final bookDbRevisionProvider =

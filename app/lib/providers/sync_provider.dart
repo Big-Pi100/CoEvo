@@ -30,6 +30,7 @@ import 'auth_provider.dart';
 import 'book_cloud_provider.dart' show kickBookUpload, bookUploadQueueProvider;
 import 'book_provider.dart';
 import 'device_id_provider.dart';
+import 'local_change_hook.dart';
 import 'sync_status_provider.dart';
 import 'user_db_provider.dart';
 import 'word_db_provider.dart' show wordQueryProvider, WordDbReady;
@@ -322,6 +323,17 @@ void syncWhenAppPaused(WidgetRef ref) {
 /// 📌 判据：**凡是「延时之后还要用引用」，那个引用必须是长寿命的**。
 ///    （姊妹条：「等条件成立」优于「等猜的时长」—— 两条都在防「延时里的失效」。）
 void scheduleSyncAfterChange() {
+  // 🔴🔴 **同步进行中 ⇒ 直接跳过**（本批最要紧的一道闸门）
+  //
+  // 若没有它，就是**无限回环**：`_runSync` 拉回新数据后要 `bump()`（让读端重算）
+  // ⇒ 那次 bump 又调本函数 ⇒ 4 秒后再同步 ⇒ 又 pull ⇒ 又 bump ⇒ …
+  // **每 4 秒一次请求，永不停**。
+  //
+  // ⚠️ 代价（如实说明）：「用户在同步期间恰好改了本地数据」也会被这一次跳过，
+  //    但**不会丢** —— 那一行仍带 `pending_push = 1`，
+  //    下一次同步（回前台 / 进后台 / 手动）必然会推它。
+  //    📌 判据：**宁可少一次同步，也不能让同步自己喂自己。**
+  if (_syncDepth > 0) return;
   final ref = _appLevelRef;
   if (ref == null) return; // 尚未注册（`app.dart` 的 initState 会注册）
   // 节流：已在等待 ⇒ 忽略本次（不重置计时器 —— 否则退化成去抖）
@@ -338,8 +350,27 @@ void scheduleSyncAfterChange() {
 /// 只能用**与 App 同生命周期**的引用。
 WidgetRef? _appLevelRef;
 
+/// 🔴 正在同步的**层数**（`> 0` = 有 `_runSync` 在跑）。
+///
+/// 用途见 [scheduleSyncAfterChange] 的第一道闸门：**同步自己引起的 bump
+/// 不得再安排一次同步**（否则就是回环）。
+/// ⚠️ 用**计数**而不是 `bool`：`_runSync` 可能被**并发**触发
+///    （回前台 + 手动点云朵 + 节流定时器），用 `bool` 会被**先结束的那个**
+///    提前复位 ⇒ 闸门在最需要的时候失效。
+/// ⚠️ 增减必须 `try/finally` 配对（`_runSync` 里有提前 return）。
+int _syncDepth = 0;
+
 /// 由 `app.dart` 的 `initState` 调用（注册根层 `ref`）。
-void registerAppSyncRef(WidgetRef ref) => _appLevelRef = ref;
+void registerAppSyncRef(WidgetRef ref) {
+  _appLevelRef = ref;
+  // 🆕 2026-10-11：**顺带注入「本地数据变更」钩子** —— 这是
+  //    「让每个写端各调一次 `scheduleSyncAfterChange()`」的替代方案：
+  //    钩子挂在两个 revision 的 `bump()` 上（见 `providers/local_change_hook.dart`），
+  //    **一处覆盖全部写操作**（划线 / 笔记 / 批量补译 / 查词 / 阅读进度 / 收藏 / 电子书）。
+  // ⚠️ 注入必须早于任何本地写操作 —— 本函数在 `app.dart` 的 `initState` 里调用，
+  //    而第一次用户写操作必然发生在启动之后 ✅
+  onLocalDataChanged = scheduleSyncAfterChange;
+}
 
 /// 节流计时器（模块级 —— 全局唯一，多个调用点共享同一个窗口）。
 Timer? _changeSyncTimer;
@@ -394,6 +425,11 @@ Future<void> _runSync(
 }) async {
   final status = ref.read(syncStatusProvider.notifier);
   status.begin();
+  // 🆕 2026-10-11：同步期间**关掉「本地变更 ⇒ 再同步」的闸门**（防回环，见 `_syncDepth`）。
+  //    ⚠️ 必须用 `finally` 配对 —— 本 `try` 里有**提前 return**（未登录 / 库不可用那条路径）
+  //       以及 `catch`；只在末尾 `--` 会让计数**只增不减** ⇒ 闸门永久关闭
+  //       ⇒ **同步再也不自动发生**（而界面一切正常，最难查的那种静默失效）。
+  _syncDepth++;
   try {
     final auth = ref.read(authProvider);
     final svc = await buildSyncService(
@@ -494,6 +530,10 @@ Future<void> _runSync(
       _friendlySyncError(e),
       needsRelogin: e is SyncUnauthorized,
     );
+  } finally {
+    // 🆕 2026-10-11：与函数开头的 `_syncDepth++` 配对。
+    //    用 `finally` 才能覆盖「提前 return」那条路径（否则计数只增不减 ⇒ 闸门永久关闭）。
+    _syncDepth--;
   }
 }
 

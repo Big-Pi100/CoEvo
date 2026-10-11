@@ -28,6 +28,9 @@ import 'package:sqflite/sqflite.dart' as sqflite;
 // `user_db.dart` 只导出函数，不 re-export 类型，故这里显式引入。
 import 'package:sqflite_common/sqlite_api.dart' show Database;
 
+// 🆕 2026-10-11：「本地数据变更」的外部钩子（让 sync 模块不必被本文件 import 回来）
+import 'local_change_hook.dart';
+
 import '../services/user_db.dart';
 
 /// 已打开的 `user.db`（**全局唯一**）。
@@ -135,7 +138,21 @@ class UserDbRevision extends Notifier<int> {
   /// ⚠️ 顺序很重要：先写库再 bump。反过来的话，读端可能在写入完成前
   ///    就重新查库 → 查到的仍是旧数据，然后**不会再自动刷新一次**
   ///    （修订号已经变过了，值没再变 → 读端不会重算）→ 表现为「这次没刷新」。
-  void bump() => state = state + 1;
+  void bump() {
+    state = state + 1;
+    // 🆕 2026-10-11：**本地数据变更 ⇒ 安排一次同步**（节流 4 秒）。
+    //
+    // 🔑 挂在这一处 = **覆盖全部本地写操作** —— 本项目的铁律是「先写库、再 `bump()`」
+    //    ⇒ 所有写端都必经这里。此前只有复习提交调了 `scheduleSyncAfterChange()`
+    //    （全仓唯一调用点）⇒ 划线 / 写笔记 / 批量补译 / 查词 / 阅读进度 / 收藏
+    //    **都不会**自动上云，只能等「进后台 / 回前台 / 手动点云朵」。
+    //    📌 判据：**「一处覆盖全部」胜过「每个调用点各加一行」**（后者必然漏，本缺口即证）。
+    //
+    // ⚠️ 钩子为 `null`（同步模块尚未注入 / 纯 Dart 单测）⇒ 静默不做事。
+    // ⚠️ **同步进行中**时接收端会自行跳过 —— 否则 `pull → bump → 再同步` 会无限回环
+    //    （那道闸门在 `sync_provider.scheduleSyncAfterChange()` 开头）。
+    onLocalDataChanged?.call();
+  }
 }
 
 final userDbRevisionProvider =
