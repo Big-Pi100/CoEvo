@@ -295,7 +295,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
 /// 请求: 无
 /// 响应: "CoEvo API — OK"
 async fn health_check() -> &'static str {
-    "CoEvo API — OK"
+    "记忆之书 API — OK"
 }
 
 #[derive(Deserialize)]

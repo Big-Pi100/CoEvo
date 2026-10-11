@@ -15,7 +15,7 @@
 - 主色调：Duo Green (#58cc02)，辅以 Sky Blue (#1cb0f6) 作为高亮色
 - 背景纯白 (#ffffff)，文字使用 Almost Black (#3c3c3c)；也可以使用深色渐变背景配白色文字
 - 卡片圆角 12px，留白充裕，数据分段展示
-- 品牌标识 "⟐ CoEvo" 放在底部
+- 品牌标识 "⟐ 记忆之书" 放在底部
 
 ### 区块与坐标
 每个区块用 `<g data-zone="区块名" transform="translate(x, y)">` 包裹。支持 zone：title（标题）、stats（数据）、code（推广码）、qr（二维码）、footer（底部品牌）。

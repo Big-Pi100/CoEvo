@@ -50,8 +50,8 @@ TEMPLATE = LEGAL_DIR / "templates" / "legal-page.html"
 
 # (源 md, 输出文件名, 页面标题, 需要的额外替换)
 PAGES = [
-    ("privacy-policy.md", "privacy.html", "CoEvo 隐私政策"),
-    ("terms-of-service.md", "terms.html", "CoEvo 用户协议"),
+    ("privacy-policy.md", "privacy.html", "记忆之书 隐私政策"),
+    ("terms-of-service.md", "terms.html", "记忆之书 用户协议"),
 ]
 
 # 🔴 占位符 → 替换值的映射（`{operator}` / `{email}` / `{privacy_url}` 由参数填充）

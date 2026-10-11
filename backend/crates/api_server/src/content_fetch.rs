@@ -57,7 +57,7 @@ use crate::content_rss::{self, ParsedItem};
 /// 既让站点知道「这不是浏览器」，又不至于因为「UA 不以 Mozilla 开头」被一部分站点拦。
 /// 实测两者都能过 NPR；取兼容性更好的这个。
 /// 🔑 **没有伪装**：`CoEvo/1.0` 明确标识了身份，只是不带 URL。
-const USER_AGENT: &str = "Mozilla/5.0 (compatible; CoEvo/1.0)";
+const USER_AGENT: &str = "Mozilla/5.0 (compatible; MemoryBook/1.0)";
 
 /// 单次 HTTP 超时（秒）。
 const HTTP_TIMEOUT_SECS: u64 = 20;

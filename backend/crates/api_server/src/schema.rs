@@ -431,9 +431,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_created ON subscription_audit_log(created_a
 -- ⚠️ 用 `INSERT OR IGNORE`（而非 DO UPDATE）：管理端可改套餐（见 `plans_handlers`），
 --    无条件 UPDATE 会**覆盖管理员改动**。价格调整走 ASC，不依赖本 seed。
 INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at)
-VALUES ('com.coevo.coevoApp.pro.monthly', 'CoEvo 专业版 · 月度', 30, 990, 0, 1, datetime('now'));
+VALUES ('com.coevo.coevoApp.pro.monthly', '记忆之书 专业版 · 月度', 30, 990, 0, 1, datetime('now'));
 INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at)
-VALUES ('com.coevo.coevoApp.pro.yearly', 'CoEvo 专业版 · 年度', 365, 7800, 1, 1, datetime('now'));
+VALUES ('com.coevo.coevoApp.pro.yearly', '记忆之书 专业版 · 年度', 365, 7800, 1, 1, datetime('now'));
 
 -- 运行时配置表
 CREATE TABLE IF NOT EXISTS app_config (
