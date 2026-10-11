@@ -490,11 +490,37 @@ class _WordLookupSelectionState extends ConsumerState<WordLookupSelection> {
     // ⚠️ `behavior: HitTestBehavior.opaque` —— 让**正文空白处**也能触发
     //    （Kindle 式「点哪都能唤出」）。若用 `deferToChild`，只有恰好点在
     //    文字上才生效，留白处点了没反应（且不报错，最难查的那种）。
+    //
+    // 🔴🔴 **widget 结构必须恒定，只切换 `onTap`**（2026-10-11 修正）
+    //
+    // 白哥真机报的「**iOS 上长按选中、松手后两头没有手柄、无法调整**
+    // （安卓两头有光标可调）」就是**违反这一条**造成的：
+    //
+    // 旧写法是 `_selectionActive ? body : GestureDetector(...)` ——
+    // 选区一出现就让 child 的 **widget 类型**从 `GestureDetector` 变成裸 `body`
+    // ⇒ Flutter **卸载旧 Element 树、重建**（确定性行为，不是推测）
+    // ⇒ `_selectionDelegate` 里的 `SelectionPoint` 指向**已 unmount 的旧 RenderObject**
+    // ⇒ 算不出选区几何 ⇒ `selectable_region.dart` 的 `_updateSelectionStatus` 走 else
+    //    分支 **`_selectionOverlay.dispose()`** ⇒ **手柄被销毁**。
+    //
+    // ⚠️ 为什么只在 iOS 暴露：**iOS 在「长按一开始」显示手柄、Android 在「长按结束」
+    //    再显示一次**（`selectable_region.dart:1000` / `:1020`）
+    //    ⇒ **Android 有兜底、iOS 没有**。
+    // ⚠️ 菜单却不受影响：`_showToolbar` 发现 overlay 为 `null` 会**重建**它
+    //    ⇒ 症状正好是「能点划线，但两头没光标」—— 与白哥的描述**逐字吻合**。
+    //
+    // 🔑 **等价性说明**：`onTap: null` 时 Flutter **不创建** `TapGestureRecognizer`
+    //    （`GestureDetector` 的 `gestures` 里没有它）⇒ 事件照旧落到 `SelectableRegion`
+    //    ⇒「单击清空选区」的原行为**一字不差**。
+    //    📌 原判据仍然成立（且这正是它的正确形态）：
+    //       「**要让出事件，只能不注册识别器**」—— 这里是**不注册**，
+    //       而不是 handler 里 `if (有选区) return;`（那会吃掉这次点击）。
     final body = widget.child;
-    final withTap = widget.onTap == null || _selectionActive
-        ? body // 无回调 / 有选区 ⇒ **不注册** ⇒ 单击归 SelectableRegion（清空选区）
+    final withTap = widget.onTap == null
+        // 这个页面本来就没有「单击」需求 ⇒ 结构恒定（永远不包 `GestureDetector`）
+        ? body
         : GestureDetector(
-            onTap: widget.onTap,
+            onTap: _selectionActive ? null : widget.onTap,
             behavior: HitTestBehavior.opaque,
             child: body,
           );
