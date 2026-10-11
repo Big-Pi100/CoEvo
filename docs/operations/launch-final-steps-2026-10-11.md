@@ -1,7 +1,7 @@
 # 上架收尾 · 白哥操作清单（2026-10-11）
 
 > **用途**：把「还需要你亲自做」的每一步写清（含精确路径 / 命令 / 判据）。
-> **我这边能做的**已做或待做，列在 §6。
+> **我这边能做的**已做或待做，列在 §7。
 > 🔴 本文**不含任何密钥**；命令请照抄（漏参数会连不上，本项目踩过）。
 
 ---
@@ -14,6 +14,7 @@
 | 后端（改名相关改动） | ✅ **已上线**（今天 21:22 · 二进制 `bb5de633…`）|
 | 腾讯云 SES 邮件模板正文 | 🟠 **要你更新**（含 1 个工作日审核）|
 | App Store Connect 上架项 | 🟠 要你填（材料包见 §4 引用）|
+| 🔴 **支付（IAP）后端配置** | 🔴 **零配置**（21:39 实测 `.env` 无 `IAP_*`）⇒ **上架前必须打通**，见 §5 |
 
 ---
 
@@ -108,7 +109,7 @@ LANG=C wsl.exe -d Ubuntu-22.04 -- bash -lc "tr -d '\r' < /mnt/e/CoEvo/scripts/de
 |---|---|---|
 | 4.1 | **App 名称 / 副标题** | 名称 `记忆之书`；副标题 `阅读英语原文 · 自动规划记忆曲线` |
 | 4.2 | **订阅产品 ×2** | Product ID **逐字**（写错是静默失败）：<br>`com.coevo.coevoApp.pro.monthly`（1 月 · ¥9.9）<br>`com.coevo.coevoApp.pro.yearly`（1 年 · ¥78）|
-| 4.3 | 🔴 **In-App Purchase Key** | **不是**已配好的那把 ASC API Key！在 ASC → *Integrations* → **In-App Purchase** tab 生成，给我 ① Key ID ② Issuer ID ③ `.p8` 全文 |
+| 4.3 | 🔴 **In-App Purchase Key** | **不是**已配好的那把 ASC API Key！在 ASC → *Integrations* → **In-App Purchase** tab 生成，给我 ① Key ID ② Issuer ID ③ `.p8` 全文<br>👉 **支付验证的完整链路 + 拿到 Key 之后我做什么 → 见 §5** |
 | 4.4 | **隐私标签** | 全仓无任何埋点/崩溃 SDK ⇒ 只用申报 4 项（邮箱/学习内容/User ID/购买记录），**Usage 与 Diagnostics 填「不收集」** |
 | 4.5 | **沙盒账号 / W-8BEN / DSA / 销售范围（只勾中国大陆）** | 见材料包 §五~§七 |
 | 4.6 | **审核备注 / 截图** | 见材料包 §八 |
@@ -116,26 +117,88 @@ LANG=C wsl.exe -d Ubuntu-22.04 -- bash -lc "tr -d '\r' < /mnt/e/CoEvo/scripts/de
 
 ---
 
-## 5. 【我做】出上架用的 app-store 包
+## 5. 🔴【你做 → 我做】支付验证（IAP）—— 上架前必须打通
+
+> **现状实测**（21:39 SSH 直查）：服务器 `/opt/coevo/.env` **10 个键，`IAP_*` 零个**
+> ⇒ `/api/iap/verify` 走到第 2 步就返回 **503**（「IAP 服务端未配置」）。
+>
+> ⚠️ **后果要说清**：用户在 App 里付费后，**端侧权益照样解锁**（StoreKit 是权威），
+> 但**后端对不上账** —— 订阅状态不落到账号上 ⇒ **换设备 / 重装后权益丢失**。
+> ⇒ 这是**上架前必须闭环**的一项，不是可选项。
+
+### 5.1 支付验证是怎么走的（读懂它就知道要准备什么）
+
+**`POST /api/iap/verify`**（body：`user_id` + `transaction_id`）：
+
+| 步 | 做什么 | 卡住会怎样 |
+|---|---|---|
+| 1 | 鉴权（**必须已登录**）| 401 |
+| 2 | **读配置**（4 个 `IAP_*` 变量）| 🔴 **缺 ⇒ 503**（**当前就是这里**）|
+| 3 | 调 **Apple App Store Server API** 查这笔交易 | 查不到 ⇒ 502 |
+| 4 | 校验 **bundle / product / environment** 三项 | 不符 ⇒ 422 |
+| 5 | 记账（`iap_transactions` + `payment_orders`）| 500 |
+| 6 | 写订阅到期日（🔴 **直接用 Apple 的 `expiresDate`**，不是本地「加 N 天」）| 500 |
+
+⇒ 成功返回 `{isActive, expiresAt, productId, originalTransactionId}`。
+
+### 5.2 【你做】App Store Connect 里要做的
+
+| # | 事项 | 关键点 |
+|---|---|---|
+| 5.2.1 | **建 2 个订阅产品** | 类型「**自动续期订阅**」；Product ID **逐字**：<br>`com.coevo.coevoApp.pro.monthly`（¥9.9 / 1 个月）<br>`com.coevo.coevoApp.pro.yearly`（¥78 / 1 年）<br>⚠️ 每个都要填**本地化显示名 + 价格 + 审核截图** |
+| 5.2.2 | 🔴 **生成 In-App Purchase Key** | ASC → *Users and Access* → **Integrations** → **In-App Purchase** tab → 生成。<br>**不是**已配好的那把 ASC API Key！给我 ① **Key ID** ② **Issuer ID** ③ **`.p8` 文件内容** |
+| 5.2.3 | **建沙盒测试账号** | ASC → *Users and Access* → **Sandbox → Testers** → 新建（**不能**用你自己的 Apple ID 邮箱）。真机沙盒购买要用它登录 |
+| 5.2.4 | ⚠️ **订阅要随 App 首次提审一起提交** | Apple 要求订阅产品与 App 版本**同批送审**；只建产品不送审 = 不会生效 |
+
+### 5.3 【我做】拿到 §5.2.2 的三样之后
+
+1. 把 4 个变量写进 `/opt/coevo/.env`：
+   `IAP_KEY_ID` · `IAP_ISSUER_ID` · `IAP_PRIVATE_KEY` · `IAP_ENVIRONMENT`
+   🔴 **`IAP_PRIVATE_KEY` 填的是 `.p8` 的「文件内容」**（含 `-----BEGIN PRIVATE KEY-----`），
+   **不是文件路径** —— 填路径会报「私钥内容为空」。
+2. 重启 → 复测 `/api/iap/verify`：**不再是 503**（会变成查证类错误，那说明配置读到了）。
+3. 你在 iPhone 上用**沙盒账号**走一遍购买 → 我 SSH 查 `iap_transactions` / `subscription_expires` 确认落库。
+
+### 5.4 🔴 一个要你定的开关：`IAP_ENVIRONMENT`
+
+| 值 | 用在哪 |
+|---|---|
+| `Sandbox` | **沙盒联调**（就是现在这一步）—— 连 Apple 沙盒，测试购买不花钱 |
+| `Production`（**默认**；不设即此项）| 正式上线 |
+
+⇒ 联调期设 `Sandbox`；**上架前必须改回 `Production`**（或删掉该变量）。
+⚠️ 设错的表现是 Apple 返回 **404**，而错误信息**不会**告诉你「是环境不匹配」
+（代码注释的原话：`若为 404，检查 IAP_ENVIRONMENT 是否与交易来源环境一致`）。
+
+### 5.5 ⚠️ 已知缺口（不阻塞本次上架，但你要知道）
+
+**Apple 服务器通知（Server Notifications V2）未实现**（全仓 grep 零命中）——
+续订 / 退款 / 家庭共享变更等 Apple **主动推送**的事件我们收不到
+⇒ 只能靠「用户打开 App 时上报交易」来对账。
+日历层面的影响：**续费后，用户不打开 App 就不会更新到期日**。
+
+---
+
+## 6. 【我做】出上架用的 app-store 包
 
 ⚠️ 当前那个 IPA 是 **ad-hoc**，**不能上架**。上架必须用 `method=app-store` 出一次包。
 （说一声我全自动跑，约 6–8 分钟；仓库会临时改公开，出完立刻改回私有。）
 
 ---
 
-## 6. 我这边已经做 / 待做
+## 7. 我这边已经做 / 待做
 
 | 状态 | 事项 |
 |---|---|
 | ✅ 已做 | 法务页部署上线（20:57）· 邮件模板正文改名（4 处）· SES 上线文档/README 改名与更正 · 模板规范自查通过 |
 | ✅ 已做 | 全项目「对外可见」的 CoEvo→记忆之书（上一轮 `13f108e`：邮件主题 / 套餐名 / health / 内容源 UA / 分享图 prompt）|
 | ✅ 已做 | **后端部署上线（21:22）** · 上传 / 替换 / 重启 / 逐条对照 + 探针 35 项全过（§3）|
-| ⏳ 待你 | 收到 In-App Purchase Key 后：配 `IAP_*` 环境变量 + 重启 + 真机验订阅 |
+| ⏳ 待你 | 收到 In-App Purchase Key（3 样）后：配 4 个 `IAP_*` + 重启 + 真机沙盒验订阅（**详见 §5**）|
 | 🔴 待定 | **C 项：注销时撤销 Apple 授权** —— **有时效性**（refresh_token 只在登录那一刻由 Apple 返回）⇒ 越晚做越没意义 |
 
 ---
 
-## 7. ⚠️ 两处更正（我之前说错的）
+## 8. ⚠️ 两处更正（我之前说错的）
 
 | 我说过 | 实测 |
 |---|---|
