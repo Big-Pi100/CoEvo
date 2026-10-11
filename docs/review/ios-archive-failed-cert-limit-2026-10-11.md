@@ -37,50 +37,95 @@ The following build commands failed:
 > 🔑 判据：**「失败在签名/部署阶段」优先怀疑环境与凭据，而不是被测代码** ——
 >    否则会去改一个根本没错的文件。
 
-## 三、根因
+## 三、🔴 根因（硬证据：一行 `pbxproj` 配置）
 
-workflow 用 **`-allowProvisioningUpdates`**（**自动签名管理**）：
-
-```yaml
-xcodebuild ... -allowProvisioningUpdates \
-  -authenticationKeyPath ~/private_keys/AuthKey_$ASC_KEY_ID.p8 ...
+```
+app/ios/Runner.xcodeproj/project.pbxproj:
+    "CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";   ← 🔴 Development 证书
+    CODE_SIGN_STYLE = Automatic;
 ```
 
-⇒ Xcode 会用 App Store Connect API 去**查找/创建**证书与 profile。
-当账号的**证书数量达上限**时，它既**不能新建**、又**找不到可用的 profile**
-⇒ 上面两条错误**同时出现**（它们是同一个原因的两面）。
+**`CODE_SIGN_IDENTITY = "iPhone Developer"` ⇒ Archive 阶段用的是 Development 签名**
+⇒ Xcode 去找 **`iOS App Development` provisioning profile**
+⇒ 这正是 CI 报的 `No profiles for 'com.coevo.coevoApp' ... iOS App Development`。
+（这一行是 **Flutter 模板的默认值**，从未改过 ⇒ 一直是 Development 签名。）
 
-⚠️ workflow 里**没有**「清理旧证书」的步骤（`✓ 清理私钥` 只删**本地**的 `~/private_keys/*.p8`，
-不碰 Apple 账号里的证书）⇒ 证书是**只增不减**的。
+### 完整根因链
 
-## 四、要白哥做的事（agent 无法代做 —— 需 Apple 账号登录）
+| # | 环节 |
+|---|---|
+| 1 | `pbxproj` 的 `CODE_SIGN_IDENTITY = iPhone Developer` ⇒ archive 需要 **Development 证书 + Development profile** |
+| 2 | workflow 开着 **`-allowProvisioningUpdates`** ⇒ Xcode 会自动**查找/创建**证书与 profile |
+| 3 | 而 workflow **没有任何清理账号证书的步骤**（`✓ 清理私钥` 只删**本地** `~/private_keys/*.p8`）|
+| 4 | ⇒ 每次 CI 归档都可能**新增一张 Development 证书** ⇒ **只增不减** |
+| 5 | ⇒ 攒到 Apple 账号上限 ⇒ **既不能新建、又找不到可用 profile** ⇒ **本轮 archive 失败** |
 
-### 🔴 方案 A（最快 · 约 5 分钟，出完这次包）
+> ⚠️ 白哥贴的列表印证了这一点：**`Development` 类型（Created via API）一大堆**，
+> 而 **`Distribution Managed` 只有 1 张**（`xu bai` 创建）。
+> 🔑 而 Release 归档**本来就应该用 Distribution 签名** —— 现在这行是模板默认值，属于**未修的历史遗留**。
+
+### 顺带核实的（这些**没问题**）
+
+| 项 | 结论 |
+|---|---|
+| `export-options.plist` 位置 | ✅ 在 `app/.github/`（workflow 的 working-directory 是 `app`）|
+| `method` 是否被 input 覆盖 | ✅ **会覆盖**（`PlistBuddy -c "Set :method $METHOD"`）⇒ `-f method=ad-hoc` 生效 |
+| `destination` | ✅ 按 `upload` 切换 |
+| 本机 `analyze_inproc` | ✅ **error = 0**（Dart 层无问题）|
+
+
+## 四、怎么办（A 你操作 · B/C 我来改，等你批）
+
+### 🔴 方案 A（立刻解眼前 · 你操作 · 约 3 分钟）
+
+⚠️ **要撤销的是 `Development` 类型那一堆**（不是 `Distribution`）——
+因为失败发生在 **archive 阶段的 Development 签名**（见 §三）。
 
 1. 打开 <https://developer.apple.com/account/resources/certificates/list>
-2. 看 **Certificates** 里 **iOS Distribution** 证书有几张
-3. **Revoke（撤销）多余的** —— ⚠️ **保留最新的一张**
-   （撤销**不影响**已上架的版本；但没有可用证书就**无法**再出包）
-4. 再看 <https://developer.apple.com/account/resources/profiles/list>，
-   删掉 `com.coevo.coevoApp` 相关的**旧/多余** profile
-5. 回来说一声，我重跑出包（**改公开 → CI → 下载 → 改回**，全流程我能自动做）
+2. 把 **Type = `Development`** 的那些（Created via API）**撤销/删除** ——
+   **留 1 张**即可（或者全删，Xcode 下次会自动建 1 张新的）
+3. 🔴 **务必保留** `xu bai` 那张 **`Distribution Managed`** —— 出包要用它
+4. （可选）<https://developer.apple.com/account/resources/profiles/list>
+   删掉 `com.coevo.coevoApp` 的**旧 profile**
+5. **回来说一声，我立刻重跑**（改公开 → CI → 下载 → 改回私有，全流程我自动做）
 
-### 🟢 方案 B（一劳永逸 · 建议下一次迭代做）
+> ✅ 撤销 Development 证书**不影响已上架版本**，也不影响 Distribution 出包。
+> ⚠️ 只会影响「本机 Xcode 真机调试」—— 而 Xcode 下次会自动重建一张，无需担心。
 
-改用**固定证书 + 手动签名**，彻底摆脱自动管理：
+### 🟢 方案 B（根治 · 我改 workflow · 等你批）
 
-1. 在 Apple 网站**导出 1 份** iOS Distribution 证书（`.p12`，设密码）
-2. 下载对应的 `.mobileprovision`
-3. 两者存成 GitHub Secrets（`BUILD_CERTIFICATE_BASE64` / `PROVISIONING_PROFILE_BASE64` / `P12_PASSWORD`）
-4. workflow 改为：落盘证书 → `security import` → 装 profile →
-   `CODE_SIGN_IDENTITY` + `PROVISIONING_PROFILE_SPECIFIER` 指定，
-   **去掉** `-allowProvisioningUpdates`
-5. ⇒ 不再自动创建证书 ⇒ **不再有上限问题**，且出包更稳
+在 `.github/workflows/ios-archive.yml` 的 `xcodebuild archive` 里**加一行**：
 
-> 📌 代价对比：A 是「每次到上限就手动清一次」；B 是「一次配置，长期不用管」。
->    建议 **A 先解眼前**、**B 排进下次迭代**。
+```yaml
+CODE_SIGN_IDENTITY="Apple Distribution"
+```
 
-## 五、本轮已做的（agent 侧）
+**理由**：Release 归档**本来就该用 Distribution 签名** —— 现在 `pbxproj` 里那行
+`"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer"` 是 **Flutter 模板的默认值，从未改过**。
+⇒ 改完之后 **archive 不再需要 Development 证书** ⇒ **不再堆积** ⇒ 上限问题消失。
+**前提**：账号里有可用的 Distribution 证书（你有 1 张 ✅）。
+
+> 📌 我不擅自改 workflow（等你点头）。
+
+### 🔵 方案 C（一劳永逸 · 更彻底）
+
+**固定证书 + 手动签名**：导出 1 份 `.p12` + 1 份 `.mobileprovision` 存成 GitHub Secrets，
+workflow 里 `security import` + 指定 `CODE_SIGN_IDENTITY` / `PROVISIONING_PROFILE_SPECIFIER`，
+**去掉** `-allowProvisioningUpdates` ⇒ 完全不依赖自动管理。
+
+---
+
+## 五、我的建议顺序
+
+| 顺序 | 动作 | 谁做 |
+|---|---|---|
+| 1 | **撤销多余的 Development 证书**（方案 A）| **你** |
+| 2 | 我重跑出包（本批代码已在 main）| 我 |
+| 3 | 改 workflow 加 `CODE_SIGN_IDENTITY="Apple Distribution"`（方案 B）| 我（**等你批**）|
+| 4 | 排进下次迭代：固定证书（方案 C）| 我 + 你导出证书 |
+
+
+## 六、本轮已做的（agent 侧）
 
 | 动作 | 结果 |
 |---|---|
