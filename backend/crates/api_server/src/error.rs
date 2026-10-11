@@ -1,4 +1,4 @@
-//! Unified error types for CoEvo API server.
+//! Unified error types for the 记忆之书 API server.
 //!
 //! Replaces ad-hoc `String` errors and `Json(serde_json::json!({"error": ...}))`
 //! with structured, thiserror-powered error handling.

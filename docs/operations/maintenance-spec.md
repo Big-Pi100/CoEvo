@@ -231,7 +231,7 @@ tar cz prompts/ | \
 
 | 端点 | 期望响应 |
 |:-----|:---------|
-| `GET /api/health` | `CoEvo API — OK` (200) |
+| `GET /api/health` | `记忆之书 API — OK` (200) |
 | `GET /` | 落地页 HTML (200) |
 | `GET /app/` | Flutter Web index.html (200) |
 

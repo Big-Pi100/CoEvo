@@ -320,7 +320,7 @@ async fn main() {
             "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.yearly', '记忆之书 专业版 · 年度', 365, 7800, 1, 1, datetime('now'))",
             // 🔴 2026-10-11 补：**老库的名字要单独 UPDATE 一次**。
             //    上面两条是 `INSERT OR IGNORE` ⇒ 对**已存在的行是空操作**
-            //    ⇒ 老库的 `name` 会**永久停在 `CoEvo 专业版 · *`**（线上就是这种）。
+            //    ⇒ 老库的 `name` 会**永久停在改名前的旧值**（2026-10-11 之前线上就是这种）。
             //    📌 判据：**配置类 seed 若是唯一权威，不能只靠 `OR IGNORE`/`DO NOTHING`**
             //       —— 必须配一条 `UPDATE ... WHERE 有变化`，否则老库永远漂移。
             //    （`WHERE name <> 新值` 让它在已更新后成为 0 行影响的空操作 ⇒ 幂等。）

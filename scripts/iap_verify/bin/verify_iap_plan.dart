@@ -173,13 +173,13 @@ void main() {
   print('\n[⑤] 法定要件文案');
 
   final notice = SubscriptionLegalText.autoRenewNotice(
-    title: 'CoEvo 专业版',
+    title: '记忆之书 专业版',
     durationLabel: '1 个月',
     priceLabel: '¥9.9',
   );
   // 🔑 断言「关键词存在」而不是「整句相等」—— 文案可以润色，
   //    但**法定要素不能丢**。这是「锁语义形状、不锁拼写」的用法。
-  check('含标题', notice.contains('CoEvo 专业版'));
+  check('含标题', notice.contains('记忆之书 专业版'));
   check('含时长', notice.contains('1 个月'));
   check('含价格', notice.contains('¥9.9'));
   check('🔴 含「自动续期」字样', notice.contains('自动续期'));

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CoEvo · 邮件模板规范自查（腾讯云 SES + 邮件客户端兼容性）
+"""记忆之书 · 邮件模板规范自查（腾讯云 SES + 邮件客户端兼容性）
 
 用法：
     python scripts/check_email_template.py                              # 查默认目录全部模板

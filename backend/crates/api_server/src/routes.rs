@@ -293,7 +293,7 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
 
 /// GET /health — 服务器健康检查
 /// 请求: 无
-/// 响应: "CoEvo API — OK"
+/// 响应: "记忆之书 API — OK"
 async fn health_check() -> &'static str {
     "记忆之书 API — OK"
 }
