@@ -1012,9 +1012,14 @@ void main() {
         ? badge.substring(_onTapStart, _onTapEnd)
         : '';
     check(
-      '🔴 切片有效（截到了 `syncCloudOnTap` 函数体）',
-      onTapBody.isNotEmpty && onTapBody.contains('syncStatusSummary'),
-      '切片长 ${onTapBody.length} —— 哨兵用 `syncStatusSummary`（正常路径里才有）',
+      '🔴 切片有效（两个锚点都找到了：`void syncCloudOnTap(` → `class SyncCloudBadge`）',
+      // 🔴 2026-10-11 修：原来哨兵用 `syncStatusSummary`（函数体里的一个**调用**）
+      //    ⇒ 该调用被换成 `syncWithProgressDialog` 后**哨兵失效 ⇒ 假红**
+      //    （实测：切片 270 字符**明明有效**，却判无效）。
+      //    教训：**哨兵不能用「易变的内部调用」** —— 它会在实现演进时变成假红，
+      //    而假红会训练人忽略红灯。改用**锚点存在性**（与全仓其余 ~20 处哨兵一致）。
+      _onTapStart >= 0 && _onTapEnd > _onTapStart,
+      '起点 $_onTapStart · 终点 $_onTapEnd · 切片长 ${onTapBody.length}',
     );
     final notSubscribedBranch =
         RegExp(r'if \(!subscribed\) \{([\s\S]*?)\n  \}').firstMatch(onTapBody)?.group(1) ??

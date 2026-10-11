@@ -126,7 +126,7 @@ List<IapPlanDisplay> defaultPlans(
     [
       IapPlanDisplay(
         productId: kProductMonthly,
-        title: 'CoEvo 专业版',
+        title: '记忆之书 专业版',
         months: 1,
         durationLabel: '1 个月',
         // 🔴 与后端 seed（`subscription_plans.price`）一致：990 分
@@ -135,7 +135,7 @@ List<IapPlanDisplay> defaultPlans(
       ),
       IapPlanDisplay(
         productId: kProductYearly,
-        title: 'CoEvo 专业版',
+        title: '记忆之书 专业版',
         months: 12,
         durationLabel: '1 年',
         fallbackFen: 7800,

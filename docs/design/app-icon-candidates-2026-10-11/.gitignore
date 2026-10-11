@@ -1,0 +1,11 @@
+# 原图标备份（Flutter 默认蓝标）
+# 原版本来就躺在 git 历史里，这里只是**本地保险**，不需要重复存储
+_原图标备份/
+
+# 首次生成的候选导出（正式版已安装进 app/）
+# 保留 master-1024.png 作为母版留档即可
+ios-full/
+android-full/
+
+# AI 生成的大图（已附 README 说明为什么不能用）
+_ai-rejected/*.png

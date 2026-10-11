@@ -542,7 +542,7 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
     final notice = selected == null
         ? SubscriptionLegalText.autoRenewNoticeGeneric()
         : SubscriptionLegalText.autoRenewNotice(
-            title: 'CoEvo 专业版',
+            title: '记忆之书 专业版',
             durationLabel: selected.durationLabel,
             priceLabel: selected.priceLabel,
           );

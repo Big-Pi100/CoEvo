@@ -22,4 +22,17 @@
 const String kCoEvoVersion = '1.0.0';
 
 /// App 显示名（「关于」页用）。
-const String kCoEvoName = 'CoEvo';
+///
+/// 🔴 2026-10-11 白哥定案：**产品名从 `CoEvo` 改为「记忆之书」**。
+/// ⚠️ 改这里不够 —— **同一事实有 4 处载体，必须一起改**（本次已全改）：
+/// | # | 载体 | 值 |
+/// |---|---|---|
+/// | 1 | 本常量（「关于」页「应用名称」那行）| `记忆之书` |
+/// | 2 | iOS `Info.plist` 的 `CFBundleDisplayName` | `记忆之书` |
+/// | 3 | Android `AndroidManifest.xml` 的 `android:label` | `记忆之书` |
+/// | 4 | **ASC 里的 App 名称 + 订阅产品本地化名** | ⏳ 白哥在网页改 |
+/// 🔑 判据：**改名是一组动作，不是一处字符串** —— 漏一处就会出现
+///    「App 叫记忆之书、订阅叫 CoEvo 专业版」这种割裂（Apple 审核也会挑）。
+/// 📌 `Bundle ID`（`com.coevo.coevoApp`）与 `Product ID` **不改** —— 它们是技术标识，
+///    改了要重建证书/描述文件/IAP 产品，且与显示名无关。
+const String kCoEvoName = '记忆之书';

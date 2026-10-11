@@ -37,8 +37,12 @@ const double kShareCardHeight = 480;
 /// 导出倍率 ⇒ 1080 × 1440（小红书/朋友圈的常见竖版尺寸）。
 const double kShareCardPixelRatio = 3.0;
 
-/// 品牌名 —— 规格「只放品牌名，让用户主动搜索」。
-const String kShareCardBrand = 'CoEvo';
+/// 品牌名 —— 规格「只放品牌名，让用户主动搜索」（分享图 / 分享文案用）。
+///
+/// 🔴 2026-10-11：随产品名改为「记忆之书」（原名 `CoEvo`）。
+/// ⚠️ `share_card.dart` 里对它调了 `.toUpperCase()` —— 中文**不受影响**（原样返回），
+///    但**排版宽度会变**（4 个汉字 ≫ 5 个拉丁字母的字宽）⇒ 分享图上线前请目视一眼。
+const String kShareCardBrand = '记忆之书';
 
 /// 品牌副标（放右下角）。
 ///
