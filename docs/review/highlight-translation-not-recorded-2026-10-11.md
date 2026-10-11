@@ -310,3 +310,57 @@ merge（「有值者胜」）
 **上传 / 替换 / 重启 / 验证由 agent 执行**（`docs/deploy/README.md` §2.1/§2.4）。
 
 *2026-10-11 傍晚 · 第二轮：读代码定位「三个态」；SSH 直查服务端表结构（未采信「应该没问题」）*
+
+---
+
+## 十、后端部署记录（2026-10-11 18:00 · 已上线）
+
+白哥跑构建（脚本 **5/5 自检**全过：① 新鲜度 ② 常驻标记）→ **agent 执行**上传 / 替换 / 重启 / 验证。
+
+### 10.1 部署前基线（用于逐条对照，而不是「感觉好了」）
+
+| 探针 | 基线值 |
+|---|---|
+| 二进制 | `804e44cf…` · mtime **Oct 10 23:59** |
+| **阴性对照**：`ALTER TABLE sync_highlight ADD COLUMN translation` | **0** |
+| **阳性对照**：`IF NOT EXISTS sync_book (` | **1** |
+| `sync_highlight` 列 | 14 列 · **无 `translation`** |
+| `sync_highlight` 行数 | **4** |
+
+### 10.2 部署动作
+
+| 步 | 结果 |
+|---|---|
+| 产物 sha256（本机） | `9928f2ec4c0ff80bc4b7059018035cd659b24b09abea002374d746159d12ff94` |
+| 服务器侧校验同一 sha256 | ✅ 一致（证明传的就是它） |
+| 回滚点 | `/opt/coevo/bin/coevo_backend.prev` ✅ |
+| 替换方式 | `mv`（**同分区原子 rename** —— 直接 `cp` 覆盖运行中的二进制会 `Text file busy`） |
+| prompts / cefr | ✅ 已同步（`cp -a src/. dst/`，VPS 无 rsync） |
+| 重启 + health | ✅ `CoEvo API — OK` · `active` |
+
+🔴 **预检刻意不用 `set -e`**：README §7 记着那次事故 —— `ldd … | grep -q "not found"`
+在**无匹配时 grep 返回 1** ⇒ 配 `set -e` 会**静默中断脚本**（而中断点可能在「已换二进制、未重启」之间）。
+本次改写为 `if ldd … | grep -q "not found"; then fail; fi`（`if` 条件里的失败不触发 `set -e`）。
+
+### 10.3 部署后验证（逐条对照 10.1）
+
+| 判据 | 结果 |
+|---|---|
+| 二进制 sha256 | `9928f2ec…` ✅ = 上传物 · mtime **Oct 11 18:00** |
+| **阴性对照** | **0 → 3** ✅ |
+| **阳性对照** | **1 → 1** ✅（证明检测器没坏，不是「全 0 假绿」） |
+| 🔴 **DB 列（最硬判据）** | `…, received_at, **translation**` ✅ **追加在末尾**（与服务端 schema 一致） |
+| 行数 | 4 → **4** ✅ **未丢数据** |
+| 重启窗口日志 | **0** 条 error/panic ✅ |
+| `verify_v016_deploy.py`（README 标准探针） | ✅ **35 项全过**（含 ④-11 阴性对照「旧登录删全部 token」归零） |
+
+### 10.4 云端现状与剩下的端到端一步
+
+部署后 4 行划线的 `translation` **全是 `None`** —— 它们是**部署前**推上去的，**符合预期**。
+
+⇒ 只差**端到端**：设备端同步一次后，`sync_highlight.translation` 应出现非空值。
+（验证方式：设备同步 → agent 查云端 `SELECT id, translation FROM sync_highlight`。）
+
+📌 **至此服务端与端侧的表结构才真正一致**（此前是「端侧有列、服务端没有」的静默不一致）。
+
+*2026-10-11 18:0x · 部署：本地前置全绿 → 白哥构建 → agent 上传/替换/重启 → 前后对照验证*
