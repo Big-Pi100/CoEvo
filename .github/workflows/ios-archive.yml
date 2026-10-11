@@ -253,31 +253,6 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          # 🔴🔴 2026-10-11：**明确用 Distribution 签名归档**（此前用模板默认的 Development）。
-          #
-          # # 为什么必须覆盖（真机踩到的出包阻塞）
-          #
-          # `app/ios/Runner.xcodeproj/project.pbxproj` 里是 Flutter 模板的默认值：
-          #     "CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
-          # ⇒ archive 阶段用 **Development 签名** ⇒ Xcode 去找 `iOS App Development` profile。
-          # 而本步骤开着 `-allowProvisioningUpdates`（自动管理）⇒ 每次归档都可能
-          # **新增一张 Development 证书** ⇒ 证书**只增不减** ⇒ 攒到 Apple 账号上限后：
-          #     error: Your account has reached the maximum number of certificates.
-          #     error: No profiles for 'com.coevo.coevoApp' were found
-          # ⇒ **出包直接失败**（2026-10-11 12:11 run 38110797295 就是这样挂的）。
-          #
-          # 🔑 而 **Release 归档本来就该用 Distribution 签名** —— 用 Development 是模板遗留。
-          #    改到 Distribution 后：**不再消耗 Development 证书** ⇒ 不再堆积。
-          #    且 Distribution 证书/profile 是**每个 bundle id 一套、长期复用**，不会每次新建。
-          #
-          # ⚠️ 两条都传：pbxproj 里的键带 `[sdk=iphoneos*]` **条件**，
-          #    只覆盖无条件键在部分 Xcode 版本下可能不彻底 ⇒ 带条件的那条一并覆盖。
-          #    📌 命令行 build setting 优先级最高（覆盖 pbxproj），引号保住 `[` 不被 shell 解释。
-          #
-          # ⚠️ 为什么**不**直接改 `pbxproj`（那样更"干净"）：它由 Xcode/Flutter 维护，
-          #    改它的格式风险高（见本步骤上方原有的那条注释）；且**本机调试仍该用 Development**
-          #    ⇒ 只在 CI 的归档命令上覆盖，是本机与 CI 各取所需的做法。
-          # 📄 排查记录：`docs/review/ios-archive-failed-cert-limit-2026-10-11.md`
           xcodebuild -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
@@ -288,8 +263,6 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            "CODE_SIGN_IDENTITY[sdk=iphoneos*]"="Apple Distribution" \
             archive
 
       # ── 导出（上传与否由 plist 的 destination 决定）─────────────────────
