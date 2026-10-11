@@ -197,6 +197,65 @@ error: Runner is automatically signed, but code signing identity
    指定 `CODE_SIGN_STYLE=Manual` + `CODE_SIGN_IDENTITY` + `PROVISIONING_PROFILE_SPECIFIER`，
    去掉 `-allowProvisioningUpdates`）。**⚠️ 注意 Manual 必须三者齐备**（§七 的教训 2）。
 
+---
+
+## 九、✅ 根治完成 —— 换了条**不需要导出证书**的路（2026-10-11 12:54）
+
+白哥：「现在就可以，根治」。我选了**成本更低**的做法 —— 因为失败发生在 **Archive 阶段的
+Development 签名**（§三 已证），而 **Archive 其实不需要签名**：
+
+### 改法：Archive 不签名，签名全交给 Export
+
+```yaml
+xcodebuild -workspace ios/Runner.xcworkspace \
+  -scheme Runner -configuration Release \
+  -archivePath build/ios/archive/Runner.xcarchive -sdk iphoneos \
+  DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  archive
+```
+（并**去掉** archive 的 `-allowProvisioningUpdates` + API Key 参数 ——
+ 它们只在「归档时签名」这条路上有用，留着反而可能触发证书创建。）
+
+### 为什么这样能根治（四步）
+
+| # | 环节 |
+|---|---|
+| 1 | 失败发生在 **Archive 阶段的 Development 签名** ⇒ 它需要 Development 证书/profile |
+| 2 | **Archive 本身不需要签名** —— 归档只要产物，签名可以晚一步做 |
+| 3 | `CODE_SIGNING_ALLOWED=NO`（配合 `REQUIRED=NO`）⇒ 跳过签名 ⇒ **不再需要 Development 证书** ⇒ **不再堆积** |
+| 4 | 签名交给 **Export 阶段** —— 那里本来就有 `signingStyle=automatic` + API Key + `-allowProvisioningUpdates`；<br>而它用的是 **Distribution** 证书/profile ⇒ **每个 bundle id 一套、长期复用**，不会每次新建 |
+
+> 🔑 对比起来，§五 的**方案 C（固定证书）就不必做了** ——
+> 那条路要导出 `.p12` / `.mobileprovision`（对没有 Mac 的环境还挺麻烦），
+> 而本方案**零凭据改动**。方案 C 留作**万一**的退路。
+
+### 结果
+
+| 项 | 值 |
+|---|---|
+| run | **38112765397** · 全步骤 ✓ · **5m40s** |
+| 出包 commit | **`6575f35`** = 本地 HEAD ✅ |
+| 产物 | `E:\CoEvo_backups\ios-20261011-rootfix\coevo_app.ipa` |
+| 可见性 | 已复核 **`isPrivate: true`** ✅ |
+
+### ⚠️ 这个改动的验证强度（如实标注）
+
+| | 状态 |
+|---|---|
+| **改后能否正常出包** | ✅ **已证**（run 38112765397 全绿）|
+| **「Development 证书不再堆积」** | ⏳ **待证** —— 这需要**多次出包**才能观察到，且**我无法直查 Apple 账号** |
+
+**可证伪的方式**：下次出包后再看
+<https://developer.apple.com/account/resources/certificates/list>，
+若 `Development` 仍只有 **1 张** ⇒ **证实根治**；
+若又多出 ⇒ 说明 archive 仍在签 ⇒ **回退到方案 C（固定证书 + 手动签名）**。
+
+> 📌 判据：**「改完 CI 绿了」≠「根因被消除了」** ——
+> 前者只证明「这条路能走通」，后者要**观察那个会增长的量是否停止增长**。
+
+
 
 
 
