@@ -255,12 +255,23 @@ class _WordLookupSelectionState extends ConsumerState<WordLookupSelection> {
       // 🔑 来源标题是**可选**的（`HighlightSource.title` 可空）——
       //    拿不到就传 null，浮层退化为只写「翻译」（不显示假的来源）。
       sourceLabel: widget.highlightSource?.title,
-      onRemember:
-          widget.highlightSource == null ? null : () => _enqueueHighlight(text),
+      // 🆕 2026-10-11：把**刚翻出来的译文**交给入队 —— 随划线一起入库。
+      //
+      // 🔴 不接住它就是**白花**：用户为这段文字付了额度（免费 10 次/月 · 订阅无限），
+      //    而此前点「划线记住这段」之后译文**当场被丢掉** ⇒ 复习时只剩骨架、
+      //    笔记页也没有（白哥真机反馈原话：「划线后笔记中没有记录译文，
+      //    复习时也没有译文提示」）。
+      // ✅ 零新增成本 —— 译文在点这个按钮**之前就已经在手上**。
+      // ⚠️ 译文可空（浮层理论上可能只有空白段）⇒ 交给下游的归一化（`add()`）处理。
+      onRemember: widget.highlightSource == null
+          ? null
+          : (String? translation) {
+              _enqueueHighlight(text, translation: translation);
+            },
     );
   }
 
-  Future<void> _enqueueHighlight(String text) async {
+  Future<void> _enqueueHighlight(String text, {String? translation}) async {
     final src = widget.highlightSource!;
     final span = locateSelection(plainText: src.plainText, picked: text);
 
@@ -281,6 +292,8 @@ class _WordLookupSelectionState extends ConsumerState<WordLookupSelection> {
         startOffset: span.start,
         endOffset: span.end,
         text: text,
+        // 🆕 从「翻译浮层」那条路径来的时候带着译文；从菜单直接划线时是 null
+        translation: translation,
       );
       ok = r == HighlightEnqueueResult.ok;
     } catch (e, st) {

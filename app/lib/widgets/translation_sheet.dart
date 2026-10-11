@@ -41,7 +41,7 @@ Future<void> showTranslationSheet(
   BuildContext context, {
   required String text,
   String? sourceLabel,
-  VoidCallback? onRemember,
+  ValueChanged<String?>? onRemember,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -76,8 +76,11 @@ class TranslationSheet extends ConsumerStatefulWidget {
   /// 顶栏那行来源（如 `Why We Read Slowly`）。`null` ⇒ 只显示「翻译」。
   final String? sourceLabel;
 
-  /// ③ 的出口：把这段加进记忆队列。`null` ⇒ 不显示该按钮。
-  final VoidCallback? onRemember;
+  /// ③ 的出口：把这段加进记忆队列（并**带上这段的译文**）。`null` ⇒ 不显示该按钮。
+  ///
+  /// ⚠️ 参数是 `String?` **不是**无参 —— 译文可空（浮层理论上只拿到空白段时），
+  ///    由下游 `HighlightRepository.add` 统一归一化。
+  final ValueChanged<String?>? onRemember;
 
   @override
   ConsumerState<TranslationSheet> createState() => _TranslationSheetState();
@@ -110,7 +113,11 @@ class _TranslationSheetState extends ConsumerState<TranslationSheet> {
   Future<void> _copyAll(List<TransSegment> segments) async {
     // 🔑 译文不是「选区」⇒ 用 `Clipboard`（不能用 `region.copySelection`）。
     //    多句时按行拼，让粘到别处仍可读。
-    final text = segments.map((s) => s.dst).join('\n');
+    // 🔑 拼接口径**复用 `translationTextOf`** —— 与「划线记住这段」「批量补译」
+    //    **同一处定义**。三处各写一份 ⇒ 同一段文字会存出/复制出**三种文本**
+    //    （而**不报错**）。
+    // ⚠️ 复制场景**不可为空** ⇒ `?? ''`：真全空时粘出去是空串，与「没东西可复制」等价。
+    final text = translationTextOf(segments) ?? '';
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -316,9 +323,15 @@ class _TranslationSheetState extends ConsumerState<TranslationSheet> {
                   label: '划线记住这段',
                   primary: false,
                   onTap: () {
+                    // 🔑 先把**这段的译文**取出来（浮层一关，`segments` 就够不着了），
+                    //    再关浮层、再入队 —— 顺序不能反。
+                    // 🔴 必须复用 `translationTextOf`（**口径只有那一处**）：
+                    //    这里若自己 `.map((s) => s.dst).join()`，与「批量补译」会存出
+                    //    **两种串**（比如多段之间用不用换行），而**不报错**。
+                    final translation = translationTextOf(segments);
                     // 先关浮层再入队 —— 让用户立刻看到正文里出现下划线
                     Navigator.of(context).pop();
-                    widget.onRemember!();
+                    widget.onRemember!(translation);
                   },
                 ),
               ),

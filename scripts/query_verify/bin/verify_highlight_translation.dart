@@ -12,9 +12,16 @@
 // 文本断言只用于那些「没有可执行入口」的点（SQL 语句、UI 布局、迁移分支）。
 //
 // 跑法：`dart run bin/verify_highlight_translation.dart`
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:sqflite_common/sqlite_api.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import '../../../app/lib/services/highlight_repository.dart';
 import '../../../app/lib/services/sync_merge.dart' as m;
+import '../../../app/lib/services/translate_parse.dart' as tp;
+import '../../../app/lib/services/user_db.dart' show executeSqlScript;
 
 int _pass = 0;
 final List<String> _failures = [];
@@ -28,6 +35,18 @@ void check(String label, bool ok, [String? detail]) {
 }
 
 String readFile(String rel) => File(rel).readAsStringSync();
+
+/// 数 [needle] 在 [src] 里出现的次数（用于「只有一处」这类判据）。
+int countOf(String src, String needle) {
+  var n = 0;
+  var i = 0;
+  while (true) {
+    final k = src.indexOf(needle, i);
+    if (k < 0) return n;
+    n++;
+    i = k + needle.length;
+  }
+}
 
 /// 截取 `[start, end)` 之间的正文（找不到任一端 ⇒ 空串，由调用方的「切片有效」断言兜住）。
 String between(String src, String startAnchor, String endAnchor) {
@@ -62,7 +81,10 @@ Map<String, Object?> hl({
       'updated_at': updated,
     };
 
-void main() {
+Future<void> main() async {
+  // 🔴 初始化一次即可（§8 要用**真库**验证 `add()` 的译文语义）
+  sqfliteFfiInit();
+
   final schemaSql = readFile('../../app/assets/sql/user_db_schema.sql');
   final userDb = readFile('../../app/lib/services/user_db.dart');
   final repo = readFile('../../app/lib/services/highlight_repository.dart');
@@ -252,6 +274,171 @@ void main() {
       profileScreen.contains('ref.invalidate(highlightTranslationPendingCountProvider)'));
   check('⑨ 计数 provider 订阅了 revision（写库后自动重算）',
       backfill.contains('ref.watch(userDbRevisionProvider)'));
+
+  // ══════════════════════════════════════════════════════════════
+  print('');
+  print('【7】🔴 「翻译浮层 → 划线」把译文带进库（本组是 2026-10-11 真机反馈的守护）');
+  // ══════════════════════════════════════════════════════════════
+  // 白哥真机：「划线后笔记中没有记录译文，复习时也没有译文提示」。
+  // 根因：**译文根本没有写入路径** —— 全仓只有「批量补译」会写 `setTranslation`，
+  //       而翻译浮层点「划线记住这段」时**译文当场被丢**（`onRemember` 是无参回调）。
+  final ts = readFile('../../app/lib/widgets/translation_sheet.dart');
+  final sel = readFile('../../app/lib/widgets/word_lookup_selection.dart');
+  final enq = readFile('../../app/lib/services/highlight_enqueue.dart');
+  final hlListScreen = readFile('../../app/lib/screens/highlights_screen.dart');
+  final parse = readFile('../../app/lib/services/translate_parse.dart');
+
+  // ── ① 拼接口径**只有一处**（真调用，不是 grep）──
+  check('① `translationTextOf` 是公开顶层函数（两条路径共用它）',
+      parse.contains('String? translationTextOf(List<TransSegment> segments)'));
+  final tEmpty = tp.translationTextOf(const []);
+  check(
+      '🔴 ② 全空 ⇒ **null**（不是空串 —— 空串会被「有值者胜」当成有值 ⇒ 抹掉别端译文）',
+      tEmpty == null,
+      '实得 ${tEmpty == null ? 'null' : '"$tEmpty"'}');
+  final tBlank =
+      tp.translationTextOf(const [tp.TransSegment(src: 'a', dst: '   ')]);
+  check('③ 只有空白段 ⇒ null', tBlank == null, '实得 $tBlank');
+  final tMulti = tp.translationTextOf(const [
+    tp.TransSegment(src: 'a', dst: '第一句'),
+    tp.TransSegment(src: 'b', dst: '  '),
+    tp.TransSegment(src: 'c', dst: ' 第二句 '),
+  ]);
+  check('④ 多段：丢空段 + 逐段 trim + 换行连接', tMulti == '第一句\n第二句',
+      '实得 ${jsonEncode(tMulti)}');
+
+  // ── ② 两条路径都复用它（各写一份 ⇒ 口径分叉）──
+  check('🔴 ⑤ 翻译浮层调用 `translationTextOf(segments)`（不是自己拼）',
+      ts.contains('translationTextOf(segments)'));
+  check('🔴 ⑥ 批量补译调用 `translationTextOf(segments)`（不是自己拼）',
+      backfill.contains('translationTextOf(segments)'));
+  // ⚠️ 计数前**必须剥掉整行注释** —— 否则注释里提到 `.map((s) => s.dst` 就会**假红**
+  //    （本人第一版正是如此）。剥法**只按整行**（判据：「剥注释只能按整行」；
+  //    行内 `//` 与字符串里的 `//` 本项目不需要处理）。
+  String codeOnly(String src) => src
+      .split('\n')
+      .where((l) => !l.trimLeft().startsWith('//'))
+      .join('\n');
+  final parseCode = codeOnly(parse);
+  final tsCode = codeOnly(ts);
+  final backfillCode = codeOnly(backfill);
+  check(
+      '⑦ `translationTextOf` 只有一处定义，且三条路径都不再自己拼 `dst`（计数已剥注释）',
+      countOf(parseCode, 'String? translationTextOf') == 1 &&
+          countOf(tsCode, '.map((s) => s.dst') == 0 &&
+          countOf(backfillCode, '.map((s) => s.dst') == 0,
+      '实得 def=${countOf(parseCode, 'String? translationTextOf')} '
+          'ts=${countOf(tsCode, '.map((s) => s.dst')} '
+          'backfill=${countOf(backfillCode, '.map((s) => s.dst')}');
+
+  // ── ③ UI 链：浮层传出译文 ⇒ 入队接住 ⇒ 透传到仓储 ──
+  check(
+      '🔴 ⑧ `onRemember` 能带出译文（`ValueChanged<String?>` —— 原为无参 `VoidCallback`，'
+          '译文正是在这一步被丢掉的）',
+      RegExp(r'ValueChanged<String\?>\? onRemember').hasMatch(ts));
+  final readyBtn = between(ts, "label: '划线记住这段'", 'widget.onRemember!(');
+  check('⑨ 点按钮时**真的算了译文**（切片为 0 ⇒ 锚点失配）',
+      readyBtn.contains('translationTextOf(segments)'),
+      '切片长 ${readyBtn.length}');
+  // ⚠️ 光「算了」不够 —— 还得**传出去**：写成 `onRemember!(null)` 时上面那条**照样绿**
+  //    （判据：只断言到「有那个调用」= **假绿**）。这里锁**实参**。
+  check('🔴 ⑨b 且**传出去的就是那个译文**（不是 `null`、不是别的变量）',
+      ts.contains('widget.onRemember!(translation)'));
+  check('⑩ 调用方把译文交给入队',
+      sel.contains('_enqueueHighlight(text, translation: translation)'));
+  check('⑪ `_enqueueHighlight` 签名收得下它',
+      RegExp(r'_enqueueHighlight\(String text, \{String\? translation\}\)')
+          .hasMatch(sel));
+  check('⑫ `enqueueHighlight` 收得下并透传给 `repo.add`',
+      RegExp(r'\s+String\? translation,').hasMatch(enq) &&
+          enq.contains('translation: translation,'));
+
+  // ── ④ 笔记页展示位（写了值却看不到 = 会让用户误判「没生效」）──
+  check('🔴 ⑬ 笔记页**展开了才显示译文**（`expanded && hasTranslation`，收起态不塞）',
+      hlListScreen.contains('if (expanded && hasTranslation)'));
+  check('⑭ 且渲染的就是 `translation`',
+      RegExp(r'Text\(\s*translation,').hasMatch(hlListScreen));
+
+  // ══════════════════════════════════════════════════════════════
+  print('');
+  print('【8】仓储 `add()` 的译文语义 —— **真库真调用**');
+  // ══════════════════════════════════════════════════════════════
+  // ⚠️ end 锚点**不能**用 `\n  }` —— 方法头的 `  }) async {` 里就含 `\n  }`
+  //    ⇒ 切片会在**参数表结束处**截断、压根不含方法体（本人第一版就是这么错的 ⇒ 假红）。
+  //    🔑 改用「下一个方法的签名」当 end 锚点，并**显式断言切片有效**（含 `rawInsert`）：
+  //       否则锚点一失配，后面的断言会静默变成「永远为假」，而报告上看不出是锚点问题。
+  final addFn = between(repo, 'Future<void> add({',
+      '  Future<List<Highlight>> listForSource({');
+  check('① 切片有效（含方法体 `rawInsert`）', addFn.contains('rawInsert'),
+      '切片长 ${addFn.length}');
+  check('② `add()` 的 INSERT 列表含 translation（漏了 ⇒ 传进去也白传）',
+      addFn.contains('text, note, translation, created_at'));
+  check(
+      '③ Dart 侧归一化空白（`translation.trim().isEmpty` ⇒ null）'
+          '—— 归一化只能在这一侧做：SQLite 的 `TRIM` 只认 ASCII 空格',
+      addFn.contains('translation.trim().isEmpty'));
+  check(
+      '🔴 ④ `ON CONFLICT` 用 `COALESCE(excluded.translation, highlight.translation)`'
+          '（**只在有值时覆盖**）',
+      addFn.contains('COALESCE(excluded.translation, highlight.translation)'));
+
+  final dir = await Directory.systemTemp.createTemp('coevo_hl_add');
+  final db = await databaseFactoryFfi.openDatabase(
+    '${dir.path}/user.db',
+    options: OpenDatabaseOptions(
+      version: 1,
+      onCreate: (d, _) => executeSqlScript(d, schemaSql),
+    ),
+  );
+  final r = HighlightRepository(db);
+
+  Future<void> addH(String id, {String? translation, String text = 'hello'}) =>
+      r.add(
+        id: id,
+        sourceType: HighlightSourceType.article,
+        sourceId: '1',
+        startOffset: 0,
+        endOffset: 5,
+        text: text,
+        translation: translation,
+      );
+
+  await addH('h-a', translation: '你好');
+  final a = await r.byId('h-a');
+  check('⑤ 带译文入库 ⇒ 读回来就是它', a?.translation == '你好',
+      '实得 ${jsonEncode(a?.translation)}');
+
+  await addH('h-b');
+  final b = await r.byId('h-b');
+  check('⑥ 不带译文 ⇒ **NULL**（不是空串）', b?.translation == null,
+      '实得 ${jsonEncode(b?.translation)}');
+
+  await addH('h-c', translation: '\u00a0  ');
+  final c = await r.byId('h-c');
+  check(
+      '🔴 ⑦ 空白（含 NBSP `\\u00a0`）⇒ NULL —— 这条正是「归一化必须在 Dart 侧」的反例：'
+          'SQLite 的 `TRIM()` 只剥 ASCII 空格 ⇒ 交给它就会把该值当有效译文存下来',
+      c?.translation == null,
+      '实得 ${jsonEncode(c?.translation)}');
+
+  // 🔴🔴 本组最关键的一项
+  await addH('h-d', translation: '你好');
+  await r.remove('h-d'); // 软删（模拟「先取消、后重划」）
+  await addH('h-d'); // ⚠️ 这次**没带译文**
+  final d = await r.byId('h-d');
+  check(
+      '🔴🔴 ⑧ 重划同一条（`ON CONFLICT` 恢复路径）不带译文 ⇒ 原有译文必须保住'
+          '（无条件取 `excluded.translation` 会把它清空，且**不报错**）',
+      d?.translation == '你好' && d?.deleted == false,
+      '实得 translation=${jsonEncode(d?.translation)} deleted=${d?.deleted}');
+
+  await addH('h-d', translation: '哈喽');
+  final d2 = await r.byId('h-d');
+  check('⑨ 重划时带了新译文 ⇒ 正常覆盖旧值', d2?.translation == '哈喽',
+      '实得 ${jsonEncode(d2?.translation)}');
+
+  await db.close();
+  await dir.delete(recursive: true);
 
   // ══════════════════════════════════════════════════════════════
   print('');

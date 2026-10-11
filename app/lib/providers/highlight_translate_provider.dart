@@ -82,14 +82,12 @@ Future<HighlightBackfillResult> backfillHighlightTranslations(
       final outcome = await translateWithCache(ref, h.text);
       switch (outcome.result) {
         case TranslateReady(:final segments):
-          // 🔑 `segments` **永远非空**（服务端保证至少一段）⇒ 不需要空判断分支。
-          //    多段时用换行拼接 —— 译文是给人读的提示，保留分段更易读。
-          final text = segments
-              .map((s) => s.dst.trim())
-              .where((s) => s.isNotEmpty)
-              .join('\n');
-          if (text.isEmpty) {
-            // 服务端给了「成功」但内容是空白 —— 不写空串（那会与「没有译文」的
+          // 🔑 拼接口径**只有一处**：`translationTextOf`（`services/translate_parse.dart`）——
+          //    与「翻译浮层 → 划线记住这段」**共用**。两处各写一份 ⇒ 同一段文字在
+          //    两条路径下会存出**两种串**（如多段之间的连接符不同），而**不报错**。
+          final text = translationTextOf(segments);
+          if (text == null) {
+            // 服务端给了「成功」但拼出来是空白 —— 不写空串（那会与「没有译文」的
             // 消费口径打架：`withoutTranslation` 把空串也算缺）⇒ 记一次失败。
             failed++;
           } else {

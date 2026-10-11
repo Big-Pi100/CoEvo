@@ -209,13 +209,26 @@ class HighlightRepository {
     required int endOffset,
     required String text,
     String? note,
+    /// 🆕 2026-10-11：这条划线的**中文译文**（可空）。
+    ///
+    /// 🔑 **归一化在 Dart 侧做**（与 [setTranslation] 同一口径：`trim().isEmpty` ⇒ `null`）——
+    ///    于是下面的 SQL 只需 `COALESCE`，不必再写 `NULLIF(TRIM(...))`：
+    ///    🔴 SQLite 的 `TRIM()` **只认 ASCII 空格**，而 Dart 的 `trim()` 认全套 Unicode 空白
+    ///    ⇒ 口径只有落在**能表达完整语义的那一侧**（Dart）才不漂；
+    ///    否则 `'\u00a0'`（不换行空格）会被 SQL 侧的 `TRIM` 放过、当成有效译文存下来。
+    ///    📌 判据：**跨实现的「保持一致」必须落到每一个共享定义** ——
+    ///    这里干脆把归一化**收在一处**，让 SQL 侧无口径可漂。
+    String? translation,
   }) async {
+    final tr = (translation == null || translation.trim().isEmpty)
+        ? null
+        : translation.trim();
     await _db.rawInsert(
       '''
       INSERT INTO highlight
         (id, source_type, source_id, chapter_idx, start_offset, end_offset,
-         text, note, created_at, updated_at, deleted, pending_push)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, $kSqlNowUtc, $kSqlNowUtc, 0, 1)
+         text, note, translation, created_at, updated_at, deleted, pending_push)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, $kSqlNowUtc, $kSqlNowUtc, 0, 1)
       ON CONFLICT (id) DO UPDATE SET
         source_type  = excluded.source_type,
         source_id    = excluded.source_id,
@@ -223,12 +236,28 @@ class HighlightRepository {
         start_offset = excluded.start_offset,
         end_offset   = excluded.end_offset,
         text         = excluded.text,
+        -- 🔴 **只在有值时覆盖**。若写成无条件 `translation = excluded.translation`：
+        --    用户「划线（无译文）→ 批量补译（有译文）→ 又在正文里重划同一段」时
+        --    （`ON CONFLICT` 正是「曾被软删的恢复」那条路径）会**把刚补的译文清空**，
+        --    而且**不报错**（静默）。
+        -- ✅ 与合并口径（`sync_merge._pickTranslation` 的「有值者胜」）**同一条规则**。
+        translation  = COALESCE(excluded.translation, highlight.translation),
         deleted      = 0,
         paused       = 0,
         updated_at   = $kSqlNowUtc,
         pending_push = 1
       ''',
-      [id, sourceType.wire, sourceId, chapterIdx, startOffset, endOffset, text, note],
+      [
+        id,
+        sourceType.wire,
+        sourceId,
+        chapterIdx,
+        startOffset,
+        endOffset,
+        text,
+        note,
+        tr,
+      ],
     );
   }
 

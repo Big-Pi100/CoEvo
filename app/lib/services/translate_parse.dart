@@ -29,6 +29,27 @@ class TransSegment {
   int get hashCode => Object.hash(src, dst);
 }
 
+/// **把译文片段拼成「要存下来的那一串」** —— 🔑 本口径**只有这一处**。
+///
+/// # 为什么必须是公共函数
+/// 有**两条路径**把译文存进划线卡：
+///   ① 翻译浮层 →「划线记住这段」（`widgets/translation_sheet.dart`）
+///   ② 批量补译（`providers/highlight_translate_provider.dart`）
+/// 各写一份拼接 ⇒ 同一段文字在两条路径下存出**不同的串**，而**不报错**（静默失真）。
+/// 📌 判据（本项目反复出现）：**同一件事的口径只能一处权威**。
+///
+/// # 规则
+/// · 逐段 `trim()` 并**丢掉空段**（服务端已保证 `dst` 非空，这是第二道）
+/// · 多段用 `\n` 连接 —— 译文是给人读的**提示**，保留分段更易读
+/// · 🔴 全空 ⇒ **`null`，不是空串**：消费侧（`withoutTranslation` / 复习页 /
+///   服务端 `COALESCE(NULLIF(TRIM(...)))`）都把空串当「没有译文」，
+///   这里若返回空串，会让「有值者胜」的合并把别端刚补的译文**抹成空**。
+String? translationTextOf(List<TransSegment> segments) {
+  final text =
+      segments.map((s) => s.dst.trim()).where((s) => s.isNotEmpty).join('\n');
+  return text.isEmpty ? null : text;
+}
+
 /// 翻译请求的结局。
 sealed class TranslateResult {
   const TranslateResult();

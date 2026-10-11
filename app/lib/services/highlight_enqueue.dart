@@ -50,6 +50,16 @@ Future<HighlightEnqueueResult> enqueueHighlight({
   required int startOffset,
   required int endOffset,
   required String text,
+  /// 🆕 2026-10-11：这条划线的**中文译文**（可空）—— 复习时的提示之一。
+  ///
+  /// 🔑 **有没有由调用方决定**，两条来源：
+  ///   · 翻译浮层 →「划线记住这段」：用户**刚花额度翻出来**的 ⇒ 必须带上
+  ///     （白哥真机反馈：不带上就是「花了钱白翻」——复习时只剩骨架、笔记页也没有）
+  ///   · 划词菜单 →「划线」（没翻过）：`null` ⇒ 留给「批量补译」补
+  ///
+  /// ⚠️ 这**不是**「划线时自动翻译」—— 那条路成本随划线量线性增长，已被否
+  ///    （见 `providers/highlight_translate_provider.dart` 文件头的成本说明）。
+  String? translation,
   DateTime? now,
 }) async {
   final repo = HighlightRepository(db);
@@ -64,6 +74,7 @@ Future<HighlightEnqueueResult> enqueueHighlight({
       startOffset: startOffset,
       endOffset: endOffset,
       text: text,
+      translation: translation,
     );
   } catch (_) {
     return HighlightEnqueueResult.contentFailed;

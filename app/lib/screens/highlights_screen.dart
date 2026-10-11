@@ -287,6 +287,11 @@ class _HighlightTile extends StatelessWidget {
     final note = highlight.note;
     final hasNote = note != null && note.trim().isNotEmpty;
 
+    // 🆕 v1.12（2026-10-11）：译文 —— `null` / 空白 = 「还没翻译/补译过」，
+    //    这是**合法常态**（绝大多数历史划线都没有），不是缺陷。
+    final translation = highlight.translation?.trim();
+    final hasTranslation = translation != null && translation.isNotEmpty;
+
     return Clay(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
@@ -308,6 +313,29 @@ class _HighlightTile extends StatelessWidget {
                 color: Color(t.ink.argb32),
               ),
             ),
+
+            // ── 🆕 译文（有才显示）──
+            //
+            // 🔑 **只在展开态显示**（与笔记同层）：收起态是「快速认一眼划过什么」，
+            //    再塞两行译文会让列表密度翻倍；展开才是「看这一条的完整内容」。
+            //
+            // 🔑 与笔记**不同**：笔记前面有 `Divider`（它是用户自己写的**另一件事**），
+            //    而译文是**原文的意思** —— 同一件事的两面 ⇒ 紧贴原文、只用间距分隔。
+            // 🔑 中文字体（`uiSans`）与原文的拉丁衬线（`latinSerif`）**天然区分** ⇒
+            //    不加标签、不加分割线（少一个元素就少一处对齐问题；同复习页取法）。
+            if (expanded && hasTranslation) ...[
+              const SizedBox(height: 7),
+              Text(
+                translation,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 12.5,
+                  height: 1.65,
+                  // 次要信息：这一条的主角是**原文**
+                  color: Color(t.ink2.argb32),
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
 
             // ── 来源 + 时间 ──
