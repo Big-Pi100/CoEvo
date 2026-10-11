@@ -1170,5 +1170,65 @@ void main() {
         '端侧 StoreKit 权益跟 Apple ID 走 —— 换 App 账号它本来就还在，复位它会误伤付费用户');
   }
 
+  // ────────────────────────────────────────────────────────────────
+  // ⑭ 法务文本的功能表必须与「权益唯一权威」一致
+  // ────────────────────────────────────────────────────────────────
+  //
+  // 🔴 为什么补这一组（2026-10-11 实测踩到）：
+  //    `terms-of-service.md` 的功能表里「**文章朗读** → **会员**」这条**一直是错的** ——
+  //    朗读早在 2026-10-04 就已免费全量，而法务文本**没有任何断言覆盖**
+  //    ⇒ 这个错误在**公网页面**（`api.keyievolution.fun/terms`）上挂了**一周多没人发现**。
+  //    📌 判据：**没有断言覆盖的「对外事实」= 迟早漂移**；而法务文本是最贵的那一类对外事实
+  //    （用户与审核员都会读到它）。
+  //    🔑 权益的**唯一权威**是 `SubscriptionLegalText.comparison`（本文件已 import）——
+  //    法务表只是它的**镜像** ⇒ 必须有一条断言把两者绑起来，而不是靠「记得同步」。
+  print('\n[⑭] 法务文本的功能表（须与权益唯一权威一致）');
+
+  final termsFile = File('../../docs/legal/terms-of-service.md');
+  check('能读到 terms-of-service.md', termsFile.existsSync(), termsFile.path);
+  if (termsFile.existsSync()) {
+    final terms = termsFile.readAsStringSync();
+
+    /// 取「表格里提到该功能的那一行」（`|` 开头，避免散文里的提及干扰）。
+    String tableRowOf(String feature) => terms
+        .split('\n')
+        .where((l) => l.trimLeft().startsWith('|') && l.contains(feature))
+        .join();
+
+    // ① 🔴 反向断言：这些能力**已免费**，不得再标会员
+    //    （「朗读」这类「曾经是订阅权益、后来免费」的项最容易残留 —— 本次就是它）
+    //    ⚠️ 用 `contains('会员')` 而不是 `contains('**会员**')` ——
+    //       写 `**会员**` 只能匹配「纯会员」那一格，任何变体（`**会员不限次**`…）都会漏。
+    for (final free in ['文章朗读', '生词卡朗读', '生词本', '划词查词', '复习']) {
+      final row = tableRowOf(free);
+      check(
+          '🔴 法务表里「$free」不得标为会员（它已免费）',
+          row.isNotEmpty && !row.contains('会员'),
+          row.isEmpty ? '**没找到该行**（改名了？这条会假绿）' : row.trim());
+    }
+
+    // ② 正向：三项**订阅专享**必须在表里、且提到会员
+    //    （整段翻译是**部分专享** —— 免费每月 10 次、会员不限次 ⇒ 整格不是纯「会员」）
+    for (final paid in ['跨设备同步', '云端书架', '整段翻译']) {
+      final row = tableRowOf(paid);
+      check('法务表里「$paid」存在且提到会员',
+          row.isNotEmpty && row.contains('会员'), row.trim());
+    }
+
+    // ③ 与代码同源：专享权益的**关键词**必须能在法务表里找到
+    //    （不逐字比 —— 法务用词允许不同，但「卖的是什么」必须对得上）
+    for (final b in SubscriptionLegalText.benefits) {
+      final key = b.contains('同步')
+          ? '同步'
+          : (b.contains('云端书架') ? '云端书架' : (b.contains('翻译') ? '翻译' : ''));
+      check('法务表覆盖权益「$b」（关键词「$key」）', key.isEmpty || terms.contains(key),
+          '切不到关键词 ⇒ 需人工核对');
+    }
+
+    // ④ 反向：已作废的「朗读属订阅权益」表述不得复活
+    check('🔴 法务文本里没有「解锁**文章朗读**」这类表述',
+        !terms.contains('解锁**文章朗读**'));
+  }
+
   _report();
 }
