@@ -1230,5 +1230,83 @@ void main() {
         !terms.contains('解锁**文章朗读**'));
   }
 
+  // ────────────────────────────────────────────────────────────────
+  // ⑮ 隐私政策的数据清单必须与「实际会上传的类」一致
+  // ────────────────────────────────────────────────────────────────
+  //
+  // 🔴 为什么补这一组（2026-10-11 实测踩到）：
+  //    `privacy-policy.md` §2.1(一) 的标题写的是「**不上传到我们的服务器**」，
+  //    而它把「**兴趣筛选偏好**」「**阅读字号**」列在里面 —— 两者**都会**随订阅同步
+  //    （`settings_sync.dart` 的 `kSyncedSettingKeys`）。
+  //    ⇒ 属「**声称不收集、实际在收集**」—— 隐私披露里最严重的一类。
+  //    同一份文件的 §2.1(二) 又把同步清单写成 4 项，实际 **11 类**。
+  //    📌 判据：**「对外声明的数据行为」必须有断言绑到实现上**（与 ⑭ 同族思路）。
+  //    🔑 权威 = 后端 `schema.rs` 的 `CREATE TABLE IF NOT EXISTS sync_*`
+  //       （「服务端到底会收什么」的唯一定义；已与生产库 `sqlite_master` 实测一致）。
+  print('\n[⑮] 隐私政策的数据清单（须与实际同步的类一致）');
+
+  final schemaFile = File('../../backend/crates/api_server/src/schema.rs');
+  final privacyFile = File('../../docs/legal/privacy-policy.md');
+  check('能读到 schema.rs', schemaFile.existsSync(), schemaFile.path);
+  check('能读到 privacy-policy.md', privacyFile.existsSync(), privacyFile.path);
+
+  if (schemaFile.existsSync() && privacyFile.existsSync()) {
+    final syncTables = RegExp(r'CREATE TABLE IF NOT EXISTS (sync_[a-z_]+)')
+        .allMatches(schemaFile.readAsStringSync())
+        .map((m) => m.group(1)!)
+        .toSet();
+    final privacy = privacyFile.readAsStringSync();
+
+    // ① 🔴 「从不外传」那一段里**不得**出现会同步的项
+    //    （写法：截出 §2.1(一) 到 §2.1(二) 之间；截不到 ⇒ 显式报红，否则会假绿）
+    final s1Start = privacy.indexOf('#### （一）');
+    final s1End = privacy.indexOf('#### （二）');
+    final sec1 =
+        (s1Start >= 0 && s1End > s1Start) ? privacy.substring(s1Start, s1End) : '';
+    check('截到了 §2.1(一)「从不上传」那一段', sec1.isNotEmpty,
+        '切片长 ${sec1.length}（为 0 ⇒ 段边界锚点变了，下面的断言会假绿）');
+    const neverUploaded = <String, String>{
+      '兴趣筛选': 'interest_categories 会随订阅同步',
+      '字号': 'reading_font_size 会随订阅同步',
+      '痕迹': 'reading_trace_enabled 会随订阅同步',
+      '朗读': 'tts_enabled / tts_speech_rate 会随订阅同步',
+      '显示名': 'display_name 会随订阅同步',
+    };
+    for (final e in neverUploaded.entries) {
+      check('🔴 §2.1(一) 的「从不」段里不得出现「${e.key}」（${e.value}）',
+          sec1.isNotEmpty && !sec1.contains(e.key));
+    }
+
+    // ② 「同步类 → 用户可读词」映射：法务文本用的是人话，不是表名
+    const keywords = <String, String>{
+      'sync_user_word': '生词本',
+      'sync_review_log': '复习记录',
+      'sync_article_read': '阅读进度',
+      'sync_bookmark': '收藏',
+      'sync_highlight': '划线',
+      'sync_book': '电子书',
+      'sync_book_progress': '电子书阅读进度',
+      'sync_book_marker': '书内书签',
+      'sync_lookup_event': '划词历史',
+      'sync_achievement_unlock': '成就解锁时间',
+      'sync_setting': '应用设置',
+    };
+    // ③ 🔴 双向绑定：**多出一个同步类**就要先来改这里 + 改法务文本
+    final unknown = syncTables.difference(keywords.keys.toSet());
+    check('🔴 没有「未登记在法务清单里」的新同步类（新增同步类必须先加映射）',
+        unknown.isEmpty, '多出来的：$unknown');
+    final gone = keywords.keys.where((t) => !syncTables.contains(t)).toList();
+    check('🔴 映射表里没有已删掉的同步类（残留会让断言维护错方向）',
+        gone.isEmpty, '已不存在的：$gone');
+    for (final e in keywords.entries) {
+      check('§2.1(二) 覆盖「${e.value}」（${e.key}）', privacy.contains(e.value));
+    }
+
+    // ④ 必须明示「不订阅就完全不上传」—— 这既是卖点，也是用户的定心丸
+    check('🔴 明示「不订阅就完全不上传」', privacy.contains('不订阅就完全不上传'));
+    // ⑤ 电子书文件会上云，必须显式说出来（最容易漏的一条）
+    check('🔴 明说「电子书文件本身会备份到云端」', privacy.contains('电子书文件本身会备份到云端'));
+  }
+
   _report();
 }

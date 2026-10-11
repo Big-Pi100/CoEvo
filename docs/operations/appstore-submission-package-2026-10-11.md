@@ -143,7 +143,7 @@ ASC → *Users and Access* → **Sandbox** → *Testers* → 新建。
 | 类别 | 具体项 | 是否收集 | 关联到你 | 用途 |
 |---|---|---|---|---|
 | **Contact Info** | **Email Address** | ✅ | ✅ | App Functionality |
-| **User Content** | **Other User Content**（划线 / 笔记 / 生词 / 阅读记录）| ✅ | ✅ | App Functionality |
+| **User Content** | **Other User Content**（划线 / 笔记 / 生词 / 阅读记录 / **导入的电子书文件**）| ✅ | ✅ | App Functionality |
 | **Identifiers** | **User ID** | ✅ | ✅ | App Functionality |
 | **Purchases** | **Purchase History** | ✅ | ✅ | App Functionality |
 | Usage Data | — | ❌ **不收集** | — | 无埋点 SDK |
@@ -154,8 +154,20 @@ ASC → *Users and Access* → **Sandbox** → *Testers* → 新建。
 - **Data Linked to You**：上表 4 项
 - **Data Not Linked to You**：**无**
 
-⚠️ 唯一需要你判断的：**「Other User Content」是否要申报** —— 我倾向**要**
-（学习数据会同步到我们服务器）。若你认为不必，请说一声，我会改隐私政策里的对应措辞一起对齐。
+> 🆕 **2026-10-11 复核**：`User Content` 那一行原本写「划线 / 笔记 / 生词 / 阅读记录」，
+> **漏了「用户导入的电子书文件本身会上传（云端书架）」** ⇒ 已补上。
+> 依据：`privacy-policy.md` §2.1(二) 现在明写「电子书文件本身会备份到云端」；
+> 后端 `user_purge.rs` 有 `blob_bytes_freed`（注销时释放云端文件字节数）。
+
+### 🔴 两处**需要你定**的边界项（我不替你签这个字）
+
+| # | 项 | 事实 | 我的建议 |
+|---|---|---|---|
+| 1 | **Device ID**（Identifiers 下）| 同步时会发一个**本机随机生成**的匿名标识（`device_id.dart` 用 `Random.secure()`，**不是** IDFA/IDFV、**不是**设备级）| **不建议申报 Device ID** —— Apple 对它的定义是「设备级标识（如 IDFA/IDFV）」，而这个是**应用实例级**的随机串（重装即变），且我们**不用**它做追踪（`Data Used to Track You` = 无）|
+| 2 | **Usage Data → Product Interaction** | 该标识用于「某个词被多少**不同设备**查过」的**去重统计**（`generated_card_hit(spelling, device_id)`，用于决定哪些词要补词典内容）| **倾向申报** —— 它确实是对「用户如何使用 App」的统计。⚠️ 但这是**你的签名声明** ⇒ **你定**；你定了我同步改材料包与隐私政策措辞（政策 §2.3 已如实写了这个标识的用途，两种答法都不与政策冲突）|
+
+> 📌 判据：**平台声明（ASC 标签）与法务文本是「同一事实的两处描述」** ——
+> 两处都必须与实现一致；**不一致的任一侧都是失实**。
 
 ---
 
