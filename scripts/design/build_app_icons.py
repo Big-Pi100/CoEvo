@@ -7,13 +7,17 @@
 | 名称 | 记忆之书 |
 | 副标题 | 阅读英语原文 · 自动规划记忆曲线 |
 | 字体 | **思源黑体 Bold**（`Noto Sans SC Bold`）|
-| 图标字 | **书**（实测 20px 下比「记」清晰）|
+| 图标字 | **记**（白哥 14:08 定；原选「书」，因「记忆之书」配「记」更贴）|
 | 配色 | **朱砂底 `#B4432C` + 纸白字 `#F7F2EA`** |
 
 # 两条实测得出的参数依据
 * **字号占比 66%** —— 扫过 60/66/72：60% 在 20px 下偏糊；72% 最清晰但字太满，
   iOS 圆角裁切会吃掉四角内容 ⇒ **66% 是「清晰度」与「安全区」的平衡点**。
 * **无衬线** —— 衬线体（思源宋体 Heavy）在 20px 下衬线细节变成噪点，明显糊。
+* **描边 2.6%（STROKE）** —— 「记」是**左右结构**（讠+己），比「书」更容易在小尺寸下粘连。
+  扫过 2.0/2.6/3.2：3.2% 在 20px 下明显糊；2.0% 最清晰但笔画偏瘦、粘土感弱；
+  **2.6% 是「粘土厚度」与「部件可分辨」的平衡**，且与「书」同参数（只换字，最小改动）。
+  📄 对比图：`docs/design/app-icon-candidates-2026-10-11/记字-描边扫描.png`
 
 # 关键规格（🔴 都不是偏好，是硬要求）
 * iOS 交付图：**方形 · RGB 无 alpha**（带透明上传即报错）；**不加圆角**（iOS 自己裁 squircle）
@@ -41,7 +45,7 @@ IOS_ICONSET = os.path.join(ROOT, "app", "ios", "Runner", "Assets.xcassets", "App
 ANDROID_RES = os.path.join(ROOT, "app", "android", "app", "src", "main", "res")
 BACKUP_DIR = os.path.join(OUT_DIR, "_原图标备份")
 
-CHAR = "书"
+CHAR = "记"
 FONT_PATH = r"C:\Windows\Fonts\Noto Sans SC Bold (TrueType).otf"   # 思源黑体 Bold
 CRIMSON = (0xB4, 0x43, 0x2C)
 WARM_WHITE = (0xF7, 0xF2, 0xEA)
