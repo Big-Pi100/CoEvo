@@ -143,9 +143,22 @@ LANG=C wsl.exe -d Ubuntu-22.04 -- bash -lc "tr -d '\r' < /mnt/e/CoEvo/scripts/de
 
 ### 5.2 【你做】App Store Connect 里要做的
 
+**入口在哪**（🔴 **不在 Apps 列表页加** —— 订阅是 **App 级资源**，必须先进到 App 里）：
+
+```
+appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书」这个 App**
+  └─ 左侧边栏「订阅」（在「功能 / Features」分组下）
+       └─ ① 先「创建订阅群组」：参考名称 = 记忆之书 专业版
+          └─ ② 群组内点「+」加两个订阅产品
+```
+
+> 🔴 **看不到「订阅」入口 = 前置没满足**（三个缺一个入口就不显示）：
+> ASC → **商务 / Business** → ① 付费 App 协议 **Active** ② 税务表已签 ③ 银行账户 **Clear**。
+> ⚠️ 若 App 记录本身还没建：先在「我的 App」→「**+**」新建（Bundle ID 选 `com.coevo.coevoApp`）。
+
 | # | 事项 | 关键点 |
 |---|---|---|
-| 5.2.1 | **建 2 个订阅产品** | 类型「**自动续期订阅**」；Product ID **逐字**：<br>`com.coevo.coevoApp.pro.monthly`（¥9.9 / 1 个月）<br>`com.coevo.coevoApp.pro.yearly`（¥78 / 1 年）<br>⚠️ 每个都要填**本地化显示名 + 价格 + 审核截图** |
+| 5.2.1 | **建 2 个订阅产品** | 类型「**自动续期订阅**」；Product ID **逐字**：<br>`com.coevo.coevoApp.pro.monthly`（¥9.9 / 1 个月）<br>`com.coevo.coevoApp.pro.yearly`（¥78 / 1 年）<br>群组内**均为等级 1**；⚠️ 每个都要填**本地化显示名 + 价格 + 审核截图** |
 | 5.2.2 | 🔴 **生成 In-App Purchase Key** | ASC → *Users and Access* → **Integrations** → **In-App Purchase** tab → 生成。<br>**不是**已配好的那把 ASC API Key！给我 ① **Key ID** ② **Issuer ID** ③ **`.p8` 文件内容** |
 | 5.2.3 | **建沙盒测试账号** | ASC → *Users and Access* → **Sandbox → Testers** → 新建（**不能**用你自己的 Apple ID 邮箱）。真机沙盒购买要用它登录 |
 | 5.2.4 | ⚠️ **订阅要随 App 首次提审一起提交** | Apple 要求订阅产品与 App 版本**同批送审**；只建产品不送审 = 不会生效 |
