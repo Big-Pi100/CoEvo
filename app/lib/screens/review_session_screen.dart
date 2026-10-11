@@ -767,6 +767,10 @@ class _HighlightReveal extends StatelessWidget {
     final note = highlight.note;
     final hasNote = note != null && note.trim().isNotEmpty;
 
+    // 🆕 v1.12（2026-10-11）：译文 —— 与考核态**同一列**，但**用途不同**（见下）。
+    final translation = highlight.translation?.trim();
+    final hasTranslation = translation != null && translation.isNotEmpty;
+
     return SingleChildScrollView(
       controller: scrollController,
       padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
@@ -791,6 +795,33 @@ class _HighlightReveal extends StatelessWidget {
               ),
             ),
           ),
+
+          // ── 🆕 译文（有才显示）──
+          //
+          // 🔴 白哥 2026-10-11 真机反馈：「**笔记里已经有译文，复习还是没有**」——
+          //    根因就是这里：上一批只在**考核态**（`_HighlightPrompt`）加了译文，
+          //    而「结果态」（答完）与「浏览态」（未到期）走的是**本组件**。
+          //
+          // 🔑 与考核态的区别（**同一条数据，两种用途**）：
+          //    · 考核态的译文 = **提示** —— 帮你想出这段原文怎么写
+          //    · 这里的译文   = **对照** —— 看我写出来的到底对不对那个意思
+          //    两处都需要，不能只留一处。
+          //
+          // ⚠️ 不泄题：**考核态根本不用本组件**（它只渲染骨架），
+          //    所以这里显示译文**不会**把答案提前给出去 ——
+          //    能走到这里，要么已判定完（结果态），要么本来就不考（浏览态）。
+          if (hasTranslation) ...[
+            const SizedBox(height: 14),
+            Text(
+              translation,
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 13.5,
+                height: 1.7,
+                color: Color(t.ink2.argb32),
+              ),
+            ),
+          ],
           if (showNote) ...[
             if (hasNote) ...[
               const SizedBox(height: 20),

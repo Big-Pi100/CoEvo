@@ -249,6 +249,25 @@ Future<void> main() async {
       !RegExp(r"""Text\(\s*'[^']*暂无译文""").hasMatch(prompt),
       '空态画一句「暂无译文」会让用户以为坏了');
 
+  // 🆕 2026-10-11（白哥真机「**笔记里有译文、复习里没有**」）：复习页**三个态都要有译文**。
+  //    · 考核态（到期未答）→ `_HighlightPrompt`（上面 ①–④）
+  //    · 结果态（答完）· 浏览态（未到期）→ `_HighlightReveal`（下面 ⑤–⑧）
+  // 🔴 必须用**切片** —— 直接 `reviewScreen.contains('highlight.translation')` 会被
+  //    `_HighlightPrompt` 兜住 ⇒ **假绿**（判据：「整文件兜住」是子串断言三族假绿之一）。
+  final reveal = between(reviewScreen,
+      'class _HighlightReveal extends StatelessWidget {', '\nclass _ResultBanner');
+  check('⑤ `_HighlightReveal` 切片有效', reveal.length > 800 && reveal.contains('showNote'),
+      '切片长 ${reveal.length}（为 0 ⇒ 锚点失配）');
+  check(
+      '🔴 ⑥ 结果态 / 浏览态**也**读了 `highlight.translation`'
+          '（上一批只加了考核态 —— 那正是白哥看到的「复习里没有」）',
+      reveal.contains('highlight.translation'));
+  check('⑦ 且有值时才渲染（`if (hasTranslation)`，无译文不占位）',
+      reveal.contains('if (hasTranslation)'));
+  check('⑧ 结果态与浏览态**都**走 `_HighlightReveal`（答完 + 未到期两条路都对）',
+      reviewScreen.contains('child: _HighlightReveal(') &&
+          reviewScreen.contains('return _HighlightReveal('));
+
   // ══════════════════════════════════════════════════════════════
   print('');
   print('【6】批量补译 —— 成本护栏与如实回报');
