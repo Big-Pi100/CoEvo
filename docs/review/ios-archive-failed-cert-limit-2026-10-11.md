@@ -245,15 +245,61 @@ xcodebuild -workspace ios/Runner.xcworkspace \
 | | 状态 |
 |---|---|
 | **改后能否正常出包** | ✅ **已证**（run 38112765397 全绿）|
-| **「Development 证书不再堆积」** | ⏳ **待证** —— 这需要**多次出包**才能观察到，且**我无法直查 Apple 账号** |
-
-**可证伪的方式**：下次出包后再看
-<https://developer.apple.com/account/resources/certificates/list>，
-若 `Development` 仍只有 **1 张** ⇒ **证实根治**；
-若又多出 ⇒ 说明 archive 仍在签 ⇒ **回退到方案 C（固定证书 + 手动签名）**。
+| **「Development 证书不再堆积」** | ✅ **已证**（2026-10-11 13:0x，用 CI 日志直接证实，见 §十）|
 
 > 📌 判据：**「改完 CI 绿了」≠「根因被消除了」** ——
-> 前者只证明「这条路能走通」，后者要**观察那个会增长的量是否停止增长**。
+> 前者只证明「这条路能走通」，后者要看**那个会增长的动作有没有停止发生**。
+>
+> 🔑 **而验证方式本身也要选对**：**看「有没有发起那个动作」（行为日志）强于「看数量变没变」** ——
+> 数量不变也可能是「复用了旧的」；而「压根没做那个动作」是**逻辑上的不可能**。
+
+---
+
+## 十、🔍 根治验证：那张新证书来自**根治之前**（2026-10-11 13:0x）
+
+白哥复查 Apple 账号证书页，发现 **2 张 `Development`**（`2027/10/10` + **`2027/10/11`**）。
+需要判断：**新增那张到底是谁造成的？**
+
+### 排他性证据（按 run 逐一核对 CI 日志）
+
+| run | 北京时间 | commit | 是否走到「签名」这一步 | 能否创建证书 |
+|---|---|---|---|---|
+| 38110797295 | 12:11 | `14cfac3` | ❌ 未走到（已达上限即失败）| 否 |
+| 38111750123 | 12:29 | `d12b414` | ❌ 未走到（conflicting settings）| 否 |
+| **38112115154** | **12:36** | **`097464b`（根治前 · 原配置）** | ✅ **走到** | **✅ 是** |
+| 38112765397 | 12:48 | `6575f35`（**根治后**）| ❌ **不签名** | 否 |
+
+12:36 那次的日志原文（证据）：
+
+```
+export CODE_SIGNING_ALLOWED=YES
+/usr/bin/codesign --force --sign 8BE2B1B475E0C204252C75F9B0D1DACFCA389CF0 … \
+    .../Runner.app/Frameworks/audioplayers_darwin.framework
+Provisioning Profile: "iOS Team Provisioning Profile: com.coevo.coevoApp"
+```
+
+⇒ 四次 run 里**只有 12:36 那一次**有能力创建证书
+⇒ **`2027/10/11` 那张 = 根治之前造成的** ✅（**不是**根治那次）
+
+### 根治后的 Archive 日志（同一位置的对照）
+
+```
+xcodebuild … -sdk iphoneos DEVELOPMENT_TEAM=*** \
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO archive
+    CODE_SIGNING_ALLOWED = NO
+    export CODE_SIGNING_ALLOWED\=NO
+```
+
+**全程没有任何 `codesign` 调用，也没有 provisioning profile 安装**
+⇒ archive **根本不签名** ⇒ 它连「用哪张证书」都不需要知道 ⇒ **不可能创建/消耗证书**。
+
+### 结论与后续
+
+- ✅ **根治有效**：archive 不再签名 ⇒ 不再消耗 Development 证书（机制已断，不只是「这次没撞上」）
+- ⚠️ 现有 2 张 Development **已达 Apple 的 Development 证书上限** —— 虽然 CI 已不受影响，
+  但**建议删掉多余的 1 张**（保留 1 张供本机真机调试），留出缓冲
+- 🔑 判据保留：若将来**又出现**新的 Development 证书 ⇒ 说明 archive 仍在签
+  ⇒ 回退到方案 C（固定证书 + 手动签名）。**这个反例仍然有效**。
 
 
 
