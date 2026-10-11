@@ -18,7 +18,7 @@
 | **免费** | 阅读信息流**全部内容** · 划词查词 · **生词本无数量限制** · 词卡朗读 · FSRS 复习 · **LLM 在线制卡** | `iap_plan.dart` 的 `freeIncludes`；`/api/generate-card` **不验证登录态** |
 | **订阅** | **仅 1 条**：`生词与复习进度跨设备同步` | `SubscriptionLegalText.benefits`（数组里就一条）|
 
-**定价**：¥9.90/月 · ¥78/年（≈ ¥6.5/月）· 不做广告
+**定价**：¥6/月 · ¥58/年（≈ ¥4.83/月）· 不做广告
 **产品 ID**：`com.coevo.coevoApp.pro.monthly` / `.yearly`
 
 ### 1.2 🔴 一处**过时注释**（本次新发现）

@@ -155,7 +155,7 @@ body {
 }
 .plan.sel .name, .plan.sel .price { color:var(--accent); }
 
-/* 「省 34%」角标 —— §4.4.1 判据 4 要求展示（**事实陈述**，非诱导）*/
+/* 「省 19%」角标 —— §4.4.1 判据 4 要求展示（**事实陈述**，非诱导）*/
 .badge {
   position:absolute; top:-8px; right:10px;
   font-size:11px; font-weight:600; padding:2px 7px; border-radius:7px;
@@ -329,15 +329,15 @@ body {
       <div class="plan" data-p="monthly">
         <div class="radio"></div>
         <div class="name">月度</div>
-        <div class="price"><span class="cur">¥</span>9.9</div>
+        <div class="price"><span class="cur">¥</span>6</div>
         <div class="per">每月自动续期</div>
       </div>
       <div class="plan has-badge" data-p="yearly">
-        <div class="badge">省 34%</div>
+        <div class="badge">省 19%</div>
         <div class="radio"></div>
         <div class="name">年度</div>
-        <div class="price"><span class="cur">¥</span>78</div>
-        <div class="per">≈ ¥6.5 / 月</div>
+        <div class="price"><span class="cur">¥</span>58</div>
+        <div class="per">≈ ¥4.83 / 月</div>
       </div>
     </div>
 
@@ -426,7 +426,7 @@ body {
     <tr>
       <td>2</td>
       <td><b>月/年纵向堆叠</b>，对比关系丢失 —— 用户要上下扫视 + 心算才知道「省多少」</td>
-      <td>§4.4.1 判据 4 要求「月付/年付<b>并列</b>展示」+「省 34%」一眼可见 ⇒ 这是<b>规格 vs 实现的偏差</b>，不是审美偏好</td>
+      <td>§4.4.1 判据 4 要求「月付/年付<b>并列</b>展示」+「省 19%」一眼可见 ⇒ 这是<b>规格 vs 实现的偏差</b>，不是审美偏好</td>
     </tr>
     <tr>
       <td>3</td>
@@ -464,7 +464,7 @@ body {
     <tr><td>🔴 <b>不得默认勾选</b></td><td>两卡默认<b>都未选中</b>（空心圈）⇒ 按钮禁用并提示「请先选择」<span class="ok">（原型里可点开试）</span></td></tr>
     <tr><td>恢复购买（Apple 3.1.1）</td><td>本页 + 「我的」页<b>两处</b>（「我的」页那份不动）</td></tr>
   </table>
-  <p class="warn">⚠️ 「省 34%」角标保留 —— 它是<b>价格事实陈述</b>，且 §4.4.1 判据 4 明确要求展示。
+  <p class="warn">⚠️ 「省 19%」角标保留 —— 它是<b>价格事实陈述</b>，且 §4.4.1 判据 4 明确要求展示。
      但它<b>不能</b>变成「推荐/默认选中」那种视觉诱导（那就等于变相预选）。</p>
 
   <h4>四、⚠️ 这次<b>没有</b>解决、必须你定的两件事</h4>
@@ -511,7 +511,7 @@ document.getElementById('tog').onclick = function () {
 // 档位选择（演示「不预选」+ 按钮状态跟随）
 var sel = null;
 var buy = document.getElementById('buy');
-var PRICE = { monthly: '¥9.9 / 月', yearly: '¥78 / 年' };
+var PRICE = { monthly: '¥6 / 月', yearly: '¥58 / 年' };
 
 document.querySelectorAll('.plan').forEach(function (card) {
   card.onclick = function () {

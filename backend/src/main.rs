@@ -316,8 +316,8 @@ async fn main() {
             // 🔑 用 `INSERT OR IGNORE`：管理端可改套餐（`plans_handlers`），
             //    无条件 UPDATE 会**覆盖管理员改动**。改价走 ASC，不依赖本 seed。
             // 🔑 id 直接用 Apple Product ID，省掉「本地 id ↔ productId」映射层。
-            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.monthly', '记忆之书 专业版 · 月度', 30, 990, 0, 1, datetime('now'))",
-            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.yearly', '记忆之书 专业版 · 年度', 365, 7800, 1, 1, datetime('now'))",
+            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.monthly', '记忆之书 专业版 · 月度', 30, 600, 0, 1, datetime('now'))",
+            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.yearly', '记忆之书 专业版 · 年度', 365, 5800, 1, 1, datetime('now'))",
             // 🔴 2026-10-11 补：**老库的名字要单独 UPDATE 一次**。
             //    上面两条是 `INSERT OR IGNORE` ⇒ 对**已存在的行是空操作**
             //    ⇒ 老库的 `name` 会**永久停在改名前的旧值**（2026-10-11 之前线上就是这种）。
@@ -326,6 +326,18 @@ async fn main() {
             //    （`WHERE name <> 新值` 让它在已更新后成为 0 行影响的空操作 ⇒ 幂等。）
             "UPDATE subscription_plans SET name = '记忆之书 专业版 · 月度' WHERE id = 'com.coevo.coevoApp.pro.monthly' AND name <> '记忆之书 专业版 · 月度'",
             "UPDATE subscription_plans SET name = '记忆之书 专业版 · 年度' WHERE id = 'com.coevo.coevoApp.pro.yearly' AND name <> '记忆之书 专业版 · 年度'",
+            // 🔴 2026-10-11 同样补：**价格**在老库也要 UPDATE 一次。
+            //    理由同上（`INSERT OR IGNORE` 对已存在的行是空操作）。
+            //    ⚠️ 与上面那条注释（「无条件 UPDATE 会覆盖管理员改动」）的取舍：
+            //       这里**不是**无条件 —— 带 `WHERE price <> 新值`，
+            //       只有与目标值不一致时才写（已一致 ⇒ 0 行受影响 ⇒ 幂等）。
+            //       之所以要写：本表的 `price` 被 `iap_handlers::fallback_price_fen`
+            //       当作**订单金额**用（Apple 交易里没有价时），
+            //       停在旧值会让 `payment_orders` **记错金额**（且不报错）。
+            //    📌 权威仍是 ASC；本表是它的镜像 ⇒ 必须跟着走。
+            //    ⚠️ 若将来真的用管理端改价，这条会在下次重启时改回来（届时删掉它）。
+            "UPDATE subscription_plans SET price = 600 WHERE id = 'com.coevo.coevoApp.pro.monthly' AND price <> 600",
+            "UPDATE subscription_plans SET price = 5800 WHERE id = 'com.coevo.coevoApp.pro.yearly' AND price <> 5800",
             // 🔴 微信「买断 N 天」档位**下架**（不是删除）——
             //    `distribution_handler.rs` 会按 plan_id 查 price 算佣金原价，删行会断链。
             //    幂等：已下架的档位再跑一次 `is_active` 已是 0 ⇒ 0 行受影响。

@@ -119,7 +119,7 @@ LANG=C wsl.exe -d Ubuntu-22.04 -- bash -lc "tr -d '\r' < /mnt/e/CoEvo/scripts/de
 | # | 事项 | 关键点 |
 |---|---|---|
 | 4.1 | **App 名称 / 副标题** | 名称 `记忆之书`；副标题 `阅读英语原文 · 自动规划记忆曲线` |
-| 4.2 | **订阅产品 ×2** | Product ID **逐字**（写错是静默失败）：<br>`com.coevo.coevoApp.pro.monthly`（1 月 · ¥9.9）<br>`com.coevo.coevoApp.pro.yearly`（1 年 · ¥78）|
+| 4.2 | **订阅产品 ×2** | Product ID **逐字**（写错是静默失败）：<br>`com.coevo.coevoApp.pro.monthly`（1 月 · ¥6）<br>`com.coevo.coevoApp.pro.yearly`（1 年 · ¥58）|
 | 4.3 | 🔴 **In-App Purchase Key** | **不是**已配好的那把 ASC API Key！在 ASC → *Integrations* → **In-App Purchase** tab 生成，给我 ① Key ID ② Issuer ID ③ `.p8` 全文<br>👉 **支付验证的完整链路 + 拿到 Key 之后我做什么 → 见 §5** |
 | 4.4 | **隐私标签** | 全仓无任何埋点/崩溃 SDK ⇒ 只用申报 4 项（邮箱/学习内容/User ID/购买记录），**Usage 与 Diagnostics 填「不收集」** |
 | 4.5 | **沙盒账号 / W-8BEN / DSA / 销售范围（只勾中国大陆）** | 见材料包 §五~§七 |
@@ -193,7 +193,7 @@ appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书�
 
 | # | 事项 | 关键点 |
 |---|---|---|
-| 5.2.1 | **建 2 个订阅产品** | 类型「**自动续期订阅**」；Product ID **逐字**：<br>`com.coevo.coevoApp.pro.monthly`（¥9.9 / 1 个月）<br>`com.coevo.coevoApp.pro.yearly`（¥78 / 1 年）<br>群组内**均为等级 1**；⚠️ 每个都要填**本地化显示名 + 价格 + 审核截图** |
+| 5.2.1 | **建 2 个订阅产品** | 类型「**自动续期订阅**」；Product ID **逐字**：<br>`com.coevo.coevoApp.pro.monthly`（¥6 / 1 个月）<br>`com.coevo.coevoApp.pro.yearly`（¥58 / 1 年）<br>群组内**均为等级 1**；⚠️ 每个都要填**本地化显示名 + 价格 + 审核截图** |
 | 5.2.2 | 🔴 **生成 In-App Purchase Key** | ASC → *Users and Access* → **Integrations** → **In-App Purchase** tab → 生成。<br>**不是**已配好的那把 ASC API Key！给我 ① **Key ID** ② **Issuer ID** ③ **`.p8` 文件内容** |
 | 5.2.3 | **建沙盒测试账号** | ASC → *Users and Access* → **Sandbox → Testers** → 新建（**不能**用你自己的 Apple ID 邮箱）。真机沙盒购买要用它登录 |
 | 5.2.4 | ⚠️ **订阅要随 App 首次提审一起提交** | Apple 要求订阅产品与 App 版本**同批送审**；只建产品不送审 = 不会生效 |
@@ -205,7 +205,7 @@ appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书�
 | **订阅时限** | 1 个月（年度产品选 1 年）|
 | **家人共享** | 🔴 **保持关闭** —— **一旦启用不可撤销**；一期不做 |
 | **销售范围** → 「设置供应情况」 | 勾 **只选「中国大陆」**（与 App 的销售范围一致）|
-| **订阅价格** → 「查看所有订阅定价」 | 加 **¥9.9**（年度 ¥78）→ Apple 自动换算其他地区 |
+| **订阅价格** → 「查看所有订阅定价」 | 加 **¥6**（年度 **¥58**）→ Apple 自动换算其他地区 |
 | **显示名称与描述** → 「添加」 | 简体中文：显示名 `记忆之书 专业版 · 月度`；描述 `解锁跨设备云端同步与不限次整段翻译。` |
 | **图像（可选）** | **跳过** —— 它只用于「回头客优惠 / 优惠码 / App Store 推广」，一期都不做 |
 | **购买选项** → 多名额购买 | 页面自己写着「**将于今年晚些时候…提供**」⇒ 还没生效。但我们的订阅「同一人买两份」毫无意义 ⇒ 建议**编辑 → 不允许**（防止将来上线后用户重复付费）|
@@ -213,11 +213,16 @@ appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书�
 | **审核信息 → 截屏** | 🔴 **必填** —— ≥640×920，须是 **App 内的订阅页**（现在可以截了）|
 | **审核备注**（可空） | 建议填：说明购买路径 + 解锁什么（详见材料包 §八）|
 
-> 🔑 **价格是 StoreKit 给的，不是代码写死的** —— `iap_plan.dart:132/141` 的 `fallbackFen: 990 / 7800`
+> 🔑 **价格是 StoreKit 给的，不是代码写死的** —— `iap_plan.dart:133/141` 的 `fallbackFen: 600 / 5800`
 > 只是**兜底**（商品拉不到时才用）。⇒ ASC 改价，App 显示会自动跟着变。
-> ⚠️ **但若价格列表里找不到精确的 ¥9.9**：**别硬凑** —— 告诉我，我把
-> `fallbackFen` + 后端 seed `subscription_plans.price`（都是 990 分）+ 文档一起改。
-> 📌 判据：**同一件事的数字散在三处（ASC / 端侧兜底 / 后端 seed）⇒ 改一处必须问「还有哪两处」**。
+>
+> 🔴 **2026-10-11 已定为 ¥6 / ¥58** —— ASC 的价位是**从列表里选的、不能自定义**
+> （原定 ¥9.9 / ¥78 不在可选价位里）。
+> ⚠️ 代价：价格数字**散在四处**，改一处必须问「**还有哪三处**」：
+> ① **ASC** 产品价（权威）② 端侧 `iap_plan.dart` 的 `fallbackFen`
+> ③ 后端 seed `subscription_plans.price` + `main.rs` 的幂等 UPDATE ④ 法务 `terms-of-service.md` 价格表。
+> 📌 还有一处**派生数字**：「**省 X%**」角标由 `yearlyDiscountPercent(600, 5800)` **算出来** = **19%**
+> （旧价是 34%）—— 它用的是**兜底价** ⇒ 忘记同步 `fallbackFen` 会**静默显示错的折扣**。
 >
 > 🔴 **首个自动续期订阅必须随新 App 版本一起提交**（页面原文）⇒ 与 §6 的 `app-store` 包**同批送审**。
 

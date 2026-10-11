@@ -102,7 +102,7 @@ TENCENT_SES_FROM / _REGION / _SECRET_ID / _SECRET_KEY / _TEMPLATE_ID
 
 | # | 事项 | 谁做 | 依据 |
 |---|---|---|---|
-| **B1** | ASC 建**订阅群组 + 2 个产品**（`com.coevo.coevoApp.pro.monthly` ¥9.9 · `.yearly` ¥78，均等级 1）| **你** | `owner-action-checklist` §二 |
+| **B1** | ASC 建**订阅群组 + 2 个产品**（`com.coevo.coevoApp.pro.monthly` **¥6** · `.yearly` **¥58**，均等级 1）| **你** | `owner-action-checklist` §二 |
 | **B2** | ASC 生成 **In-App Purchase Key**（.p8 + Key ID）→ 给我配 4 个环境变量 | **你 + 我** | 同上 §3.1 |
 | **B3** | 建**沙盒测试账号**（与真实 Apple ID 分开）| **你** | 同上 §六 |
 | **B4** | 真机沙盒联调（**只能 iOS** —— 安卓包没有对应商品 ⇒ 点订阅必失败）| **你 + 我** | 同上 §7.1.2 |

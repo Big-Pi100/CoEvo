@@ -139,8 +139,8 @@ ASC(appstoreconnect.apple.com) →「我的 App」→ **点进「记忆之书」
   └─ 左侧边栏「**订阅**」（在「功能 / Features」分组下）
        └─ ① 先「**创建订阅群组**」：参考名称 = 记忆之书 专业版
           └─ ② 群组内点「+」加两个产品：
-               · com.coevo.coevoApp.pro.monthly  ¥9.9   1 个月  等级 1
-               · com.coevo.coevoApp.pro.yearly   ¥78    1 年    等级 1
+               · com.coevo.coevoApp.pro.monthly  ¥6     1 个月  等级 1
+               · com.coevo.coevoApp.pro.yearly   ¥58    1 年    等级 1
 ```
 
 > 🔴 **不在 Apps 列表页建** —— 订阅是 **App 级资源**，必须**先进到那个 App 里**。
@@ -595,7 +595,7 @@ Play Console 里也没有对应商品 ⇒ 点订阅**必然失败**。
 
 【第 3 步 · 建订阅产品】§二
 □ 3.1 建群组 `记忆之书 专业版`（只建一个）
-□ 3.2 建 2 个产品：monthly ¥9.9 / yearly ¥78 · 均等级 1
+□ 3.2 建 2 个产品：monthly ¥6 / yearly ¥58 · 均等级 1
       ⚠️ Product ID 保存后不可改 · 简体中文本地化为必填
 □ 3.3 审核截图 —— ✅ 订阅页已重做完，可以截了（≥640×920，须是 App 内订阅页）
 

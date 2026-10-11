@@ -264,15 +264,15 @@ code { background:#eae5dc; padding:1px 5px; border-radius:4px; font-size:12px; }
       <div class="plan" data-p="monthly">
         <div class="radio"></div>
         <div class="name">月度</div>
-        <div class="price"><span class="cur">¥</span>9.9</div>
+        <div class="price"><span class="cur">¥</span>6</div>
         <div class="per">每月自动续期</div>
       </div>
       <div class="plan has-badge" data-p="yearly">
-        <div class="badge">省 34%</div>
+        <div class="badge">省 19%</div>
         <div class="radio"></div>
         <div class="name">年度</div>
-        <div class="price"><span class="cur">¥</span>78</div>
-        <div class="per">≈ ¥6.5 / 月</div>
+        <div class="price"><span class="cur">¥</span>58</div>
+        <div class="per">≈ ¥4.83 / 月</div>
       </div>
     </div>
 
@@ -609,7 +609,7 @@ document.getElementById('tog').onclick = function () {
 };
 var sel = null;
 var buy = document.getElementById('buy');
-var PRICE = { monthly: '¥9.9 / 月', yearly: '¥78 / 年' };
+var PRICE = { monthly: '¥6 / 月', yearly: '¥58 / 年' };
 document.querySelectorAll('.plan').forEach(function (card) {
   card.onclick = function () {
     sel = card.dataset.p;

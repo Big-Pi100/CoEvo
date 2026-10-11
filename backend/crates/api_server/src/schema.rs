@@ -430,10 +430,15 @@ CREATE INDEX IF NOT EXISTS idx_audit_created ON subscription_audit_log(created_a
 --    ⇒ 若本表价格与 ASC 不一致，**以 ASC 为准**（端侧价格从 StoreKit 取）。
 -- ⚠️ 用 `INSERT OR IGNORE`（而非 DO UPDATE）：管理端可改套餐（见 `plans_handlers`），
 --    无条件 UPDATE 会**覆盖管理员改动**。价格调整走 ASC，不依赖本 seed。
+-- 🔴 2026-10-11 补：**老库的价格由 `main.rs` 的 `init_database` 用
+--    `UPDATE … WHERE price <> 新值` 兜**（幂等 · 只在有变化时写）。
+--    为什么价格也必须兜：`iap_handlers::fallback_price_fen` 拿本表 `price` 当
+--    **订单金额**（Apple 交易里没价时）⇒ 停在旧值会让 `payment_orders` 记错金额且不报错。
+--    ⇒ 本 seed 与 main.rs 的 UPDATE **必须一起改**（2026-10-11：990→600 · 7800→5800）。
 INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at)
-VALUES ('com.coevo.coevoApp.pro.monthly', '记忆之书 专业版 · 月度', 30, 990, 0, 1, datetime('now'));
+VALUES ('com.coevo.coevoApp.pro.monthly', '记忆之书 专业版 · 月度', 30, 600, 0, 1, datetime('now'));
 INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at)
-VALUES ('com.coevo.coevoApp.pro.yearly', '记忆之书 专业版 · 年度', 365, 7800, 1, 1, datetime('now'));
+VALUES ('com.coevo.coevoApp.pro.yearly', '记忆之书 专业版 · 年度', 365, 5800, 1, 1, datetime('now'));
 
 -- 运行时配置表
 CREATE TABLE IF NOT EXISTS app_config (

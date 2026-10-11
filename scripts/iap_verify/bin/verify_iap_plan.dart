@@ -120,8 +120,9 @@ void main() {
   // ────────────────────────────────────────────────────────────────
   print('\n[②] 价格格式化（分 → 显示串）');
 
-  check('990 分 → ¥9.9', formatYuan(990) == '¥9.9', formatYuan(990));
-  check('7800 分 → ¥78', formatYuan(7800) == '¥78', formatYuan(7800));
+  check('600 分 → ¥6', formatYuan(600) == '¥6', formatYuan(600));
+  check('5800 分 → ¥58', formatYuan(5800) == '¥58', formatYuan(5800));
+  check('483 分 → ¥4.83（年付折算成「每月」时有小数）', formatYuan(483) == '¥4.83', formatYuan(483));
   check('128000 分 → ¥1280', formatYuan(128000) == '¥1280', formatYuan(128000));
   check('100 分 → ¥1', formatYuan(100) == '¥1', formatYuan(100));
   check('1005 分 → ¥10.05', formatYuan(1005) == '¥10.05', formatYuan(1005));
@@ -134,15 +135,29 @@ void main() {
   // ────────────────────────────────────────────────────────────────
   print('\n[③] 年付折扣');
 
-  // 月 9.9 × 12 = 118.8；年 78 → 省 40.8 → 34.3% → 34%
-  final pct = yearlyDiscountPercent(monthlyFen: 990, yearlyFen: 7800);
-  check('月 9.9 / 年 78 → 折扣可算', pct != null, '$pct');
-  check('折扣落在 33–35% 区间（规格称 34%）', pct != null && pct >= 33 && pct <= 35, '$pct%');
+  // 月 6 × 12 = 72；年 58 → 省 14 → 14/72 = 19.4% → 四舍五入 19
+  final pct = yearlyDiscountPercent(monthlyFen: 600, yearlyFen: 5800);
+  check('月 ¥6 / 年 ¥58 → 折扣可算', pct != null, '$pct');
+  // 🔴 锁**精确值**、不锁区间 —— 它由兜底价完全确定，是确定值；
+  //    区间断言会让「差一点」也过（2026-10-11 改价 9.9/78 → 6/58 时，
+  //    这里原本断言「33–35%」，**必须手动改**才不至于静默失效）。
+  check('折扣 = 19%（¥6×12 = 72 → ¥58 ⇒ 省 19.4%）', pct == 19, '$pct%');
+
+  // 🔑 与 UI **同源**：`subscribe_screen._yearlyDiscount()` 用的正是 `defaultPlans()`
+  //    的兜底价 ⇒ 这里直接对「UI 会算出的那个数」下断言（而不是只测函数本身）。
+  final uiBase = defaultPlans();
+  check(
+      'UI 角标（由 defaultPlans 兜底价算出）也是 19%',
+      yearlyDiscountPercent(
+            monthlyFen: uiBase[0].fallbackFen,
+            yearlyFen: uiBase[1].fallbackFen,
+          ) ==
+          19);
 
   // 🔑 「没有折扣」必须返回 null（而不是 0）—— 否则 UI 会显示「省 0%」
   check('年付不比月付划算 → null（不显示角标）',
-      yearlyDiscountPercent(monthlyFen: 990, yearlyFen: 12000) == null);
-  check('年付更贵 → null', yearlyDiscountPercent(monthlyFen: 990, yearlyFen: 99999) == null);
+      yearlyDiscountPercent(monthlyFen: 600, yearlyFen: 12000) == null);
+  check('年付更贵 → null', yearlyDiscountPercent(monthlyFen: 600, yearlyFen: 99999) == null);
   check('零价 → null（防除零）', yearlyDiscountPercent(monthlyFen: 0, yearlyFen: 0) == null);
   check('负价 → null', yearlyDiscountPercent(monthlyFen: -1, yearlyFen: -1) == null);
 
@@ -152,16 +167,16 @@ void main() {
   print('\n[④] 展示模型（StoreKit 价格优先于本地兜底）');
 
   final noStore = defaultPlans();
-  check('无 StoreKit 价 → 用兜底 990', noStore[0].fallbackFen == 990, '${noStore[0].fallbackFen}');
-  check('无 StoreKit 价 → 用兜底 7800', noStore[1].fallbackFen == 7800, '${noStore[1].fallbackFen}');
+  check('无 StoreKit 价 → 用兜底 600（¥6）', noStore[0].fallbackFen == 600, '${noStore[0].fallbackFen}');
+  check('无 StoreKit 价 → 用兜底 5800（¥58）', noStore[1].fallbackFen == 5800, '${noStore[1].fallbackFen}');
   check('无 StoreKit 价 → 标记 usingFallbackPrice', noStore[0].usingFallbackPrice);
-  check('无 StoreKit 价 → 显示兜底串', noStore[0].priceLabel == '¥9.9', noStore[0].priceLabel);
+  check('无 StoreKit 价 → 显示兜底串 ¥6', noStore[0].priceLabel == '¥6', noStore[0].priceLabel);
 
-  final withStore = defaultPlans(monthlyStorePrice: '¥9.90', yearlyStorePrice: '¥78.00');
-  check('有 StoreKit 价 → 优先显示它', withStore[0].priceLabel == '¥9.90', withStore[0].priceLabel);
+  final withStore = defaultPlans(monthlyStorePrice: '¥6.00', yearlyStorePrice: '¥58.00');
+  check('有 StoreKit 价 → 优先显示它', withStore[0].priceLabel == '¥6.00', withStore[0].priceLabel);
   check('有 StoreKit 价 → 不再标记兜底', !withStore[0].usingFallbackPrice);
   // 🔑 关键：有 StoreKit 价时，**不能**再显示本地兜底价（两个价并存会误导用户）
-  check('有 StoreKit 价 → 不显示本地价', withStore[1].priceLabel != '¥78', withStore[1].priceLabel);
+  check('有 StoreKit 价 → 不显示本地价', withStore[1].priceLabel != '¥58', withStore[1].priceLabel);
 
   check('两档产品 ID 正确', noStore[0].productId == kProductMonthly && noStore[1].productId == kProductYearly);
   check('时长标签：1 个月', noStore[0].durationLabel == '1 个月', noStore[0].durationLabel);
@@ -175,13 +190,13 @@ void main() {
   final notice = SubscriptionLegalText.autoRenewNotice(
     title: '记忆之书 专业版',
     durationLabel: '1 个月',
-    priceLabel: '¥9.9',
+    priceLabel: '¥6',
   );
   // 🔑 断言「关键词存在」而不是「整句相等」—— 文案可以润色，
   //    但**法定要素不能丢**。这是「锁语义形状、不锁拼写」的用法。
   check('含标题', notice.contains('记忆之书 专业版'));
   check('含时长', notice.contains('1 个月'));
-  check('含价格', notice.contains('¥9.9'));
+  check('含价格', notice.contains('¥6'));
   check('🔴 含「自动续期」字样', notice.contains('自动续期'));
   check('🔴 含「24 小时」取消窗口', notice.contains('24 小时'));
 
@@ -285,7 +300,7 @@ void main() {
     plansForPeriod[1].periodLabel,
   );
   // 🔑 折算**只在本地兜底价**下做 —— 拿 StoreKit 的本地化串（可能是 $/€）
-  //    去算人民币会自相矛盾（「价格 $99.99，下面写 ≈ ¥6.5/月」）
+  //    去算人民币会自相矛盾（「价格 $99.99，下面写 ≈ ¥4.83/月」）
   check(
     '非兜底价的年付 → 不折算（避免货币自相矛盾）',
     defaultPlans(yearlyStorePrice: r'$99.99')[1].periodLabel == '每年自动续期',

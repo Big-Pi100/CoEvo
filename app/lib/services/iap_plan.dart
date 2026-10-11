@@ -53,10 +53,10 @@ List<String> checkProductIdsMatchBackend({
 // 价格格式化
 // ════════════════════════════════════════════════════════════════════════
 
-/// 分 → `¥9.9` / `¥78` / `¥78.00` 风格。
+/// 分 → `¥6` / `¥58` / `¥4.83` 风格。
 ///
-/// 🔑 规则：整数元**不显示**小数（`¥78` 而不是 `¥78.00`）——
-///    这是国内定价的通行写法，也让「¥9.9 vs ¥78」的对比更干净。
+/// 🔑 规则：整数元**不显示**小数（`¥58` 而不是 `¥58.00`）——
+///    这是国内定价的通行写法，也让「¥6 vs ¥58」的对比更干净。
 String formatYuan(int fen) {
   if (fen < 0) return '¥0';
   final yuan = fen ~/ 100;
@@ -104,14 +104,14 @@ class IapPlanDisplay {
   /// # 🔑 年付为什么折算成「≈ ¥X / 月」
   ///
   /// 把两档拉到**同一量纲**，用户才能直接比。
-  /// 「¥78 / 年」与「¥9.9 / 月」不是同一单位 —— 要心算才知道差多少；
-  /// 「≈ ¥6.5 / 月」则一眼可比。这正是 §4.4.1 判据 4 要「并列展示」的用意。
+  /// 「¥58 / 年」与「¥6 / 月」不是同一单位 —— 要心算才知道差多少；
+  /// 「≈ ¥4.83 / 月」则一眼可比。这正是 §4.4.1 判据 4 要「并列展示」的用意。
   ///
   /// # ⚠️ 一个刻意的限制：只在**价格也来自本地兜底**时才做换算
   ///
   /// `storePrice` 是 StoreKit 给的**已本地化字符串**（可能是 `$` / `€`…），
   /// 而折算用的是 `fallbackFen`（人民币）。
-  /// 若两者混用，会出现「价格显示 $9.99，下面写 ≈ ¥6.5/月」这种**自相矛盾**。
+  /// 若两者混用，会出现「价格显示 $9.99，下面写 ≈ ¥4.83/月」这种**自相矛盾**。
   /// ⇒ 非兜底价时退化为中性的「每年自动续期」（不撒谎，也不误导）。
   String get periodLabel {
     if (months <= 1) return '每月自动续期';
@@ -129,8 +129,10 @@ List<IapPlanDisplay> defaultPlans(
         title: '记忆之书 专业版',
         months: 1,
         durationLabel: '1 个月',
-        // 🔴 与后端 seed（`subscription_plans.price`）一致：990 分
-        fallbackFen: 990,
+        // 🔴 与后端 seed（`subscription_plans.price`）一致：600 分
+        //    ⚠️ 2026-10-11 由 990 改 600（ASC 只给固定价位，白哥选 ¥6）。
+        //    📌 改这个数要**同时**改：后端 seed / 法务文本价格表 / ASC 产品价 —— 共四处。
+        fallbackFen: 600,
         storePrice: monthlyStorePrice,
       ),
       IapPlanDisplay(
@@ -138,7 +140,7 @@ List<IapPlanDisplay> defaultPlans(
         title: '记忆之书 专业版',
         months: 12,
         durationLabel: '1 年',
-        fallbackFen: 7800,
+        fallbackFen: 5800,
         storePrice: yearlyStorePrice,
       ),
     ];
@@ -149,6 +151,13 @@ List<IapPlanDisplay> defaultPlans(
 ///
 /// 🔑 为什么返回 null 而不是 0/负数：**「没有折扣」和「折扣是 0%」在 UI 上不同** ——
 ///    前者不该出现角标，后者会显示「省 0%」。用一个可为空的值把它们分开。
+///
+/// ⚠️ 调用方（`subscribe_screen._yearlyDiscount`）传的是**兜底价** `fallbackFen`
+///    （StoreKit 给的是已本地化的**字符串**，无法参与运算）
+///    ⇒ **「省 X%」正确的前提是 `fallbackFen` 与 ASC 里的实际价一致**。
+///    改价时只改 ASC 不改这里 ⇒ 价格会被 StoreKit 自动更新，而**这个百分比不会**
+///    ⇒ **静默显示一个错的折扣**（不报错、也没人会发现）。
+///    （2026-10-11：¥9.9/¥78 → ¥6/¥58 ⇒ 34% → 19%，就是靠改 `fallbackFen` 兜住的）
 int? yearlyDiscountPercent({required int monthlyFen, required int yearlyFen}) {
   if (monthlyFen <= 0 || yearlyFen <= 0) return null;
   final fullYear = monthlyFen * 12;

@@ -735,8 +735,8 @@ mod tests {
         let conn = setup_db();
         let tx = sample_tx();
 
-        ensure_order(&conn, &tx, "u1", 990).unwrap();
-        ensure_order(&conn, &tx, "u1", 990).unwrap();
+        ensure_order(&conn, &tx, "u1", 600).unwrap();
+        ensure_order(&conn, &tx, "u1", 600).unwrap();
 
         let n: i64 = conn
             .query_row("SELECT COUNT(*) FROM payment_orders", [], |r| r.get(0))
@@ -752,7 +752,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(status, "SUCCESS");
-        assert_eq!(amount, 990);
+        assert_eq!(amount, 600);
         assert_eq!(plan, PRODUCT_MONTHLY);
     }
 
