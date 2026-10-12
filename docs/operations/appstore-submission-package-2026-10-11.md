@@ -146,12 +146,17 @@ ASC → *Users and Access* → **Sandbox** → *Testers* → 新建。
 | **User Content** | **Other User Content**（划线 / 笔记 / 生词 / 阅读记录 / **导入的电子书文件**）| ✅ | ✅ | App Functionality |
 | **Identifiers** | **User ID** | ✅ | ✅ | App Functionality |
 | **Purchases** | **Purchase History** | ✅ | ✅ | App Functionality |
-| Usage Data | — | ❌ **不收集** | — | 无埋点 SDK |
+| **Usage Data** | **Product Interaction** | ✅ | ✅ | App Functionality |
+| Usage Data → Advertising Data / Other Usage | — | ❌ | — | 无广告 SDK、无埋点 |
 | Diagnostics | — | ❌ **不收集** | — | 无崩溃上报 SDK |
 | Location / Contacts / Photos … | — | ❌ | — | 隐私政策 §2.5 |
 
+> 🔑 **一处容易搞错**：Apple 官方说「App **无需声明仅由 Apple 收集**的信息，例如**用于 App 内购买的付款信息**」——
+> 但我们**自己后端也存了**交易（`iap_handlers` 记账步：`iap_transactions` / `payment_orders`）
+> ⇒ **不属于「仅由 Apple 收集」** ⇒ **必须申报 Purchase History**。
+
 - **Data Used to Track You**：**无** ✅
-- **Data Linked to You**：上表 4 项
+- **Data Linked to You**（**5 项**）：Email Address · Other User Content · User ID · Purchase History · **Product Interaction**
 - **Data Not Linked to You**：**无**
 
 > 🆕 **2026-10-11 复核**：`User Content` 那一行原本写「划线 / 笔记 / 生词 / 阅读记录」，
@@ -159,20 +164,20 @@ ASC → *Users and Access* → **Sandbox** → *Testers* → 新建。
 > 依据：`privacy-policy.md` §2.1(二) 现在明写「电子书文件本身会备份到云端」；
 > 后端 `user_purge.rs` 有 `blob_bytes_freed`（注销时释放云端文件字节数）。
 
-### 🔴 两处**需要你定**的边界项（我不替你签这个字）
+### ✅ 两处边界项 —— 已定案（2026-10-12 白哥同意）
 
 > 📌 **Apple 官方定义**（`developer.apple.com/app-store/app-privacy-details`，2026-10-12 复核）：
 > · **Device ID** = 「the device's advertising identifier, or **other device-level ID**」→ 关键词是 **device-level**
 > · **Product Interaction** = 「app launches, taps, clicks, scrolling information, … or **other information about how the user interacts with the app**」→ 定义**很宽**
 
-| # | 项 | 事实（已核代码）| 我的建议 | 依据 |
-|---|---|---|---|---|
-| 1 | **Device ID**（Identifiers 下）| 上报 `dev_` + 32 位 hex 的随机串；**存在 `SharedPreferences`**（`device_id.dart:22` 注释原文：「卸载重装 → 新 id（SharedPreferences 被系统清空）」）⇒ **重装即变** | ✅ **不申报** | Apple 要的是 **device-level** ID（IDFA / IDFV 这类系统级、跨重装稳定的）。我们是**应用实例级**随机串 —— **连「设备」这个身份都不稳定** ⇒ 不构成 device-level ID。且 `Data Used to Track You` = **无** |
-| 2 | **Usage Data → Product Interaction** | 该标识 + 词（`spelling`）上报到 `/api/generate-card` → 写 `generated_card_hit(spelling, device_id)`，`COUNT(*)` = `distinct_user_count`（决定给词库补哪些词）。**另有「划词历史」本身也随账号同步** | ✅ **建议申报** | 「这台（匿名）设备查了哪个词」正是「**information about how the user interacts with the app**」。建议：用途勾 **App Functionality**（内容供给 + 同步）· **Linked to you = ✅**（划词历史随账号同步 ⇒ 可关联）· Track = **否** |
+| # | 项 | ✅ 结论 | 依据 |
+|---|---|---|---|
+| 1 | **Device ID**（Identifiers 下）| **不申报** | 我们的标识是 `dev_` + 32 位 hex 随机串，**存在 `SharedPreferences`**（`device_id.dart:22` 注释原文：「卸载重装 → 新 id」）⇒ **应用实例级、重装即变** ⇒ **不构成 device-level ID**（Apple 指的是 IDFA / IDFV 那类系统级、跨重装稳定的）。且不做追踪 |
+| 2 | **Usage Data → Product Interaction** | **申报**<br>用途 **App Functionality** · **Linked = ✅** · Track = **否** | 标识 + 词（`spelling`）上报 → `generated_card_hit(spelling, device_id)` → `distinct_user_count`（决定给词库补哪些词）；**且「划词历史」本身随账号同步** ⇒ 属「**information about how the user interacts with the app**」 |
 
-> ⚠️ 这一栏是**你的签名声明**（我没法替你签）⇒ **你定**。你定了我同步改本表口径；
-> 隐私政策 §2.1 / §2.3 已**如实**写了这个标识的存在、性质与用途 ⇒ **两种答法都不与政策冲突**。
-
+> ✅ **隐私政策无需改动、也无需重新部署** —— §2.1 / §2.3 已**如实**写了这个标识的
+> 存在、性质与用途；本次只是选了其中一侧，**两种答法都不与政策冲突**。
+>
 > 📌 判据：**平台声明（ASC 标签）与法务文本是「同一事实的两处描述」** ——
 > 两处都必须与实现一致；**不一致的任一侧都是失实**。
 
