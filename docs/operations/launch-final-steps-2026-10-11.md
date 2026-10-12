@@ -360,15 +360,41 @@ appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书�
 
 ## 6. 【我做】出上架用的 app-store 包
 
-> ### 🚀 **出包进行中**（2026-10-12 12:39 已触发）
-> 白哥已把仓库改为 **PUBLIC** ⇒ 触发 `ios-archive`（`method=app-store` + `upload=true`）。
-> ⏳ 约 6–10 分钟。**脚本已兜底：无论成败，结束即改回私有**（`trap EXIT`）。
-> 产物：IPA（artifact）+ **自动上传 ASC** ⇒ TestFlight 可见。
+> ### ✅ **出包结果**（2026-10-12 12:53）—— **ASC 上传成功**；job 显示 `failure` 是**假红**
+>
+> | 步骤 | 结果 |
+> |---|---|
+> | Archive · Export IPA | ✅ |
+> | **上传 App Store Connect** | ✅ **`Upload succeeded` · `Uploaded Runner` · `EXPORT SUCCEEDED`** |
+> | 校验 IPA 产物（缺失即失败）| ❌ 失败 —— 🔴 **假红** |
+> | Upload IPA as artifact | ⏭️ skipped（同一个原因）|
+>
+> **为什么是假红**：`upload=true` 时 workflow 把 `destination` 设为 **`upload`**
+> ⇒ IPA **直接上传 ASC、本地不产出文件** ⇒ 后面那句「断言 `build/ios/ipa/*.ipa` 存在」
+> **必然失败**（实测日志：`ls: build/ios/ipa/: No such file or directory`）。
+> ⚠️ **这是 workflow 的逻辑缺陷**（校验没区分 `destination` 模式）
+> ⇒ **下次带 `upload=true` 出包还会假红**（待修，见 §6.2）。
+>
+> ✅ **仓库已自动改回 PRIVATE**（脚本 `trap EXIT` 生效，已核实 `visibility=PRIVATE`）。
+>
+> 🔴 **顺带收到一条 Apple 官方警告（新期限，来自本次上传的服务器响应 —— 证据最强）**：
+> > `Deployment target too low. Your app targets iOS 13.0.`
+> > **`Starting in April 2027`, iOS apps must target 15.0 or later** to be uploaded to
+> > App Store Connect or submitted for distribution.
+>
+> ⇒ **2027-04 前必须把 `IPHONEOS_DEPLOYMENT_TARGET` 从 13.0 升到 15.0**（与 §6.1 那条不同的期限）。
 
 ⚠️ 当前那个 IPA 是 **ad-hoc**，**不能上架**。上架必须用 `method=app-store` 出一次包。  
 （说一声我全自动跑，约 6–8 分钟；仓库会临时改公开，出完立刻改回私有。）
 
-### 6.1 🔴 上架的两条「构建级」硬条件（**已生效**，Apple 官方）
+### 6.1 🔴 上架的三条「构建级」硬条件（Apple 官方）
+
+> 🆕 **第三条（2026-10-12 新增）**：**部署目标 ≥ iOS 15.0**，生效 **2027-04**。
+> 🔴 我们当前是 **13.0** ⇒ 还有约 6 个月，**必须升**。
+> 📌 证据来自**本次出包时 Apple 服务器的直接响应**（不是文档推断 —— 证据等级最高）：
+> > `Warning. Deployment target too low. Your app targets iOS 13.0.`
+> > `Starting in April 2027, iOS apps must target 15.0 or later to be uploaded to`
+> > `App Store Connect or submitted for distribution.`
 
 | 条件                                         | 生效日            | 我们的现状                                                                                                                              |
 | ------------------------------------------ | -------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -380,6 +406,33 @@ appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书�
 ⇒ 建议在出包 workflow 加**一步打印真实工具链**（`xcodebuild -version` + `-showsdks`），  
 把「用的哪个 Xcode / 哪个 SDK」变成**日志里的证据**，而不是靠外部文章推断。  
 （更硬的做法是钉 `runs-on: macos-26`；但浮动标签眼下是对的 ⇒ **先加可观测性，不动能跑通的路径**。）
+
+---
+
+### 6.2 ⚠️ workflow 的一个缺陷（**待你批准再修**）
+
+**现象**：`upload=true` 出包时，job 必然以 `failure` 结束 —— 但**实际已上传成功**（假红）。
+
+**根因**（已定位到代码）：`destination=upload` 时 Xcode **直传 ASC、不落本地文件**，
+而紧接着的校验步骤断言的是**本地文件**：
+
+```
+if [ "$UPLOAD" = "true" ]; then PlistBuddy -c "Set :destination upload"; fi   # 直传，无本地文件
+...
+- name: 校验 IPA 产物（缺失即失败）
+  run: ipa=$(ls build/ios/ipa/*.ipa …)   # ⇒ ls: build/ios/ipa/: No such file or directory ⇒ exit 1
+```
+
+**两个候选修法**：
+
+| # | 做法 | 取舍 |
+|---|---|---|
+| **A**（推荐）| 校验步骤按 `destination` 分流：`upload` 模式断言「日志含 `Upload succeeded` / `EXPORT SUCCEEDED`」；`export` 模式才断言本地文件 | 语义正确、改动小 |
+| **B** | `upload=true` 时**跳过**校验与 artifact 上传（`if: ${{ inputs.upload != true }}`）| 最省事，但「上传成功」这件事就**没有断言**了 ⇒ 真失败会被漏掉 |
+
+⚠️ **两个都不要选**：任由 job 一直红 —— 本项目已有判据「**假红会训练人忽略红灯**」。
+
+> ⏸️ 按项目铁律「发现代码问题先报告、经批准再改」—— **等你一句话**。
 
 ---
 
