@@ -409,7 +409,7 @@ appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书�
 
 ---
 
-### 6.2 ⚠️ workflow 的一个缺陷（**待你批准再修**）
+### 6.2 ✅ workflow 假红缺陷 —— **已修**（2026-10-12 白哥批准）
 
 **现象**：`upload=true` 出包时，job 必然以 `failure` 结束 —— 但**实际已上传成功**（假红）。
 
@@ -432,7 +432,27 @@ if [ "$UPLOAD" = "true" ]; then PlistBuddy -c "Set :destination upload"; fi   # 
 
 ⚠️ **两个都不要选**：任由 job 一直红 —— 本项目已有判据「**假红会训练人忽略红灯**」。
 
-> ⏸️ 按项目铁律「发现代码问题先报告、经批准再改」—— **等你一句话**。
+> ✅ **已修**（2026-10-12 白哥「修掉」）。**修法 = 单源判据**：
+> 把**最终 destination** 由「配置签名」步骤写进 `GITHUB_ENV`，下游**只读结果**、不重复判定
+> （判据：**同一件事的判定只能一处权威**）。
+>
+> | 步骤 | 改动 |
+> |---|---|
+> | 配置签名 | `echo "DEST=upload\|export" >> $GITHUB_ENV` |
+> | **Export IPA** | 加 `tee` 落日志；`DEST=upload` 时断言 **`Upload succeeded` + `EXPORT SUCCEEDED`**（两条都要）|
+> | 校验 IPA 产物 | `if: env.DEST == 'export'`（upload 时跳过）|
+> | Upload IPA as artifact | `if: env.DEST == 'export'`（同上）|
+>
+> **行为走查（两种模式）**：
+>
+> | 模式 | Export 步 | 校验产物 | Upload artifact | job |
+> |---|---|---|---|---|
+> | `upload=false`（默认 / ad-hoc）| 只导出 | ✅ 断言本地 .ipa | ✅ 上传 artifact | 绿 |
+> | `upload=true`（app-store）| 直传 ASC + **断言日志证据** | ⏭️ 跳过 | ⏭️ 跳过 | **绿**（不再是假红）|
+>
+> **验证**：YAML 解析 ✅（12 steps）· `if` 条件已生效 · DEST 链 **2 写 3 读** · diff 29/2
+> ⚠️ **未能跑 CI 实证**（仓库私有 + 额度耗尽）⇒ **下次出包时观察**
+> （应能看到 `✅ upload 模式：已确认上传成功（Upload succeeded + EXPORT SUCCEEDED）`）。
 
 ---
 

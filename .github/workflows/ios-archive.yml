@@ -206,12 +206,20 @@ jobs:
             UPLOAD=false
           fi
 
+          # 🆕 2026-10-12：**把最终的 destination 写进 `GITHUB_ENV` 传出去**。
+          #    原因：下面「Export」与「校验产物」两步**都必须知道**这次是 upload 还是 export，
+          #    而 `UPLOAD` 在本步骤里可能被改写成 false（见上 204 行）——
+          #    后续步骤看不到这个改写 ⇒ 会按「有本地 .ipa」去断言 ⇒ **必然假红**
+          #    （2026-10-12 实测：上传明明成功，job 却红在「校验 IPA 产物」）。
+          #    📌 判据：**同一件事的判定只能一处权威** —— 判定写在这里，下游只读结果。
           if [ "$UPLOAD" = "true" ]; then
             /usr/libexec/PlistBuddy -c "Set :destination upload" "$PLIST"
             echo "📤 destination=upload（会直接上传到 App Store Connect）"
+            echo "DEST=upload" >> "$GITHUB_ENV"
           else
             /usr/libexec/PlistBuddy -c "Set :destination export" "$PLIST"
             echo "📦 destination=export（只产出 IPA，不上传）"
+            echo "DEST=export" >> "$GITHUB_ENV"
           fi
 
           echo "--- 最终 export options ---"
@@ -293,11 +301,13 @@ jobs:
 
       # ── 导出（上传与否由 plist 的 destination 决定）─────────────────────
       - name: Export IPA（upload 时同时上传 ASC）
+        id: export
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
           set -euo pipefail
+          LOG="$RUNNER_TEMP/export.log"
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportPath build/ios/ipa \
@@ -305,9 +315,24 @@ jobs:
             -allowProvisioningUpdates \
             -authenticationKeyPath ~/private_keys/AuthKey_$ASC_KEY_ID.p8 \
             -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee "$LOG"
 
-      - name: 校验 IPA 产物（缺失即失败）
+          # 🆕 2026-10-12：**upload 模式的产物是「ASC 上的一个 build」，不是本地文件** ⇒
+          #    判据必须换：断言**日志证据**，不能断言本地 `build/ios/ipa/*.ipa`。
+          #    🔴 之前没区分两种模式 ⇒ upload 时「校验 IPA 产物」**必然失败（假红）**，
+          #       而实际上传已经成功（实测日志：`Upload succeeded.` + `** EXPORT SUCCEEDED **`）。
+          #    📌 判据：**「job 红了」≠「事情没做成」** —— 校验要断言**这次真正的产物**。
+          #       两条证据都要：`Upload succeeded` = 上传阶段成功；`EXPORT SUCCEEDED` = 整步收尾成功。
+          if [ "${DEST:-}" = "upload" ]; then
+            grep -q "Upload succeeded"  "$LOG" || { echo "🔴 upload 模式：日志里没有 'Upload succeeded'"; exit 1; }
+            grep -q "EXPORT SUCCEEDED"  "$LOG" || { echo "🔴 upload 模式：日志里没有 'EXPORT SUCCEEDED'"; exit 1; }
+            echo "✅ upload 模式：已确认上传成功（Upload succeeded + EXPORT SUCCEEDED）"
+          fi
+
+      - name: 校验 IPA 产物（仅 export 模式 —— upload 模式的判据在上一步）
+        # 🆕 2026-10-12：**upload 模式没有本地 .ipa**（产物直传 ASC）⇒ 本步必须按模式跳过，
+        #    否则必然假红（2026-10-12 实测）。upload 模式的判据已挪到「Export IPA」步。
+        if: env.DEST == 'export'
         # 🔴 2026-10-07：原来的「列出产物」是 `ls ... || true`，不构成校验 ——
         #    `exportArchive` 返回 0 **不代表**真产出了 .ipa（历史上它就"成功"过
         #    但没有任何产物）。⇒ 显式断言「文件存在 + 大小合理」。
@@ -329,6 +354,8 @@ jobs:
           fi
 
       - name: Upload IPA as artifact
+        # 🆕 2026-10-12：同样只在 export 模式有本地产物（upload 模式的产物在 ASC 上，无本地文件）。
+        if: env.DEST == 'export'
         uses: actions/upload-artifact@v6
         with:
           name: coevo-ios-ipa
