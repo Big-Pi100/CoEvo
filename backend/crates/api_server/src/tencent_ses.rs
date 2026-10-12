@@ -41,7 +41,7 @@ const VERSION: &str = "2020-10-02";
 ///    主题与正文都是「用户读到的语义」，它们和「用哪个 API 发」是两回事。
 /// ⚠️ 腾讯云控制台的**模板正文**也要同步中性化（那是我们改不了的另一半），
 ///    见 `docs/operations/tencent-ses-onboarding-2026-10-05.md` 的「模板正文」小节。
-const SUBJECT: &str = "记忆之书 验证码";
+const SUBJECT: &str = "记忆笔记 验证码";
 
 /// SES 配置（全部来自环境变量，**不落盘到仓库**）。
 pub struct SesConfig {

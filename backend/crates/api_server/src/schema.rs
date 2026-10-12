@@ -435,10 +435,13 @@ CREATE INDEX IF NOT EXISTS idx_audit_created ON subscription_audit_log(created_a
 --    为什么价格也必须兜：`iap_handlers::fallback_price_fen` 拿本表 `price` 当
 --    **订单金额**（Apple 交易里没价时）⇒ 停在旧值会让 `payment_orders` 记错金额且不报错。
 --    ⇒ 本 seed 与 main.rs 的 UPDATE **必须一起改**（2026-10-11：990→600 · 7800→5800）。
+-- 🔴 2026-10-12：**产品名 `记忆之书` → `记忆笔记`**（ICP 备案要求）——
+--    同上，`name` 也有一份 `main.rs` 的 `UPDATE … WHERE name <> 新值` 兜老库
+--    ⇒ 两处 `name` 串必须一起改。
 INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at)
-VALUES ('com.coevo.coevoApp.pro.monthly', '记忆之书 专业版 · 月度', 30, 600, 0, 1, datetime('now'));
+VALUES ('com.coevo.coevoApp.pro.monthly', '记忆笔记 专业版 · 月度', 30, 600, 0, 1, datetime('now'));
 INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at)
-VALUES ('com.coevo.coevoApp.pro.yearly', '记忆之书 专业版 · 年度', 365, 5800, 1, 1, datetime('now'));
+VALUES ('com.coevo.coevoApp.pro.yearly', '记忆笔记 专业版 · 年度', 365, 5800, 1, 1, datetime('now'));
 
 -- 运行时配置表
 CREATE TABLE IF NOT EXISTS app_config (
