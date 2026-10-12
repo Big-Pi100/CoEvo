@@ -710,6 +710,23 @@ push 到 main ⇒ event_name = push（≠ workflow_dispatch）
 
 ### 6.4 📦 本次出包的 IPA 在哪？—— **没有文件；包在 ASC 上**
 
+> ### ✅ 【2026-10-12 19:32】build 4 已出包并上传（含 IAP 误弹修复）
+>
+> 触发 `ios-archive`（`method=app-store` + `upload=true`）· run `38241815426` · headSha `def4531`
+> · 版本 **`1.0.0+4`** · 耗时 11m46s · **job `success`**。
+>
+> 🔑 **两件事同时达成**：
+> 1. **§6.2 的假红修复实证生效** —— 日志出现
+>    `✅ upload 模式：已确认上传成功（Upload succeeded + EXPORT SUCCEEDED）`，
+>    且「校验 IPA 产物」「Upload IPA as artifact」两步按设计 **skipped**
+> 2. **`ci.yml` 真跑并通过**（run `38241805968 @ def4531` = `success`）——
+>    攒了 17 个 commit 的代码终于过一次真 CI；
+>    ⇒ 也**反证**此前那 4 个 `failure` 确实是「私有仓 + 额度用尽」的 **额度假红**（`steps=0`）
+>
+> ✅ 仓库已自动改回 **PRIVATE**（`trap EXIT` 兜底生效，已核实 `visibility=PRIVATE`）
+> ⚠️ **后端那部分修复需单独部署**（你跑 WSL 构建 → 我上传/替换/重启/验证）
+> 📄 本次修复内容见 `docs/review/iap-sandbox-test-findings-2026-10-12.md` §6
+
 `upload=true` ⇒ `destination=upload` ⇒ Xcode **直传 App Store Connect、本地不落文件**
 ⇒ artifact 步骤被跳过（我给它加的 `if: env.DEST == 'export'`）⇒ **没有任何可下载的 `.ipa`**。
 
