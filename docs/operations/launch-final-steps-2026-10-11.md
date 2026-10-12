@@ -393,6 +393,29 @@ appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书�
 > —— 防止又出一份旧代码（刚才就是这么差点踩到）。
 > ⏳ 构建中；**无论成败，结束即改回私有**（`trap EXIT`）。
 >
+> ### ✅ 重出成功（2026-10-12 13:11）—— job **绿**（假红消失）· build **3** 已上传
+>
+> | 步骤 | 结果 |
+> |---|---|
+> | Export IPA（含上传 ASC）| ✅ success |
+> | 🆕 **`✅ upload 模式：已确认上传成功（Upload succeeded + EXPORT SUCCEEDED）`** | ✅ **修复已实证生效**（不是走查，是真跑）|
+> | 校验 IPA 产物 / Upload artifact | ⏭️ **skipped**（**正确** —— upload 模式本该跳过）|
+> | **job 总结论** | ✅ **`success`**（与上一次的 `failure` 假红对比鲜明）|
+>
+> ✅ 仓库已自动改回 **PRIVATE** · `headSha = 5466e1d8`（含 bump 的 commit）
+> ⇒ **ASC 上现在有两个 build**：**2**（旧价 ¥9.9/¥78）· **3**（¥6/¥58 + CI 修复）
+> ⇒ 🔴 **TestFlight 测的时候选 build 3**。
+>
+> 📌 **顺带定性一个现象**（2026-10-12）：push 触发的 `ci.yml` 三次"全红"
+> （`9fdacdc` / `f8bef9f` / `5466e1d`）—— **但不是代码问题**。证据：
+> - **所有 job 的 `steps` 数 = 0**（**一步都没启动**）
+> - 整个 run 耗时 **2 秒**（真跑 Rust/Flutter 不可能）
+> - job 启动时刻 **13:13**，而仓库**已在 13:11 改回私有**
+> - 对照 10-11 那次（当时公开）：`steps = 7`，正常通过
+>
+> ⇒ 🔴 **私有仓 + Actions 额度用尽 ⇒ job 无法启动，被报成 `failure`（全红）**。
+> ⇒ 🔑 **判定方法：先看 `steps` 数** —— **0 就是"没起来"，不是"跑失败"**，别照着红去查代码。
+>
 > 🔴 **顺带收到一条 Apple 官方警告（新期限，来自本次上传的服务器响应 —— 证据最强）**：
 > > `Deployment target too low. Your app targets iOS 13.0.`
 > > **`Starting in April 2027`, iOS apps must target 15.0 or later** to be uploaded to
@@ -467,8 +490,9 @@ if [ "$UPLOAD" = "true" ]; then PlistBuddy -c "Set :destination upload"; fi   # 
 > | `upload=true`（app-store）| 直传 ASC + **断言日志证据** | ⏭️ 跳过 | ⏭️ 跳过 | **绿**（不再是假红）|
 >
 > **验证**：YAML 解析 ✅（12 steps）· `if` 条件已生效 · DEST 链 **2 写 3 读** · diff 29/2
-> ⚠️ **未能跑 CI 实证**（仓库私有 + 额度耗尽）⇒ **下次出包时观察**
-> （应能看到 `✅ upload 模式：已确认上传成功（Upload succeeded + EXPORT SUCCEEDED）`）。
+> ✅ **已实证**（2026-10-12 13:11 重出包**真跑**）：日志出现
+> `✅ upload 模式：已确认上传成功（Upload succeeded + EXPORT SUCCEEDED）`，且 **job = `success`**
+> （上一次对比是 `failure` 假红）· 两个 artifact 步骤**正确 skipped**。
 
 ---
 
