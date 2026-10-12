@@ -1706,10 +1706,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     // ── 状态展示（**未登录也显示**）────────────────────────────────
     //
     // 🔴 2026-10-04（支付批次）：原为「未登录 → 引导登录」的独立分支，已合并。
-    //    理由：**购买与恢复都不需要登录**（StoreKit 走 Apple ID）⇒
-    //    未登录时只给「去登录」等于**把购买路径堵死**，违反产品原则
-    //    「除生词本上限外不验证登录态」。
-    //    ⇒ 统一按**端侧状态**展示；登录只影响「记录能否同步到账号」。
+    //    当时的理由是「**购买与恢复都不需要登录**（StoreKit 走 Apple ID）」
+    //    ⇒ 未登录时只给「去登录」等于把购买路径堵死。
+    //
+    // 🔴🔴 2026-10-12（白哥定案「**订阅与账号一一绑定**」）：那条口径**已反转** ——
+    //    订阅现在**必须先登录**（订阅页在点击购买/恢复时引导登录；
+    //    服务层 `IapService.buy()` 另有硬拦截，见其注释）。
+    //    ⚠️ 但**本卡片仍然未登录也显示**，这不是遗漏 ——
+    //      它只是「状态 + 入口」，未登录用户点「升级」进订阅页后**会被引导登录**，
+    //      路径没堵死；卡片本身不是购买入口，无需在这里再加一道登录墙。
+    //    📌 判据：**登录墙加在「动作」上，不加在「状态展示」上**。
+    //    ⇒ 状态仍按 `subscriptionActiveNow`（端侧 OR 服务端对账值）展示。
 
     // ── 状态判定：**端侧 IAP 为权威** ──────────────────────────────
     //
@@ -1855,9 +1862,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   /// 「恢复购买」—— §4.4.3 要求**两处**入口（订阅页 + 本页）。
   ///
-  /// 🔴 恢复的是 **Apple ID 名下的交易**，与我们的账号无关 ⇒
-  ///    未登录也**必须能用**（这是换设备/重装后找回的唯一途径）。
+  /// 🔴 恢复的是 **Apple ID 名下的交易**（StoreKit 那层与我们的账号无关），
+  ///    但**我们的权益必须落到账号上** ⇒ 恢复前要求登录。
+  ///
+  /// 🔴🔴 2026-10-12（白哥定案「**订阅与账号一一绑定**」）：本条**已改口径** ——
+  ///    原文写的是「未登录也**必须能用**（这是换设备/重装后找回的唯一途径）」。
+  ///    现在：未登录 ⇒ **先引导登录，登录成功后自动继续恢复**（不再要求用户点第二次）。
+  ///    ⚠️ Apple 3.1.1 要求的是「**提供恢复购买入口**」—— 入口仍在、可见、点了能走完，
+  ///       只是中间多一步登录 ⇒ 仍然符合要求。
+  ///    📌 必须与订阅页 `subscribe_screen._restore` **同一套行为**（两处一致）。
   Future<void> _restorePurchases() async {
+    if (!ref.read(authProvider).isAuthenticated) {
+      final ok = await AuthDialog.show(context);
+      if (!mounted) return;
+      if (ok != true || !ref.read(authProvider).isAuthenticated) return;
+    }
     final outcome = await ref.read(iapServiceProvider).restore();
     if (!mounted) return;
     final msg = switch (outcome) {

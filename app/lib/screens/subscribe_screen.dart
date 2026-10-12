@@ -76,6 +76,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../providers/auth_provider.dart';
 import '../providers/iap_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../services/iap_plan.dart';
@@ -84,6 +85,7 @@ import '../theme/clay.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
+import '../widgets/auth_dialog.dart';
 import '../widgets/clay_button.dart';
 import '../widgets/legal_link_row.dart';
 import '../widgets/sync_cloud_badge.dart';
@@ -196,8 +198,10 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
         _restoreButton(t, snap),
         const SizedBox(height: CoSpacing.lg),
         _legalRows(),
-        const SizedBox(height: CoSpacing.lg),
-        _signInHint(t),
+        // 🔴 2026-10-12：**不再**渲染 `_signInHint` ——
+        //    那句话讲的是「订阅需要先登录」，而能走到「已订阅」态的账号
+        //    **必然已登录**（新口径下未登录买不了）⇒ 对他纯属噪音。
+        //    📌 判据：**先问「这句话给谁看」，再决定它出现在哪个状态里**。
       ];
 
   /// 未订阅态：**价格与按钮在首屏**，法定要点紧贴按钮，
@@ -489,34 +493,27 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
   }
 
   // ── ③ 购买按钮 ────────────────────────────────────────────────────
+  //
+  // 🔴 2026-10-12（白哥定案「**订阅与账号一一绑定**」）：按钮的文案与可用性
+  //    统一交给 `iap_plan.purchaseButtonState`（**纯函数 · 可断言**）——
+  //    本层**不再自己写分支**，否则同一套规则会有两个来源（改一处漏一处）。
+  //    未登录时它会给出「**登录并订阅 · ¥X**」且**保持可点**（点了先登录再买）。
   Widget _buyButton(
     IapSnapshot snap,
     IapPlanDisplay? selected,
   ) {
-    final busy = snap.purchasing;
-    final unavailable = snap.availability == IapAvailability.unavailable;
-
-    final String label;
-    final bool enabled;
-    if (busy) {
-      label = '处理中…';
-      enabled = false;
-    } else if (unavailable) {
-      label = '当前无法连接 App Store';
-      enabled = false;
-    } else if (selected == null) {
-      label = '请先选择订阅方式';
-      enabled = false;
-    } else {
-      label = '立即订阅 · ${selected.priceLabel}';
-      enabled = true;
-    }
+    final state = purchaseButtonState(
+      busy: snap.purchasing,
+      unavailable: snap.availability == IapAvailability.unavailable,
+      priceLabel: selected?.priceLabel,
+      signedIn: ref.watch(authProvider).isAuthenticated,
+    );
 
     return ClayButton(
-      label: label,
+      label: state.label,
       expanded: true,
-      enabled: enabled,
-      onTap: enabled ? () => _buy(selected!) : () {},
+      enabled: state.enabled,
+      onTap: state.enabled ? () => _buy(selected!) : () {},
     );
   }
 
@@ -893,13 +890,18 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
         ),
       );
 
-  /// 未登录时的轻提示。
+  /// 「订阅与账号」的关系说明（未订阅态 · 页脚常驻）。
   ///
-  /// 🔑 措辞刻意**不写成限制** —— 购买与恢复都**不需要登录**
-  ///    （StoreKit 用 Apple ID 完成；本页对未登录用户完全可用）。
-  ///    登录只是为了把交易**对账到账号**（便于跨设备查看记录）。
+  /// 🔴 2026-10-12 改写（白哥定案「**订阅与账号一一绑定**」）：
+  ///    原文是「**订阅由 App Store 处理，无需登录即可购买与恢复**」——
+  ///    那句**已作废**（它与「必须先登录」直接冲突）。
+  ///    ⇒ 现在如实说明三件事：**要先登录** · **权益跟着账号走** · **换设备怎么找回**。
+  ///
+  /// ⚠️ 不得退回旧措辞：它会让用户以为「不登录也能买」，点下去却被要求登录
+  ///    ——**预期与行为不一致，比一开始就说清楚更糟**。
   Widget _signInHint(CoEvoTokens t) => Text(
-        '订阅由 App Store 处理，无需登录即可购买与恢复。登录后可将订阅记录同步到账号。',
+        '订阅需先登录账号。权益绑定到你的账号，换设备或重装后登录即可恢复；'
+        '付款由 App Store 处理。',
         style: TextStyle(
           fontFamily: CoFonts.uiSans,
           fontSize: 11.5,
@@ -938,12 +940,37 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
   }
 
   Future<void> _buy(IapPlanDisplay plan) async {
+    // 🔴 2026-10-12（白哥定案）：**订阅必须先登录** —— 权益必须绑到账号上。
+    //    这里是**引导**；真正的硬拦截在服务层（`IapService.buy()` 未登录直接拒绝），
+    //    所以即使将来新增别的购买入口漏了这一步，也不会产生"无绑定的交易"。
+    if (!await _ensureSignedIn()) return;
+    if (!mounted) return;
+
     await ref.read(iapServiceProvider).buy(plan.productId);
     // ⚠️ 结果**不在这里判定** —— 它从 `purchaseStream` 异步回来，
     //    由 `iapSnapshotProvider` 驱动 UI（见 build 里的 `ref.listen`）。
   }
 
+  /// 确保当前已登录；返回 `true` = 已登录（含**刚刚登录成功**）。
+  ///
+  /// 🔑 登录成功后**自动继续原动作**（购买 / 恢复），不要求用户再点一次 ——
+  ///    否则流程会断成「点了 → 弹登录 → 登完 → 还得自己找回那个按钮」，
+  ///    用户很容易以为点空了。📌 判据：**引导登录之后必须回到原路径**。
+  Future<bool> _ensureSignedIn() async {
+    if (ref.read(authProvider).isAuthenticated) return true;
+
+    final ok = await AuthDialog.show(context);
+    // ⚠️ `await` 之后 `context` 可能已失效（页面被 pop）⇒ 必须查 `mounted`。
+    if (!mounted) return false;
+    return ok == true && ref.read(authProvider).isAuthenticated;
+  }
+
   Future<void> _restore() async {
+    // 🔴 2026-10-12：恢复购买同样要求登录 —— 恢复的目的就是「把订阅找回到账号」，
+    //    未登录时恢复出来的权益无处可归（端侧也会因无绑定而不认领）。
+    if (!await _ensureSignedIn()) return;
+    if (!mounted) return;
+
     final outcome = await ref.read(iapServiceProvider).restore();
     if (!mounted) return;
 

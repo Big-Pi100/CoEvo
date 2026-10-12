@@ -18,12 +18,18 @@
 //    Android 则是 **3 天后退款**。⇒ 这是**静默失效**型陷阱（不调也不报错）。
 //
 // ② **端侧权威**：购买/恢复成功后**立刻解锁**，不等服务端。
+//    ⚠️ 前提是**交易带绑定**（`appAccountToken` = 购买时登录的账号）——
+//       端侧只在 `iapEntitlementBelongsToAccount` 通过时才算这份权益；
+//       **无绑定 ⇒ 端侧不认领**，交给服务端对账（见 `iap_plan.dart`）。
 //    服务端只做对账（详见后端 `iap_handlers.rs` 模块文档）。
 //    ⇒ 上报失败**不得**影响解锁 —— 否则「网络差就白买了」。
 //
-// ③ **上报需要登录，但购买不需要**（白哥 2026-10-04 决策）。
-//    未登录 ⇒ 端侧照常解锁 + 完成事务，**上报推迟到登录后补报**
-//    （见 `reportEntitlementsIfSignedIn`）。购买流程**不得**因未登录而中断。
+// ③ 🔴🔴 **购买需要登录**（2026-10-12 晚间 白哥定案：「**订阅与账号一一绑定**」）。
+//    购买/恢复前必须先登录 ⇒ `buy()` 里 `applicationUserName` 必非 null
+//    ⇒ 每笔交易都带 `appAccountToken` ⇒ 归属唯一确定、不靠猜。
+//    ⚠️ 这一条**改写了** 2026-10-04 的「购买不需要登录」—— 那条已作废。
+//    上报这一半不变：未登录/上报失败 ⇒ 交易进 `_pendingReports` 待补报
+//    （见 `reportEntitlementsIfSignedIn`）。
 
 import 'dart:async';
 
@@ -176,9 +182,18 @@ class IapService {
   /// 后端已加归属冲突拒绝（`Ownership::Conflict` ⇒ 409）作为**权威**防线；
   /// 这里是**端侧的第二道**：不属于当前账号的积压，根本不该由它上报。
   ///
-  /// ⚠️ 代价（如实记录）：若用户「登出 → 用同一账号登录」，那段时间的积压会丢，
-  ///    服务端留一个对账缺口。已用 `accountKey` 比较把这种情况**排除**：
-  ///    只有**确实换了账号**（key 不同）才清。
+  /// ⚠️ 代价（如实记录）：判据是 **`accountKey` 只要变化就清** ——
+  ///    包括「登出（→null）→ 再登录同一账号」这条路径，那段时间的积压会丢，
+  ///    服务端留一个对账缺口。
+  ///
+  ///    🔑 为什么**不**做更细的区分（2026-10-12 晚间复核，如实记录）：
+  ///    ① 新口径下购买**必须先登录**（见 `buy()` 的硬拦截）⇒
+  ///       **未登录期间根本产生不了交易** ⇒ `null → X` 这一格没有积压可保，
+  ///       为它加分支**没有收益**；
+  ///    ② 要真的区分「登出 → 重登同一账号」，得给每笔积压记**产生时的账号**，
+  ///       而 `_pendingReports` 是**内存 Map**（App 重启即丢）——
+  ///       为它加持久化不划算，那属于**服务端对账缺口**的既有范畴。
+  ///    📌 判据：**「清得保守」与「报得完整」冲突时，选不会串号的那一侧。**
   ///
   /// [accountKey] 传当前登录用户的 id；未登录传 null。
   void setReporter(IapVerifyReporter? reporter, {String? accountKey}) {
@@ -286,6 +301,20 @@ class IapService {
       return;
     }
 
+    // 🔴🔴 2026-10-12（白哥定案）：**订阅必须登录账号**。
+    //
+    // 这是「订阅与账号一一绑定」的**硬保证** —— UI 那层（订阅页按钮 → 弹登录）
+    // 只是**引导**，真正的不变量在这里兜住：
+    //   `_reporterAccountKey == null` ⇒ 未登录 ⇒ 下面 `applicationUserName` 会是 null
+    //   ⇒ 交易落成 `appAccountToken = null` ⇒ **无绑定交易**（正是串号的土壤）。
+    //   ⇒ 直接拒绝，**不产生任何交易**。
+    // 📌 判据：**关键不变量要在服务层兜住，不能只靠 UI** ——
+    //    将来若新增购买入口（如首页推荐位），漏拦 UI 也不会破坏归属。
+    if (_reporterAccountKey == null) {
+      _emit(_snapshot.copyWith(lastError: '请先登录账号后再订阅'));
+      return;
+    }
+
     _emit(_snapshot.copyWith(purchasing: true, clearError: true));
 
     try {
@@ -306,9 +335,10 @@ class IapService {
       //   实测首测那笔交易的 `app_account_token = None` ⇒ **完全没绑定**，
       //   这也是「同一笔交易能被另一个账号认领」的前提。
       //
-      // ⚠️ 未登录时 `_reporterAccountKey` 为 null ⇒ 不传（交易无绑定）。
-      //    此时服务端靠**首次上报**确立归属（`Ownership::Claimed`），
-      //    之后任何别的账号来报都会被 409 拒绝 —— 见后端 `upsert_transaction`。
+      // ✅ 2026-10-12 晚间：走到这里 `_reporterAccountKey` **必定非 null**
+      //    （未登录已在上面被拦下）⇒ **每一笔交易都带绑定** ——
+      //    这就是「订阅与账号一一绑定」的落点，端侧 `iapEntitlementBelongsToAccount`
+      //    与后端 `account_binding_conflict` 都建立在它之上。
       final param = PurchaseParam(
         productDetails: resp.productDetails.first,
         applicationUserName: _reporterAccountKey,

@@ -1369,12 +1369,16 @@ void main() {
   // 定案（白哥 2026-10-12）：**订阅只有一个口径 = App 账号**
   //   ⇒ 端侧那一侧必须经 `iapEntitlementBelongsToAccount` 过滤。
   //
+  // 🔴🔴 同日**晚间**再收紧（白哥：「**订阅与账号一一绑定**」）：
+  //   无绑定**一律不算**（含未登录态）—— 新口径下「无绑定」根本不该产生
+  //   （购买前必须先登录，见 ⑰ 组）。详见 `iap_plan` 里该函数的文档。
+  //
   // 🔑 与 ⑬ 组的关系：⑬ 说「登出**不**复位端侧 IAP（它是 Apple ID 级）」——
-  //    本组**不冲突**：我们照样保留端侧状态，只是不把它**算给别的账号**。
+  //    本组**不冲突**：我们照样保留端侧状态，只是不把它**算给任何账号**。
   //
   // # 🔴 证伪方式
-  // · 把 `iapEntitlementBelongsToAccount` 的「无绑定 + 已登录 ⇒ 不算」改成 `true`
-  //   ⇒ 真值表那条必红。
+  // · 把 `iapEntitlementBelongsToAccount` 的第一行（`ownerUserId == null ⇒ false`）
+  //   删掉 ⇒ 真值表里「无绑定」那两条必红。
   // · 把 provider 里那两处过滤删掉 ⇒ 「真的用了过滤」必红。
   print('\n[⑯] 端侧权益的账号归属（订阅只有一个口径 = App 账号）');
   {
@@ -1391,13 +1395,14 @@ void main() {
             ownerUserId: other, currentUserId: me),
         '不算 ⇒ 不会把"别人的订阅"显示成"你的"');
     check(
-        '有绑定但当前**未登录** ⇒ 不算',
+        '🔴 有绑定但当前**未登录** ⇒ 不算',
         !iapEntitlementBelongsToAccount(
             ownerUserId: me, currentUserId: null));
     check(
-        '无绑定 + 未登录 ⇒ 算（本机权益：刚买完还没登录）',
-        iapEntitlementBelongsToAccount(
-            ownerUserId: null, currentUserId: null));
+        '🔴🔴 无绑定 + 未登录 ⇒ **不算**（2026-10-12 晚定案：订阅必须登录）',
+        !iapEntitlementBelongsToAccount(
+            ownerUserId: null, currentUserId: null),
+        '旧口径曾让它「算」（"本机权益"）—— 那条已随「必须先登录」作废');
     check(
         '🔴 无绑定 + **已登录** ⇒ 不算（交给服务端对账定归属）',
         !iapEntitlementBelongsToAccount(
@@ -1422,6 +1427,97 @@ void main() {
     check(
         '`copyWith` 支持把归属**清回 null**（无绑定是真实状态，`??` 会写不掉）',
         iapSvc.contains('clearOwnerUserId'));
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // ⑰ 🆕 2026-10-12 晚 「订阅必须先登录」—— 订阅与账号一一绑定
+  // ────────────────────────────────────────────────────────────────
+  //
+  // # 白哥定案
+  //
+  //   原话：「**订阅肯定要先登录，才能保证用户的订阅跟着账号走，
+  //   订阅与账号一一绑定**」⇒ 推翻了 2026-10-04 的「购买不需要登录」。
+  //
+  // # 三处落点（**缺一不可**：任一处漏 ⇒ 又能产生「无绑定的交易」）
+  //
+  // | # | 层 | 做什么 | 为什么不能只靠别处 |
+  // |---|---|---|---|
+  // | ① | UI 引导 | 订阅页 /「我的」页点购买·恢复 ⇒ 先弹登录 | 用户要有出口，不能点下去没反应 |
+  // | ② | **服务层硬拦截** | `IapService.buy()` 未登录**直接拒绝** | 将来新增购买入口漏拦 UI 时，不变量仍成立 |
+  // | ③ | 判定层 | 无绑定一律不算（⑯ 组已锁）| 旧数据/StoreKit 1 残留也不会给错人 |
+  //
+  // 🔑 还有一条**行为**要求：引导登录成功后**自动继续原动作**（购买/恢复），
+  //    不要求用户再点一次 —— 否则流程断成「点了→弹登录→登完→还得找回按钮」。
+  //
+  // # 🔴 证伪方式
+  //
+  // · 删掉 `purchaseButtonState` 的「未登录」分支 ⇒ 文案真值表必红
+  // · 删掉 `iap_service.buy()` 的未登录拦截 ⇒ 「服务层兜底」必红
+  // · 删掉 `subscribe_screen` 的 `AuthDialog.show(` ⇒ 「UI 引导」必红
+  print('\n[⑰] 订阅必须登录（订阅与账号一一绑定）');
+  {
+    // ── ① 按钮文案 / 可用性真值表（纯函数：**全分支覆盖**）──
+    //
+    // 🔑 为什么值得为文案下这么多断言：它是「必须先登录」在界面上**唯一的落点**，
+    //    而 UI 层本机验不了（见文件头）⇒ 表述写错 = 用户预期与行为不一致。
+    final notSignedIn = purchaseButtonState(
+        busy: false, unavailable: false, priceLabel: '¥6', signedIn: false);
+    check('未登录 ⇒ 文案含「登录」', notSignedIn.label.contains('登录'),
+        notSignedIn.label);
+    check('未登录 ⇒ 文案带价格（让用户知道要买哪一档）',
+        notSignedIn.label.contains('¥6'), notSignedIn.label);
+    check(
+        '🔴 未登录 ⇒ 按钮**仍可点**',
+        notSignedIn.enabled,
+        '不可点=用户以为 app 坏了；可点⇒弹登录=有明确出口');
+
+    final signedInOk = purchaseButtonState(
+        busy: false, unavailable: false, priceLabel: '¥6', signedIn: true);
+    check('已登录 ⇒ 「立即订阅 · ¥6」', signedInOk.label == '立即订阅 · ¥6',
+        signedInOk.label);
+    check('已登录 ⇒ 可点', signedInOk.enabled);
+
+    // 🔑 优先级：**未选档位**必须压过「未登录」——
+    //    否则用户点了按钮、登完录，仍然不知道自己买的是哪一档。
+    final noPlan = purchaseButtonState(
+        busy: false, unavailable: false, priceLabel: null, signedIn: false);
+    check('未选档位 ⇒ 「请先选择订阅方式」（优先级高于登录引导）',
+        noPlan.label == '请先选择订阅方式', noPlan.label);
+    check('未选档位 ⇒ 不可点', !noPlan.enabled);
+
+    final busyState = purchaseButtonState(
+        busy: true, unavailable: false, priceLabel: '¥6', signedIn: true);
+    check('购买中 ⇒ 「处理中…」且不可点',
+        busyState.label == '处理中…' && !busyState.enabled, busyState.label);
+
+    final unavailState = purchaseButtonState(
+        busy: false, unavailable: true, priceLabel: '¥6', signedIn: true);
+    check('商店不可用 ⇒ 明确告知且不可点',
+        unavailState.label.contains('App Store') && !unavailState.enabled,
+        unavailState.label);
+
+    // ── ② UI 引导：**两处**购买入口都要能弹登录 ──
+    final subUi = codeOnly(readApp('screens/subscribe_screen.dart'));
+    final profUi = codeOnly(readApp('screens/profile_screen.dart'));
+    check('🔴 订阅页用 `AuthDialog` 引导登录', subUi.contains('AuthDialog.show('));
+    check('🔴 「我的」页的「恢复购买」也引导登录（两处必须一致）',
+        profUi.contains('AuthDialog.show('));
+    check('🔴 订阅页按钮走 `purchaseButtonState`（不再自己写分支）',
+        subUi.contains('purchaseButtonState('));
+    check(
+        '🔴 订阅页不再出现「无需登录即可购买」旧措辞',
+        !subUi.contains('无需登录即可购买'),
+        '旧口径已作废 —— 留着会让用户以为不登录也能买，点下去却被要求登录');
+    check(
+        '🔴 订阅页说明改成「需先登录」口径',
+        subUi.contains('订阅需先登录账号'));
+
+    // ── ③ 服务层硬拦截（**关键不变量不能只靠 UI**）──
+    final svc2 = codeOnly(readApp('services/iap_service.dart'));
+    check(
+        '🔴 `buy()` 未登录直接拒绝（防将来新增入口漏拦）',
+        svc2.contains('请先登录账号后再订阅'),
+        'UI 只是引导；「一一绑定」的不变量在这里兜住');
   }
 
   _report();
