@@ -27,6 +27,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
@@ -40,11 +41,14 @@ import 'subscription_provider.dart';
 final iapServiceProvider = Provider<IapService>((ref) {
   final service = IapService();
 
-  /// 上报一笔交易到后端（`POST /api/iap/verify`）。
+  /// 上报一笔交易到后端（`POST /api/iap/verify`），返回**服务端确认的到期时间**。
   ///
   /// 🔴 **失败必须抛**：service 层会把它记回「待补报」，下次登录/启动再试。
   ///    若吞掉不抛，这笔交易就**静默丢了**（服务端出现对账缺口，且无人知道）。
-  Future<void> report({
+  ///    ⚠️ **唯一例外是 409**（归属冲突）—— 那不是"失败"，是服务端**永久拒绝**
+  ///        （这笔交易属于别的账号）⇒ 返回 null 而**不抛**，让 service 层
+  ///        把它从积压里移除，**不要无限重试**。
+  Future<DateTime?> report({
     required String transactionId,
     required String productId,
   }) async {
@@ -68,6 +72,14 @@ final iapServiceProvider = Provider<IapService>((ref) {
         )
         .timeout(const Duration(seconds: 15));
 
+    if (resp.statusCode == 409) {
+      // 🔴 这笔交易已归属其他账号（后端 `Ownership::Conflict`）。
+      //    重试一万次也是 409 ⇒ **永久放弃**，且不要打扰用户
+      //    （端侧权益已解锁；服务端把权益开给了真正的买家）。
+      debugPrint('[IAP] 交易 $transactionId 已归属其他账号 ⇒ 放弃上报（不重试）');
+      return null;
+    }
+
     if (resp.statusCode != 200) {
       throw Exception('iap/verify HTTP ${resp.statusCode}');
     }
@@ -76,12 +88,24 @@ final iapServiceProvider = Provider<IapService>((ref) {
     unawaited(ref
         .read(subscriptionProvider.notifier)
         .fetch(userId: userId, token: auth.token));
+
+    // 🆕 2026-10-12（A1）：把服务端确认的到期日**回填给端侧**。
+    //   🔴 原注释写着「端侧在收到服务端响应后更新」，但这里**从来没解析过响应体**
+    //      ⇒ 承诺落空 ⇒ 端侧 `expiresAtUtc` 永远为空 ⇒ 权益判定恒为「已到期」。
+    //   📌 判据：**注释承诺的机制要有实现**；这行代码就是那句注释的兑现。
+    final raw = ((jsonDecode(resp.body) as Map<String, dynamic>)['expiresAt']
+            as String?)
+        ?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    return DateTime.tryParse(raw)?.toUtc();
   }
 
   void bindReporter() {
     final auth = ref.read(authProvider);
     final signedIn = auth.isAuthenticated && auth.userId != null;
-    service.setReporter(signedIn ? report : null);
+    // 🔴 传 `accountKey`：让 service 能识别「换了账号」并丢弃不属于新账号的积压
+    //    （否则 A 的交易会被 B 补报上去 ⇒ 串号）。见 `IapService.setReporter`。
+    service.setReporter(signedIn ? report : null, accountKey: auth.userId);
   }
 
   bindReporter();

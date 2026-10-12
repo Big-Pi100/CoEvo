@@ -29,6 +29,11 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+// 🔴 2026-10-12：显式依赖 `in_app_purchase_storekit`，只为了用它的两个字段
+//    （`SK2PurchaseDetails.expirationDate` / `.appAccountToken`）——
+//    它们**不在**通用接口 `PurchaseDetails` 上。理由见 `pubspec.yaml` 注释。
+import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart'
+    show SK2PurchaseDetails;
 
 import 'iap_plan.dart';
 
@@ -38,7 +43,14 @@ import 'iap_plan.dart';
 ///    ① 服务层与 `authProvider` / `ApiConfig` **解耦**（少一层耦合，多一层可测）
 ///    ② 上报失败的处理策略由调用方决定（服务层只负责「告诉它有事发生」）
 ///    ③ **可 mock** —— 测试时注入一个只记录调用的假实现
-typedef IapVerifyReporter = Future<void> Function({
+///
+/// 🔴 2026-10-12：**返回值改为服务端确认的到期时间**（可为 null）。
+///    起因：`_parseExpiry` 曾经恒返回 null ⇒ 端侧永远不知道到期日 ⇒ 权益判定恒为
+///    「已到期」。现在端侧能从 StoreKit 读（见 `parseStoreKitExpiryMillis`），
+///    服务端回填是**第二处来源**（也是权威 —— 它拿的是 Apple 验签后的值）。
+///    📌 判据：**注释承诺的机制必须真的有实现** —— 原注释写「端侧在收到服务端响应后
+///       更新」，但 `report()` 只查了 statusCode、**没解析响应体** ⇒ 承诺落空。
+typedef IapVerifyReporter = Future<DateTime?> Function({
   required String transactionId,
   required String productId,
 });
@@ -127,8 +139,38 @@ class IapService {
   /// 上报器（可为 null ⇒ 只解锁不上报，用于「未登录」场景）。
   IapVerifyReporter? _reporter;
 
+  /// 当前上报器代表的**账号**（用于判断「换账号」）。
+  String? _reporterAccountKey;
+
   /// 由调用方在登录状态变化时更新（登录后从 null 换成真实上报器）。
-  void setReporter(IapVerifyReporter? reporter) => _reporter = reporter;
+  ///
+  /// # 🔴 2026-10-12：换账号必须**丢弃**积压交易
+  ///
+  /// `_pendingReports` 是**跨账号共享**的内存状态。原先登出/换账号都不清，
+  /// 于是「A 账号未登录时买的交易」会在「B 账号登录后」被补报上去 ⇒
+  /// 后端把这笔交易记成 B 的 ⇒ **A 的钱给 B 开了会员**。
+  ///
+  /// 沙盒首测实测到了同族现象（同一笔交易被以两个身份上报两次），
+  /// 后端已加归属冲突拒绝（`Ownership::Conflict` ⇒ 409）作为**权威**防线；
+  /// 这里是**端侧的第二道**：不属于当前账号的积压，根本不该由它上报。
+  ///
+  /// ⚠️ 代价（如实记录）：若用户「登出 → 用同一账号登录」，那段时间的积压会丢，
+  ///    服务端留一个对账缺口。已用 `accountKey` 比较把这种情况**排除**：
+  ///    只有**确实换了账号**（key 不同）才清。
+  ///
+  /// [accountKey] 传当前登录用户的 id；未登录传 null。
+  void setReporter(IapVerifyReporter? reporter, {String? accountKey}) {
+    final switchedAccount = accountKey != _reporterAccountKey;
+    if (switchedAccount && _pendingReports.isNotEmpty) {
+      debugPrint(
+        '[IAP] 账号变更（$_reporterAccountKey → $accountKey）'
+        '⇒ 丢弃 ${_pendingReports.length} 笔不属于该账号的积压交易',
+      );
+      _pendingReports.clear();
+    }
+    _reporterAccountKey = accountKey;
+    _reporter = reporter;
+  }
 
   final _controller = StreamController<IapSnapshot>.broadcast();
   Stream<IapSnapshot> get stream => _controller.stream;
@@ -235,7 +277,20 @@ class IapService {
         return;
       }
 
-      final param = PurchaseParam(productDetails: resp.productDetails.first);
+      // 🆕 2026-10-12（B1）：把**购买时的账号**写进交易，供服务端校验归属。
+      //
+      // Apple 侧：iOS 上 `applicationUserName` 会落成 StoreKit 2 的
+      //   `appAccountToken`（要求是 UUID —— 我们的 `userId` 正是 UUID）。
+      //   实测首测那笔交易的 `app_account_token = None` ⇒ **完全没绑定**，
+      //   这也是「同一笔交易能被另一个账号认领」的前提。
+      //
+      // ⚠️ 未登录时 `_reporterAccountKey` 为 null ⇒ 不传（交易无绑定）。
+      //    此时服务端靠**首次上报**确立归属（`Ownership::Claimed`），
+      //    之后任何别的账号来报都会被 409 拒绝 —— 见后端 `upsert_transaction`。
+      final param = PurchaseParam(
+        productDetails: resp.productDetails.first,
+        applicationUserName: _reporterAccountKey,
+      );
       await InAppPurchase.instance.buyNonConsumable(purchaseParam: param);
       // ⚠️ 到这里**还没结束** —— 结果从 `purchaseStream` 回来（见 `_onPurchases`）。
       //    ⇒ 不要在 await 之后立刻 emit「成功」。
@@ -341,7 +396,11 @@ class IapService {
     await _complete(pd);
 
     // ③ 上报（失败不影响①②）
-    await _report(pd);
+    //    🆕 2026-10-12：服务端返回的到期日是**权威值**（Apple 验签后）⇒ 回填。
+    final serverExpires = await _report(pd);
+    if (serverExpires != null) {
+      applyServerExpiry(serverExpires);
+    }
   }
 
   /// 调 `completePurchase`，并**吞掉异常**。
@@ -358,32 +417,43 @@ class IapService {
     }
   }
 
-  /// 上报到后端。
-  Future<void> _report(PurchaseDetails pd) async {
+  /// 上报到后端。返回**服务端确认的到期时间**（拿不到则 null）。
+  ///
+  /// 🔴 2026-10-12：`IapVerifyReporter` 现在有返回值。
+  ///    ⚠️ 两个「返回 null 但不抛」是**不同**的语义，调用方别混：
+  ///      · 未登录 / 无 transactionId / 未知商品 ⇒ 本轮**没上报**（也没人补报）
+  ///      · **归属冲突（409）** ⇒ 上报过了，但服务端**永久拒绝** ⇒ 调用方会
+  ///        `remove` 掉这笔积压（**不再重试**）。这不是错误，是"这笔交易不归你"。
+  Future<DateTime?> _report(PurchaseDetails pd) async {
     final txId = pd.purchaseID;
     final productId = pd.productID;
 
     if (txId == null || txId.isEmpty) {
       // 没有 transactionId 就没法让服务端查证 —— 但**端侧已解锁**，不必打扰用户。
       debugPrint('[IAP] 无 purchaseID，跳过上报（${pd.productID}）');
-      return;
+      return null;
     }
-    if (!isKnownProductId(productId)) return;
+    if (!isKnownProductId(productId)) return null;
 
     final reporter = _reporter;
     if (reporter == null) {
       // 未登录 ⇒ 记下来，登录后补报（见 `reportEntitlementsIfSignedIn`）
       _pendingReports[txId] = productId;
       debugPrint('[IAP] 未登录，交易 $txId 待补报');
-      return;
+      return null;
     }
 
     try {
-      await reporter(transactionId: txId, productId: productId);
+      final serverExpires = await reporter(
+        transactionId: txId,
+        productId: productId,
+      );
       _pendingReports.remove(txId);
+      return serverExpires;
     } catch (e) {
       _pendingReports[txId] = productId;
       debugPrint('[IAP] 上报失败（已记待补报）: $e');
+      return null;
     }
   }
 
@@ -410,25 +480,71 @@ class IapService {
     if (pending.isEmpty) return;
 
     debugPrint('[IAP] 登录后补报 ${pending.length} 笔积压交易');
+    DateTime? latest;
     for (final entry in pending.entries) {
       try {
-        await _reporter!(transactionId: entry.key, productId: entry.value);
+        final expires = await _reporter!(
+          transactionId: entry.key,
+          productId: entry.value,
+        );
         _pendingReports.remove(entry.key);
+        // 🆕 2026-10-12：顺手记下服务端确认的最新到期日（补报场景下用户
+        //    可能从没在这次会话里见过自己的订阅期）。
+        if (expires != null && (latest == null || expires.isAfter(latest))) {
+          latest = expires;
+        }
       } catch (_) {
         // 留着下次再试（不删 ⇒ 不会丢）
       }
     }
+    if (latest != null) applyServerExpiry(latest);
   }
 
-  /// 从 StoreKit 的 `PurchaseDetails` 里取到期时间。
+  /// 从 StoreKit 的 `PurchaseDetails` 里取**订阅到期时间**。
   ///
-  /// ⚠️ `in_app_purchase` 的通用 API **不直接给订阅到期时间** ——
-  ///    `transactionDate` 只是**购买时间**。真正的到期时间由**服务端**从 Apple 查得，
-  ///    端侧在收到服务端响应后更新。
-  ///    ⇒ 这里返回 null（=「不知道」），交给 `resolveEntitlement` 判为「有购买史」。
-  ///    🔑 这是**有意的**：与其在端侧**猜**一个到期日（可能错），不如承认不知道。
-  ///       而「有购买史 + 服务端之后会确认」足以让 UI 先解锁。
-  DateTime? _parseExpiry(PurchaseDetails pd) => null;
+  /// # 🔴 2026-10-12 修正：原实现是 `=> null`（硬编码）
+  ///
+  /// 旧注释写着「通用 API **不直接给**订阅到期时间 …… ⇒ 这里返回 null（=「不知道」），
+  /// 交给 `resolveEntitlement` 判为『**有购买史**』……**足以让 UI 先解锁**」——
+  /// **但那个"足以先解锁"从未成立**：`resolveEntitlement` 当时把「null + 有购买史」
+  /// 判成 `expired`（已到期）⇒ **端侧权益判定恒为「已到期」** ⇒
+  /// 「订阅已到期」覆盖层对所有买过的用户必弹（沙盒首测实测）。
+  ///
+  /// ✅ 事实是：**iOS/StoreKit 2 下插件已经给了到期时间** ——
+  ///    `SK2PurchaseDetails.expirationDate`（毫秒时间戳字符串，见
+  ///    `in_app_purchase_storekit` 的 `app_store_purchase_details.dart`）。
+  ///    ⇒ 不需要解 JWS、不需要猜。
+  ///
+  /// 📌 判据：**「通用接口没有」≠「拿不到」** —— 要去看具体平台实现类
+  ///    （`PurchaseDetails` 是抽象基类，`SK2PurchaseDetails` 是它的子类）。
+  /// ⚠️ StoreKit 1 路径（`AppStorePurchaseDetails`）**确实没有**这个字段
+  ///    ⇒ 回退 null，由 `resolveEntitlement` 按「不知道」处理（fail-open）。
+  DateTime? _parseExpiry(PurchaseDetails pd) {
+    if (pd is! SK2PurchaseDetails) return null;
+    return parseStoreKitExpiryMillis(pd.expirationDate);
+  }
+
+  /// 用**服务端确认的**到期时间刷新端侧状态（对账成功的回填）。
+  ///
+  /// 🔑 为什么需要它：端侧从 StoreKit 读的值是"购买那一刻"的；
+  ///    续期 / 退款 / 换设备等场景以**服务端（Apple 验签后）**的值为准。
+  ///    📌 这正是原注释承诺而**未实现**的那一步（见 [IapVerifyReporter]）。
+  ///
+  /// ⚠️ 只允许**向后推进**（新值比已知的更晚才覆盖）：并发/乱序响应下，
+  ///    不能让一个较旧的值把刚续期的到期时间**改回去**。
+  void applyServerExpiry(DateTime expiresUtc) {
+    final known = _snapshot.expiresAtUtc;
+    if (known != null && !expiresUtc.isAfter(known)) return;
+
+    _emit(_snapshot.copyWith(
+      entitlement: resolveEntitlement(
+        expiresAtUtc: expiresUtc,
+        hasAnyPurchase: true,
+        nowUtc: DateTime.now().toUtc(),
+      ),
+      expiresAtUtc: expiresUtc,
+    ));
+  }
 
   String _humanizeError(IAPError? err) {
     final code = err?.code ?? '';

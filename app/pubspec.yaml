@@ -119,14 +119,30 @@ dependencies:
   #    ② 我们的订阅权益是**端侧功能**（生词本 + 朗读）⇒ 不需要服务端托管状态
   #    📌 判据：**「平台允许」≠「法律允许」** —— 技术可行不等于能用。
   #
-  # 🔑 版本注意：`in_app_purchase` 的**通用 API 在 iOS/macOS 上默认走 StoreKit 2**，
-  #    不需要额外引 `in_app_purchase_storekit`（它的 iOS 实现是 endorsed federated plugin，
-  #    会随本包自动带上）。⚠️ 若要退回 StoreKit 1 才需要显式调
+  # 🔑 版本注意：`in_app_purchase` 的**通用 API 在 iOS/macOS 上默认走 StoreKit 2**。
+  #    ⚠️ 若要退回 StoreKit 1 才需要显式调
   #    `InAppPurchaseStoreKitPlatform.enableStoreKit1()` —— **我们不要那个**。
   #
   # ⚠️ 本机 `flutter pub get` **不可用**（`flutter` 命令建不了子进程）⇒
   #    本依赖的解析结果**只能靠 CI 验证**。若 CI 报版本冲突，改这一行即可。
   in_app_purchase: ^3.3.1
+
+  # ── 🔴 2026-10-12 新增：显式声明 iOS 实现（**为了用它的类型**）──────────
+  #
+  # # 为什么要显式引（它本来就是上面那个包的 endorsed 传递依赖）
+  #
+  # 我们需要 `SK2PurchaseDetails` 上的两个字段，而它们**不在**通用接口 `PurchaseDetails` 上：
+  #   · `expirationDate`  —— 订阅到期时间（毫秒时间戳字符串）
+  #   · `appAccountToken` —— 购买时绑定的账号标识
+  #
+  # 🔴 起因（沙盒首测实测）：端侧**拿不到到期日** ⇒ `resolveEntitlement(null, …)`
+  #    恒判「已到期」⇒ 覆盖层误弹 + 「端侧权威」失效。
+  #    📌 判据：**传递依赖不能直接 import** —— 要 `import` 它的类型就必须显式声明，
+  #       否则解析器不保证它能被解析到（且版本会随上游浮动）。
+  #
+  # ⚠️ 版本必须与 `in_app_purchase ^3.3.1` 内部锁定的一致（endorsed federated plugin）
+  #    ⇒ 新增/升级 `in_app_purchase` 时，**两行要一起看**。
+  in_app_purchase_storekit: ^0.4.13
 
   # ── 电子书导入（2026-10-04）───────────────────────────────────────────
   #

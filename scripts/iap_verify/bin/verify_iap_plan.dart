@@ -337,10 +337,17 @@ void main() {
     resolveEntitlement(expiresAtUtc: null, hasAnyPurchase: false, nowUtc: now) ==
         IapEntitlementStatus.none,
   );
+  // 🔴 2026-10-12 **语义修正**（沙盒首测实测）：
+  //    「读不到到期时间」**不等于**「已过期」。
+  //    旧断言锁的是 `expired` ⇒ 端侧权益判定恒为「已到期」⇒
+  //    「订阅已到期」覆盖层对所有买过的用户必弹（这正是白哥报到的那条 bug）。
+  //    ⇒ 现在 fail-open：与 `_parseExpiry` 注释里「足以让 UI 先解锁」的**原始意图**一致。
+  //    📌 判据再现：**断言会保护错误** —— 改对了反而会红。
   check(
-    '无到期时间但有购买史 → expired（不是 none）',
+    '🆕 无到期时间但有购买史 → active（fail-open，不是 expired）',
     resolveEntitlement(expiresAtUtc: null, hasAnyPurchase: true, nowUtc: now) ==
-        IapEntitlementStatus.expired,
+        IapEntitlementStatus.active,
+    '「不知道」≠「已过期」：买了的人被误报过期，比没买的人多看一眼严重得多',
   );
   // 🔴 边界：**恰好等于** now —— 不算有效（用 isAfter 而非 isAtSameMomentAs）
   check(
@@ -348,6 +355,42 @@ void main() {
     resolveEntitlement(expiresAtUtc: now, hasAnyPurchase: true, nowUtc: now) !=
         IapEntitlementStatus.active,
     '边界必须偏保守：不能多送一瞬',
+  );
+  // ⚠️ 反向：真正的「已过期」**仍须**判 expired —— 防止上面那条把语义整体放宽成
+  //    「永远 active」（那会变成漏收，比误弹更贵）。
+  check(
+    '🔴 真正的过期仍判 expired（反向锁：别把 fail-open 扩成永远 active）',
+    resolveEntitlement(
+          expiresAtUtc: now.subtract(const Duration(seconds: 1)),
+          hasAnyPurchase: true,
+          nowUtc: now,
+        ) ==
+        IapEntitlementStatus.expired,
+  );
+
+  // 🆕 2026-10-12：StoreKit 到期时间解析（单位差 1000 倍会偏到 1970 / 5 万年）
+  print('\n[⑥-b] StoreKit 到期时间解析');
+  check(
+    '毫秒字符串 → UTC DateTime（单位必须是毫秒）',
+    parseStoreKitExpiryMillis('1791887855000')?.toUtc() ==
+        DateTime.utc(2026, 10, 13, 10, 37, 35),
+    '${parseStoreKitExpiryMillis('1791887855000')?.toUtc()}',
+  );
+  check(
+    '🔴 若被当成秒解析会偏到 1970 —— 用毫秒值反查不可等于 1970',
+    parseStoreKitExpiryMillis('1791887855000')?.toUtc().year != 1970,
+  );
+  check('null → null', parseStoreKitExpiryMillis(null) == null);
+  check('空串 → null', parseStoreKitExpiryMillis('') == null);
+  check('空白串 → null', parseStoreKitExpiryMillis('   ') == null);
+  check('非数字 → null', parseStoreKitExpiryMillis('not-a-number') == null);
+  check('0 / 负数 → null（无效时间戳）',
+      parseStoreKitExpiryMillis('0') == null &&
+          parseStoreKitExpiryMillis('-1') == null);
+  check(
+    '前导空格也能解析（StoreKit 偶尔带空白）',
+    parseStoreKitExpiryMillis(' 1791887855000 ')?.toUtc() ==
+        DateTime.utc(2026, 10, 13, 10, 37, 35),
   );
 
   // ────────────────────────────────────────────────────────────────

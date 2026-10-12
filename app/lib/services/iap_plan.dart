@@ -456,16 +456,61 @@ enum IapEntitlementStatus {
 ///
 /// [expiresAtUtc] 为 null 表示 StoreKit 没给出到期时间（如非续期型购买 —— 我们不用）。
 /// [hasAnyPurchase] 表示这个 Apple ID 在本 App 下**有过**交易（用于区分 expired / none）。
+///
+/// # 🔴 2026-10-12 修正：`null` 分支由 `expired` 改为 `active`（fail-open）
+///
+/// **起因**（沙盒首测实测）：[`IapService`] 的 `_parseExpiry` 曾**硬编码返回 null**
+/// ⇒ 「null + 有购买史」落进 `expired` ⇒ **端侧权益判定恒为「已到期」** ⇒
+///   ① 「订阅已到期」覆盖层对所有买过的用户**必弹**
+///   ② 「端侧权威」设计原则**从未生效**（`isActive` 恒 false，一直靠服务端对账单腿走路）
+///       ⇒ 未登录购买（我们明确支持）会「付了钱却看不到权益」
+///
+/// 🔑 那次 bug 的教训不是"null 判错了"，而是**注释与实现相反**：
+///    `_parseExpiry` 的注释写着「判为『有购买史』……**足以让 UI 先解锁**」，
+///    而实现判的是 `expired`（已到期）。**意图是 fail-open，实现是 fail-closed。**
+///
+/// 现在语义收敛为一句：**「不知道」不等于「已过期」** ——
+///    · 读到到期日且在未来 ⇒ `active`
+///    · 读到到期日且已过去 ⇒ `expired`（这才是真正的过期）
+///    · **读不到**（异常分支）⇒ `active`（与上面注释的原始意图一致）
+///      · 理由 1：**买了的人被误报"已过期"，比没买的人多看一眼内容严重得多**
+///        （前者是付费用户的糟糕体验，后者服务端对账会纠正）
+///      · 理由 2：符合本模块「购买/恢复成功后立刻解锁，不等服务端」的硬规则 ②
+///      · ⚠️ 前提：正常路径下 [`parseStoreKitExpiryMillis`] 一定读得到日期，
+///        所以这一支只在**解析失败**时才走到 —— 不是常规路径。
 IapEntitlementStatus resolveEntitlement({
   required DateTime? expiresAtUtc,
   required bool hasAnyPurchase,
   required DateTime nowUtc,
 }) {
-  if (expiresAtUtc != null && expiresAtUtc.isAfter(nowUtc)) {
-    return IapEntitlementStatus.active;
+  if (expiresAtUtc == null) {
+    // 「不知道到期时间」：有购买史 ⇒ 倾向已购（fail-open）；没购买史 ⇒ 从未订阅。
+    return hasAnyPurchase
+        ? IapEntitlementStatus.active
+        : IapEntitlementStatus.none;
   }
-  if (hasAnyPurchase) return IapEntitlementStatus.expired;
-  return IapEntitlementStatus.none;
+  return expiresAtUtc.isAfter(nowUtc)
+      ? IapEntitlementStatus.active
+      : IapEntitlementStatus.expired;
+}
+
+/// 解析 StoreKit 给的**订阅到期时间**（毫秒时间戳字符串）→ UTC `DateTime`。
+///
+/// # 为什么是纯函数（放在这里而不是 `iap_service.dart`）
+///
+/// `iap_service.dart` import 了 Flutter 插件 ⇒ **本机无法验证**（`flutter` 不可用）。
+/// 而「字符串 → 时间」是**最容易写错的一类转换**（单位差 1000 倍 ⇒ 日期偏到 1970 或 5 万年），
+/// 所以把它下沉到本文件，由 `iap_verify` 直接覆盖。
+/// 📌 判据：**把能验证的尽量下沉**，别让不可验证的层承担正确性。
+///
+/// [millis] 来自 `SK2PurchaseDetails.expirationDate`（插件已把 Apple 的秒转成毫秒）。
+/// 非订阅商品 / StoreKit 1 / 字段缺失 ⇒ 传 null ⇒ 返回 null（调用方按「不知道」处理）。
+DateTime? parseStoreKitExpiryMillis(String? millis) {
+  final s = millis?.trim();
+  if (s == null || s.isEmpty) return null;
+  final ms = int.tryParse(s);
+  if (ms == null || ms <= 0) return null;
+  return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
 }
 
 /// 降级提示（订阅到期后展示）。

@@ -228,6 +228,49 @@ check('无到期时间但有购买史 → expired（不是 none）',
 ## 5. 附：本次未能确定的事（如实标注）
 
 1. **第 2 次上报的触发路径**（恢复购买 / 重启重投 / 补报）—— 无日志可判，需加了日志复现。
-2. **`upsert_transaction` 为何要 `DO UPDATE SET user_id`** —— 可能是刻意纠错，改 B2 前需确认原意。
+   （现已加 `iap_verify` 成功日志，**下次复现即可定性**。）
+2. **`upsert_transaction` 为何要 `DO UPDATE SET user_id`** —— 原意未能查实（无相关提交说明）。
+   本次**移除**了该行为：归属一旦确定不再改写。⚠️ 若原意是「纠正错误的归属」，
+   现在改由**显式冲突拒绝（409）**承担 —— 更安全（改错会连带给错权益）。
 3. **测试环境特有性**：本次是 **TestFlight**（按天续期）。生产环境 1 个月订阅不会出现"1 天到期"，但
    **③ 的权益串号与 ② 的误弹与续期速率无关** ⇒ 两者在生产同样成立。
+
+---
+
+## 6. 处置记录（2026-10-12 19:00 起，白哥批「按建议顺序处理」）
+
+### 6.1 已完成
+
+| # | 动作 | 结果 |
+|---|---|---|
+| 1 | 🔴 **清脏数据** | 备份 `coevo.db.bak-subfix-20261012185815` → `690861018` 的 `subscription_expires` 置 NULL（`baixu100` 保留、记账表未动）|
+| 2 | **B2 止血**（后端）| `upsert_transaction` 改为返回 `Ownership{Claimed/SameOwner/Conflict}`；**归属冲突 ⇒ 409、一个字都不写**；`DO UPDATE` 里**移除 `user_id`** ⇒ 归属永不被改写 |
+| 3 | **B1 后端一半** | 新增 `account_binding_conflict()`：交易自带 `appAccountToken` 与上报者不符 ⇒ 409 |
+| 4 | **成功日志** | `iap_verify` 成功路径加 INFO（tx / user / product / env / expires / ownership / active）|
+| 5 | **A2 端侧**（真正拿到到期日）| `_parseExpiry` 由 `=> null` 改为读 **`SK2PurchaseDetails.expirationDate`**（iOS 插件**本来就给了**，不必解 JWS）；解析下沉为纯函数 `parseStoreKitExpiryMillis()`（可验证）|
+| 6 | **A1 端侧**（服务端回填）| `report()` 解析响应体 `expiresAt` → `IapService.applyServerExpiry()`（**只允许向后推进**）；兑现了原注释承诺 |
+| 7 | **`null` 语义修正** | `resolveEntitlement`：`null + 有购买史` 由 `expired` → **`active`（fail-open）** —— 与 `_parseExpiry` 注释的原始意图一致 |
+| 8 | **B1 端侧** | `buy()` 传 `applicationUserName: _reporterAccountKey`（= 登录用户 id，UUID）⇒ 交易带上账号绑定 |
+| 9 | **B3** | `setReporter(..., accountKey:)`：**换账号时丢弃积压交易**（同账号登出重登不清，避免丢对账）|
+| 10 | **409 = 永久放弃** | `report()` 遇 409 **不抛**（区别于其它非 200）⇒ service 移除该笔积压、**不再无限重试** |
+
+**验证**：后端 `cargo test` **301 passed / exit 0** · `fmt --check` ✅ · clippy 无 error；
+端侧 `iap_verify` **222 项**（原 213，+9）· 类型检查 **0 error** · `query_verify` 全套 **fail=0**。
+**反向证伪 3 次**（每次精确红、复原回绿、无残留）：
+① `null` 分支改回 `expired` ⇒ 红 1 项；② 毫秒当秒用 ⇒ 红 3 项；③ 绑定比对改大小写敏感 ⇒ 红 1 项。
+
+### 6.2 ⚠️ **仍未闭合**（如实列出，别当成已修）
+
+| # | 缺口 | 说明 |
+|---|---|---|
+| 1 | 🔴 **端侧冷启动后仍是空的** | StoreKit **不会重投已完成的交易** ⇒ App 重启后 `entitlement = unknown`、`expiresAtUtc = null`。「**端侧权威**」目前只在**本次会话购买/恢复过**时成立；冷启动仍靠**服务端 OR** 兜底。<br>⇒ 要真正闭合需查「当前 entitlements」（StoreKit 2 的 `Transaction.currentEntitlements`）—— 而 `in_app_purchase` 的**通用 API 不提供**，需额外机制。**未做，列为后续**。 |
+| 2 | 未登录购买 ⇒ **无绑定** | 归属由「首次上报者」确立（先到先得）。这是「购买不需要登录」的**设计后果**，B2 已把它限制为**单一归属**（不会给多个账号开）。 |
+| 3 | `users.created_at` 两种格式混用 | 早先发现（`chrono::timestamp()` vs `datetime('now')`）⇒ `ORDER BY` 不可信。**未改**，影响面小（零真实用户）。 |
+| 4 | **Server Notifications V2 未实现** | 续期/退款 Apple 主动推送的事件收不到。与本次三项**无关**，但同为「对账」缺口。 |
+
+### 6.3 生产部署说明
+
+⚠️ 本次后端改动**尚未部署** —— 需走老流程（白哥跑 WSL 构建 → 我上传/替换/重启/验证）。
+📌 部署后**第一条该看的日志**就是新增的 `iap_verify:` INFO —— 它会直接告出
+「谁、以什么身份、把哪笔交易报了几次」。
+

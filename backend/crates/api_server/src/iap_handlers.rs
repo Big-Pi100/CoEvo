@@ -187,24 +187,85 @@ pub fn millis_to_rfc3339(ms: i64) -> Option<String> {
 // 持久化
 // ════════════════════════════════════════════════════════════
 
-/// 幂等写入 `iap_transactions`。返回「是否是首次插入」。
+/// `iap_transactions` 的**归属判定**结果。
+///
+/// 🔴 2026-10-12（沙盒首测发现「一笔交易给两个账号开了订阅」）：
+///    同一笔交易**只能属于一个账号**。旧实现是
+///    `ON CONFLICT(transaction_id) DO UPDATE SET user_id = excluded.user_id`
+///    ⇒ 第二个账号来报就会**改写归属**；而 `payment_orders` 用
+///    `if exists { return }`（保留第一条）、`set_expires` 又**无条件写**
+///    ⇒ 一张付款单把**两个账号**都开了会员（实测 690861018 未付款却拿到权益）。
+///    ⇒ 现在：**归属冲突直接拒绝**，且归属**永不被改写**。
+#[derive(Debug, PartialEq)]
+pub enum Ownership {
+    /// 这笔交易第一次见到 ⇒ 归本次上报者
+    Claimed,
+    /// 已存在，且**本来就归本次上报者**（重复上报 / 重试 / 续期更新）⇒ 幂等放行
+    SameOwner,
+    /// 已存在，但归**别人** ⇒ 调用方应回 409（不写任何表）
+    Conflict { owner: String },
+}
+
+/// 交易里的**账号绑定**（`appAccountToken`）是否与上报者冲突。
+///
+/// 返回 `Some(绑定值)` = **冲突**（绑定了，且不是这个账号）；`None` = 放行。
+///
+/// 🔑 端侧购买时用 `PurchaseParam.applicationUserName` 写这个字段
+///    （我们的值 = 当时的登录用户 id，是 UUID）。Apple 把它**原样签进 JWS**
+///    ⇒ 是「这笔交易属于谁」的**权威依据**（不是我们自己记的）。
+///
+/// 放行的两种情形：
+///   · **没有绑定**（`None` / 空串）—— 未登录购买、或 StoreKit 1 路径
+///     ⇒ 交给 [`upsert_transaction`] 的「首次上报确立归属」处理
+///   · 绑定值与上报者一致（⚠️ `eq_ignore_ascii_case`：UUID 大小写不影响判定）
+///
+/// 🔑 为什么抽成纯函数而不是写在 handler 里：handler 带 `HeaderMap` + async，
+///    单测不好构造；而「绑定比对」是**最容易写错**的一段（大小写、空白、空串）
+///    ⇒ 下沉成可测函数。📌 判据：**把能验证的尽量下沉**。
+pub fn account_binding_conflict<'a>(
+    app_account_token: Option<&'a str>,
+    user_id: &str,
+) -> Option<&'a str> {
+    let bound = app_account_token?.trim();
+    if bound.is_empty() || bound.eq_ignore_ascii_case(user_id) {
+        return None;
+    }
+    Some(bound)
+}
+
+/// 幂等写入 `iap_transactions`，并返回**归属判定**。
 ///
 /// 🔑 为什么用 `DO UPDATE ... WHERE 有变化` 而不是 `DO NOTHING`：
 ///    **续期要能更新到期日**。`DO NOTHING` 会让一笔订阅永远停在首期的到期时间。
 /// 🔑 `WHERE` 用 `IS NOT`（而不是 `<>`）比较 —— 后者遇 NULL 恒为 NULL
 ///    ⇒ `expires_date` 为 NULL 的行**永远不会被更新**。
+/// 🔴 `SET` 里**没有 `user_id`** —— 归属一旦确定就不再修改（见 [`Ownership`]）。
 pub fn upsert_transaction(
     conn: &rusqlite::Connection,
     tx: &AppleTransaction,
     user_id: &str,
-) -> Result<bool, String> {
-    let existed = conn
+) -> Result<Ownership, String> {
+    // ── ① 先判归属（🔴 必须在写入之前：调用方要据此决定是否继续记账）──
+    //    `COALESCE(...,'')`：user_id 理论非空，但历史上若出现 NULL，
+    //    按「不属于任何人」处理 ⇒ 判为冲突比「悄悄认领」安全。
+    let existing_owner: Option<String> = conn
         .query_row(
-            "SELECT 1 FROM iap_transactions WHERE transaction_id = ?1",
+            "SELECT COALESCE(user_id, '') FROM iap_transactions WHERE transaction_id = ?1",
             params![tx.transaction_id],
-            |_| Ok(()),
+            |r| r.get(0),
         )
-        .is_ok();
+        .ok();
+
+    let outcome = match existing_owner {
+        Some(ref owner) if owner != user_id => {
+            // 🔴 **一个字都不写**就返回 —— 交给调用方拒绝。
+            return Ok(Ownership::Conflict {
+                owner: owner.clone(),
+            });
+        }
+        Some(_) => Ownership::SameOwner,
+        None => Ownership::Claimed,
+    };
 
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
@@ -215,13 +276,11 @@ pub fn upsert_transaction(
             raw_payload, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)
          ON CONFLICT(transaction_id) DO UPDATE SET
-           user_id          = excluded.user_id,
            expires_date     = excluded.expires_date,
            environment      = excluded.environment,
            raw_payload      = excluded.raw_payload,
            updated_at       = excluded.updated_at
          WHERE iap_transactions.expires_date     IS NOT excluded.expires_date
-            OR iap_transactions.user_id          IS NOT excluded.user_id
             OR iap_transactions.environment      IS NOT excluded.environment",
         params![
             tx.transaction_id,
@@ -238,7 +297,7 @@ pub fn upsert_transaction(
     )
     .map_err(|e| format!("写 iap_transactions 失败: {}", e))?;
 
-    Ok(!existed)
+    Ok(outcome)
 }
 
 /// 写「我的订单」记录（幂等：同一 `transaction_id` 只写一条）。
@@ -544,15 +603,76 @@ pub async fn iap_verify_handler(
             .into_response();
     }
 
+    // 🔴🔴 B1（2026-10-12）：交易自带的**账号绑定**必须与上报者一致。
+    //
+    // 端侧在购买时用 `PurchaseParam.applicationUserName` 写入（= 当时的登录用户 id，
+    // 是 UUID ⇒ iOS 上落成 StoreKit 2 的 `appAccountToken`）。
+    // Apple 把它原样签进 JWS ⇒ 这是**唯一**「这笔交易属于谁」的权威依据。
+    //
+    // 与下面 B2 的分工：
+    //   · **B1（这里）**：交易**有**绑定 ⇒ 绑定错就直接拒（比"先到先得"强）
+    //   · **B2（`upsert_transaction`）**：交易**没**绑定（未登录购买 / StoreKit 1）
+    //     ⇒ 由**首次上报**确立归属，之后别的账号来报一律 409
+    if let Some(bound) = account_binding_conflict(tx.app_account_token.as_deref(), &body.user_id) {
+        tracing::warn!(
+            "IAP 账号绑定不匹配 ⇒ 拒绝 tx={} 绑定={} 上报者={}",
+            tx.transaction_id,
+            bound,
+            body.user_id
+        );
+        return (
+            StatusCode::CONFLICT,
+            json!({
+                "error": "该交易绑定的账号与当前登录账号不一致",
+                "transactionId": tx.transaction_id,
+            })
+            .to_string(),
+        )
+            .into_response();
+    }
+
     // ── 5. 记账 ──
     let conn = crate::db_pool::get_conn();
     let amount = fallback_price_fen(&conn, &tx.product_id);
 
-    if let Err(e) = upsert_transaction(&conn, &tx, &body.user_id) {
-        tracing::error!("写入 iap_transactions 失败: {}", e);
+    // 🔴🔴 归属判定必须在**任何写入之前**（含 payment_orders 与 subscription_expires）。
+    //
+    // 2026-10-12 沙盒首测实测：一笔交易被上报两次（身份不同），结果
+    //   · `iap_transactions` 被**改写**成第二个账号
+    //   · `payment_orders` 保留**第一个**账号（`if exists { return }`）
+    //   · `set_expires` **两个账号都写**（无条件 UPDATE）
+    // ⇒ 一张付款单把两个账号都开了会员。
+    // 仅「拒绝 upsert」不够 —— 必须在这里就**中断整条记账链**，
+    // 否则后面的 `set_expires` 照样会给上报者开通。
+    let ownership = match upsert_transaction(&conn, &tx, &body.user_id) {
+        Ok(o) => o,
+        Err(e) => {
+            tracing::error!("写入 iap_transactions 失败: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"error": e}).to_string(),
+            )
+                .into_response();
+        }
+    };
+
+    if let Ownership::Conflict { ref owner } = ownership {
+        // ⚠️ 这不是「用户操作错误」，而是**串号信号**（同机换账号 + 交易重投）
+        //    ⇒ 留 WARN。本次正是靠两条 verify 记录 + nginx 才定位到的。
+        tracing::warn!(
+            "IAP 归属冲突 ⇒ 拒绝开通 tx={} 上报者={} 实际归属={} product={}",
+            tx.transaction_id,
+            body.user_id,
+            owner,
+            tx.product_id
+        );
         return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            json!({"error": e}).to_string(),
+            StatusCode::CONFLICT,
+            json!({
+                "error": "该交易已归属其他账号，无法重复开通",
+                "transactionId": tx.transaction_id,
+            })
+            .to_string(),
         )
             .into_response();
     }
@@ -583,6 +703,23 @@ pub async fn iap_verify_handler(
         .as_deref()
         .map(|_| crate::subscription::is_subscription_active(&conn, &body.user_id))
         .unwrap_or(false);
+
+    // 🔑 **成功路径也要留痕。**
+    //
+    // 2026-10-12 沙盒首测：要判断「同一笔交易被上报了几次、分别以什么身份」
+    // 只能翻 nginx access log —— 因为这个 handler 只在 warn/error 时打日志，
+    // 成功路径**一条都没有**。而失败/冲突路径本来就有日志，不缺这里的曝光度。
+    // ⇒ 一次 INFO 的成本可以忽略，缺了它排查成本极高。
+    tracing::info!(
+        "iap_verify: tx={} user={} product={} env={} expires={} ownership={:?} active={}",
+        tx.transaction_id,
+        body.user_id,
+        tx.product_id,
+        tx.environment,
+        expires_at.as_deref().unwrap_or("(无)"),
+        ownership,
+        is_active
+    );
 
     (
         StatusCode::OK,
@@ -689,21 +826,123 @@ mod tests {
 
     // ── 持久化 ──
 
+    /// 🔴 2026-10-12 新增（B1）：交易自带的账号绑定与上报者的比对。
+    #[test]
+    fn test_account_binding_conflict() {
+        // 未绑定（未登录购买 / StoreKit 1）⇒ 放行，交给「首次上报确立归属」
+        assert_eq!(account_binding_conflict(None, "u1"), None);
+        assert_eq!(account_binding_conflict(Some(""), "u1"), None);
+        assert_eq!(account_binding_conflict(Some("   "), "u1"), None);
+
+        // 绑定 == 上报者 ⇒ 放行（含大小写差异与前后空白）
+        assert_eq!(
+            account_binding_conflict(
+                Some("c96e3b62-9e84-49f3-86a9-17226cc80411"),
+                "c96e3b62-9e84-49f3-86a9-17226cc80411"
+            ),
+            None
+        );
+        assert_eq!(
+            account_binding_conflict(
+                Some("C96E3B62-9E84-49F3-86A9-17226CC80411"),
+                "c96e3b62-9e84-49f3-86a9-17226cc80411"
+            ),
+            None,
+            "UUID 大小写不该影响判定"
+        );
+        assert_eq!(
+            account_binding_conflict(Some("  u1  "), "u1"),
+            None,
+            "前后空白应被 trim"
+        );
+
+        // 🔴 绑定 != 上报者 ⇒ **冲突**（这正是「一笔交易被别的账号认领」）
+        assert_eq!(account_binding_conflict(Some("u2"), "u1"), Some("u2"));
+    }
+
     #[test]
     fn test_upsert_transaction_insert_then_idempotent() {
         let conn = setup_db();
         let tx = sample_tx();
 
         let first = upsert_transaction(&conn, &tx, "u1").unwrap();
-        assert!(first, "首次应为新插入");
+        assert_eq!(first, Ownership::Claimed, "首次应为新插入");
 
         let second = upsert_transaction(&conn, &tx, "u1").unwrap();
-        assert!(!second, "同样内容再写一次不应算新插入");
+        assert_eq!(
+            second,
+            Ownership::SameOwner,
+            "同账号再写一次 = 幂等放行（不是新插入，也不是冲突）"
+        );
 
         let n: i64 = conn
             .query_row("SELECT COUNT(*) FROM iap_transactions", [], |r| r.get(0))
             .unwrap();
         assert_eq!(n, 1, "幂等失败：写了两条");
+    }
+
+    /// 🔴 2026-10-12 新增（沙盒首测发现「一笔交易给两个账号开了订阅」）。
+    ///
+    /// 归属冲突必须判为 [`Ownership::Conflict`]，且：
+    ///   ① **不改写**已有归属（旧实现 `SET user_id = excluded.user_id` 会在这里挂）
+    ///   ② **不新增**行
+    ///   ③ **不更新**这笔交易的其他字段（拒绝 = 完全不动）
+    #[test]
+    fn test_upsert_transaction_rejects_other_owner() {
+        let conn = setup_db();
+        let mut tx = sample_tx();
+
+        assert_eq!(
+            upsert_transaction(&conn, &tx, "u1").unwrap(),
+            Ownership::Claimed
+        );
+        let original_expires: i64 = conn
+            .query_row(
+                "SELECT expires_date FROM iap_transactions WHERE transaction_id = ?1",
+                params![tx.transaction_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        // 第二个账号来报**同一笔**交易（改个到期日，验证它也不会被写进去）
+        tx.expires_date = Some(1_900_000_000_000_i64);
+        let out = upsert_transaction(&conn, &tx, "u2").unwrap();
+        assert_eq!(
+            out,
+            Ownership::Conflict {
+                owner: "u1".to_string()
+            },
+            "第二个账号上报必须判为归属冲突"
+        );
+
+        // ① 归属未被改写
+        let owner: String = conn
+            .query_row(
+                "SELECT user_id FROM iap_transactions WHERE transaction_id = ?1",
+                params![tx.transaction_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(owner, "u1", "🔴 归属被改写了 —— 这正是串号的根源");
+
+        // ② 未新增行
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM iap_transactions", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1, "冲突时不该新增行");
+
+        // ③ 其他字段未被更新（拒绝就该完全不动）
+        let now_expires: i64 = conn
+            .query_row(
+                "SELECT expires_date FROM iap_transactions WHERE transaction_id = ?1",
+                params![tx.transaction_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            now_expires, original_expires,
+            "冲突时不该更新 expires_date（拒绝 = 一个字都不写）"
+        );
     }
 
     /// 🔑 这条测的是「续期能更新到期日」—— `DO NOTHING` 会在这里挂。
