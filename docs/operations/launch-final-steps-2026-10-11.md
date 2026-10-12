@@ -356,19 +356,43 @@ appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书�
 | 1 | 主体：身份证 · 手机号 · 邮箱 · 人脸核验 | ⏳ 你备 |
 | 2 | **App 名称**「记忆之书」（= 图标下显示名；已核实 `CFBundleDisplayName`）| ✅ |
 | 3 | **Bundle ID** `com.coevo.coevoApp` | ✅ |
-| 4 | 🔴 **iOS 技术信息**：**公钥 + 证书 SHA-1 指纹**（**不是 MD5**，MD5 是安卓的）| ⏳ 见 §9.5 |
-| 5 | **后台服务域名** `api.keyievolution.fun`（须已完成 ICP 备案）| ✅ |
+| 4 | 🔴 **iOS 技术信息**：**公钥 + 证书 SHA-1 指纹**（**不是 MD5**，MD5 是安卓的）| ✅ **已算出** → §9.5 |
+| 5 | **后台服务域名** ── 🔴 **「域名」那一栏就填它**：`api.keyievolution.fun`（已 ICP 备案、实名与主体一致）| ✅ |
 | 6 | 隐私政策 | ✅ `https://api.keyievolution.fun/privacy` |
 | 7 | 3–5 张核心界面截图 | ✅ 界面已在 |
 | 8 | 《APP 备案承诺书》 | 腾讯云小程序内有模板 |
 
-### 9.5 ⚠️ 一个实际卡点：公钥 / SHA-1 怎么拿（没有 Mac）
+### 9.5 ✅ 公钥 / SHA-1 已拿到（不用 Mac、不用钥匙串）
 
-备案要填 **Apple Distribution 证书**（**不能**用 Development 证书）的公钥 + SHA-1。
-常规做法在 **macOS 钥匙串**里完成 —— 但我们没有 Mac。
+备案要填 **Apple Distribution 证书**（**不能**用 Development）的公钥 + SHA-1。
+常规做法要在 **macOS 钥匙串**里看证书详情 —— 我们没 Mac。
 
-**技术上可行**：用 **OpenSSL** 从 `.cer` / `.p12` 解析（Windows 上也能跑）。
-⇒ **这个我来做**：你把 Distribution 证书导出的 `.p12` 放到某处（或告诉我它在哪），我本地解出公钥与 SHA-1，你只负责填。
+✅ **已解决**：证书**就嵌在 IPA 的 `embedded.mobileprovision` 里**（`DeveloperCertificates`），
+用 OpenSSL 直接解出即可 —— **不需要 Mac / 钥匙串 / Apple 后台**。
+已固化为脚本：`python scripts/app_filing_cert_info.py <xxx.ipa>`
+
+**填这三个值**：
+
+| 字段 | 值 |
+|---|---|
+| **Bundle ID** | `com.coevo.coevoApp` |
+| **签名MD5值** | `F7:50:D5:09:8F:C6:2E:F5:DA:0F:9F:8F:23:75:E6:C3:9A:A8:E6:AC` |
+| **公钥**（SPKI 十六进制） | 见下方代码块 |
+
+```
+30820122300D06092A864886F70D01010105000382010F003082010A02820101009670B10D40A446EF1B8C49D23ED856134B28AAEE56A3F6B98ECAD0F355734F4B915F54F4627372E5C822C4165434A58621B2BC4456BC37226B5357C6554A1B1EA8B9CB86815B136DE3320CCA638AFC915DE76946F5B5864AFFAF4757B23575F959FAA6E943679EF4C11F15D79A69BD1243398AF987375A2062D6F0160C825D2641464DA184A0484E21F52F6E485EEB5EDE317F8B110280BA67E37081038AA26EC92D4D6F378A305EA9B4B16DA9F3919C6913C19D890F16B1EFACAE2AEE6401D719AE34A7C21EE115658E8E69E6E079DA965D186CAEDB7B75025E7F09A1AC0F418DA99DE890E65BFC85ABA863BD6A78638C6D5CE9C48F771B0635108BE04F7F1F0203010001
+```
+
+**证书来源**（可核验）：`CN=Apple Distribution: xu bai (TTM43MDWDA)` ·
+Team ID `TTM43MDWDA` · 有效期 2026-10-07 → 2027-10-07 · profile 类型 **Ad Hoc**。
+
+> 🔴 两条要紧的：
+> 1. 🔴 **界面字段名叫「签名MD5值」，但苹果平台填的是 SHA-1**
+>    （腾讯云官方 `document/product/243/97789` 原文：「**苹果版 APP，请填写证书的 SHA-1 值**（以16进制形式填写）」）
+>    —— 安卓才填 MD5。**照着字段名填 MD5 必错**。
+> 2. 上面是 **ad-hoc 包**的证书。Xcode 自动签名对同一团队会**复用同一张** Distribution 证书
+>    ⇒ 大概率就等于将来 app-store 包用的那张。**出 app-store 包后跑一次脚本比对 SHA-1** 即可确认；
+>    若不同，备案做一次「变更」即可（不用重来）。
 
 ### 9.6 🔴 一个必须先定的判断：会不会被当成「教育类」？
 
