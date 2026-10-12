@@ -297,6 +297,23 @@ appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书�
 | **A · 真机直装**（最快）| 把 build 装到真机（Xcode / ad-hoc IPA），设备上登录**沙盒账号** | ✅ 手上那个 ad-hoc IPA 就能用（profile 里已含你的设备）|
 | **B · TestFlight** | 上传 build 到 ASC → 分发给测试者 | 需先出 app-store 包 |
 
+> ✅ **选定：走 TestFlight**（2026-10-12）
+>
+> 🔑 **先澄清一件事**：TestFlight **不是「上架」的必经之路** ——
+> 上架路径是「出 `app-store` 包 → 上传 ASC → 提交审核 → 上线」，TestFlight 只是**可选的 beta 测试渠道**。
+> 但**对我们（Windows + 无 Mac）**，它是**把 build 装到真机上唯一顺畅的路**：
+> 另一条 ad-hoc 直装需要第三方工具（新版 iTunes 已移除拖拽安装），且有**重签名风险**。
+> 而且它**顺便验通「出包 → 上传 ASC」这条链**（上架本来必走）—— 一石二鸟。
+>
+> 📋 **出包前置（2026-10-12 12:00 已核）**：
+>
+> | 项 | 结果 |
+> |---|---|
+> | **密钥审计** | ✅ `scripts/check_no_secrets.py`：**1599 个跟踪文件无明文凭据**；<br>10-05/10-06 的历史清理已完成（619 commit 重写 · 远程零残留 · 旧 Key 已失效）<br>⇒ 报告原话：「**✅ 当前可安全改公开**」 |
+> | **CI** | ✅ 上次 `ios-archive` 成功（6m30s）|
+> | **workflow** | ✅ 支持 `method=app-store` + `upload=true` ⇒ 出包即上传 ASC ⇒ TestFlight 可见 |
+> | **仓库** | 🔴 **当前 PRIVATE**（`gh` 已登录 ⇒ **我能执行改公开**；10-05 时 `gh` 未登录，执行不了）|
+
 #### 🔴 沙盒账号登录：**不用先找那个设置项**（它本来就是「条件出现」的）
 
 **Apple 官方原文**（`documentation/storekit/testing-in-app-purchases-with-sandbox`）：
