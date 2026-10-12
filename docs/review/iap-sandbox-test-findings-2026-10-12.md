@@ -268,9 +268,50 @@ check('无到期时间但有购买史 → expired（不是 none）',
 | 3 | `users.created_at` 两种格式混用 | 早先发现（`chrono::timestamp()` vs `datetime('now')`）⇒ `ORDER BY` 不可信。**未改**，影响面小（零真实用户）。 |
 | 4 | **Server Notifications V2 未实现** | 续期/退款 Apple 主动推送的事件收不到。与本次三项**无关**，但同为「对账」缺口。 |
 
-### 6.3 生产部署说明
+### 6.3 生产部署（2026-10-12 19:38 ✅ 后端已上线）
 
-⚠️ 本次后端改动**尚未部署** —— 需走老流程（白哥跑 WSL 构建 → 我上传/替换/重启/验证）。
-📌 部署后**第一条该看的日志**就是新增的 `iap_verify:` INFO —— 它会直接告出
-「谁、以什么身份、把哪笔交易报了几次」。
+| 判据 | 部署前 | 部署后 |
+|---|---|---|
+| 二进制 sha256 | `b5e8c496…` | **`4e8d2975…`** = 白哥构建产物（服务器侧 sha256 一致）|
+| 阴性对照 `iap_verify: tx=` | 0 | **1** ✓ |
+| 阴性对照 `IAP 归属冲突 ⇒ 拒绝开通 tx=` | 0 | **1** ✓ |
+| 阴性对照 `该交易已归属其他账号，无法重复开通` | 0 | **1** ✓ |
+| 阳性对照 `IF NOT EXISTS sync_book (` | 1 | **1** ✓ |
+| `/health` | `记忆之书 API — OK` | **`记住一切 API — OK`**（产品名三改的连带）|
+
+#### 🔴🔴 行为实测（比 grep 字符串硬得多）
+
+用**另一个账号**（`appreview@keyievolution.fun`，由我建的演示账号）去上报**属于 `baixu100` 的那笔交易**：
+
+```
+POST /api/iap/verify  {transactionId: 2000001249787368, user_id: dc197948…}
+→ HTTP 409
+→ {"error":"该交易已归属其他账号，无法重复开通","transactionId":"2000001249787368"}
+```
+
+⚠️ 这正是**原来会串号的那条路径**（旧代码会静默改写归属并给第二个账号开通）。
+
+后端日志（**新加的代码路径真的被执行**）：
+```
+WARN api_server::iap_handlers: IAP 归属冲突 ⇒ 拒绝开通
+     tx=2000001249787368 上报者=dc197948… 实际归属=c96e3b62… product=…pro.monthly
+```
+
+**且 409 之后「一个字都没动」**（逐项直查）：
+`baixu100` 的 `subscription_expires` 仍是 `2026-10-13T10:37:35Z` · `appreview` 仍 `NULL` ·
+交易归属仍 `baixu100` · `iap_transactions` / `payment_orders` 行数不变。
+
+对照组：无 token ⇒ **401** · 空 `transactionId` ⇒ **400** ✓
+
+#### 其他
+- 标准部署探针 `verify_v016_deploy.py`：**35 项全过** · 重启窗口 **0 条 ERROR**
+- 公网：`/health` `/privacy` `/terms` 均 **200** · `/health` 内容已是 `记住一切 API — OK`
+- ⚠️ **`/support` 仍是 404** —— 那页（Apple 必填的「技术支持网址」）**还没部署**
+  （需往 nginx 加 `location`，属生产配置变更 ⇒ 需单独批准）
+- 邻居服务 `coevo` / `vibedollar-pay` / `mailproxy` / `nginx` 全 **active**
+- 回滚点：`/opt/coevo/bin/coevo_backend.prev`（`b5e8c496…`）
+
+📌 **部署后第一条该看的日志**就是新增的 `iap_verify:` INFO —— 它会直接告出
+「谁、以什么身份、把哪笔交易报了几次」（本次首测正是缺了它才要翻 nginx）。
+
 
