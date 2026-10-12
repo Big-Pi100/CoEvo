@@ -507,10 +507,28 @@ void main() {
 
     // ── §4.4.3 恢复购买（Apple 强制）──
     check('🔴 订阅页有恢复购买调用', subscribeCode.contains('.restore()'));
+
+    // 🔴 2026-10-12 晚**修正断言目标**（同 2026-10-04 抽 `LegalLinkRow` 那次）。
+    //
+    // 旧断言要求 `subscribe_screen.dart` 里出现 `RestoreOutcome.restored` /
+    // `.notFound` 两个字面量 —— 那是「文案内联在 UI 里」时代的形状。
+    // 现在文案下沉到 `iap_plan.restoreOutcomeMessage`（**可断言**）⇒ 那两个
+    // 字面量在 UI 文件里**故意不存在了** ⇒ 旧断言必然**假红**。
+    //
+    // ⚠️ 但**不能**只把目标换成「UI 里有 `restoreOutcomeMessage(` 这个拼写」——
+    //    那锁的是拼写、不是语义。真正要保证的是：
+    //    **两种结果给出「不同」的提示**（否则用户分不清成功了还是没找到）。
     check(
-      '🔴 恢复结果分「已恢复 / 未找到」两种提示',
-      subscribeCode.contains('RestoreOutcome.restored') &&
-          subscribeCode.contains('RestoreOutcome.notFound'),
+      '🔴 订阅页的恢复提示走唯一文案函数（不再内联 switch）',
+      subscribeCode.contains('restoreOutcomeMessage('),
+    );
+    check(
+      '🔴 恢复结果分「已恢复 / 未找到」两种**不同**提示（锁语义，不锁拼写）',
+      restoreOutcomeMessage(RestoreOutcome.restored) !=
+              restoreOutcomeMessage(RestoreOutcome.notFound) &&
+          restoreOutcomeMessage(RestoreOutcome.restored).isNotEmpty &&
+          restoreOutcomeMessage(RestoreOutcome.notFound).isNotEmpty,
+      '「成功了」与「没找到」必须能区分 —— 它决定用户下一步该做什么',
     );
 
     // ── §4.4.4 管理订阅 + 降级说明 ──
@@ -1518,6 +1536,35 @@ void main() {
         '🔴 `buy()` 未登录直接拒绝（防将来新增入口漏拦）',
         svc2.contains('请先登录账号后再订阅'),
         'UI 只是引导；「一一绑定」的不变量在这里兜住');
+
+    // ── ④ 「恢复购买」的文案（2026-10-12 白哥定：「没找到」要能自己解决）──
+    //
+    // 🔑 背景：订阅与账号一一绑定后，「没找到」有两种成因 ——
+    //    ① Apple ID 真没买过｜② **订阅在另一个 App 账号上**。
+    //    旧文案只描述 ① ⇒ 用户在 ② 会以为「我的订阅丢了」（静默失败 + 无出口）。
+    final restoredMsg = restoreOutcomeMessage(RestoreOutcome.restored);
+    final notFoundMsg = restoreOutcomeMessage(RestoreOutcome.notFound);
+    final failedMsg = restoreOutcomeMessage(RestoreOutcome.failed);
+    final unavailMsg = restoreOutcomeMessage(RestoreOutcome.unavailable);
+    check('四种恢复结果都有非空文案',
+        [restoredMsg, notFoundMsg, failedMsg, unavailMsg]
+            .every((m) => m.isNotEmpty));
+    check('四种文案**互不相同**（否则用户分不清到底发生了什么）',
+        {restoredMsg, notFoundMsg, failedMsg, unavailMsg}.length == 4);
+    check(
+        '🔴 `notFound` 文案必须**引导切回原账号**（订阅与账号一一绑定）',
+        notFoundMsg.contains('账号'),
+        '旧文案让用户以为订阅丢了：$notFoundMsg');
+    check(
+        '🔴 `notFound` 不再是干巴巴的「未找到订阅记录」',
+        !notFoundMsg.contains('未找到订阅记录'));
+
+    // ── 接线：两处调用点**都**必须走同一函数（防各写一份 switch 又漂）──
+    final usedRestoreMsg =
+        'restoreOutcomeMessage('.allMatches(subUi).length +
+            'restoreOutcomeMessage('.allMatches(profUi).length;
+    check('🔴 订阅页与「我的」页都走唯一文案函数（各写一份必然漂）',
+        usedRestoreMsg >= 2, '共 $usedRestoreMsg 处');
   }
 
   _report();

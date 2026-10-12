@@ -974,13 +974,12 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
     final outcome = await ref.read(iapServiceProvider).restore();
     if (!mounted) return;
 
-    final msg = switch (outcome) {
-      RestoreOutcome.restored => '已恢复订阅',
-      RestoreOutcome.notFound => '未找到订阅记录',
-      RestoreOutcome.failed => '恢复购买失败，请稍后重试',
-      RestoreOutcome.unavailable => '当前无法连接 App Store',
-    };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    // 🔴 2026-10-12：文案改走**全库唯一事实源** `restoreOutcomeMessage` ——
+    //    原先这里与「我的」页各写了一份同样的 switch（必然漂）。
+    //    `notFound` 的新措辞会引导用户「切回订阅所在的那个账号」（订阅与账号一一绑定）。
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(restoreOutcomeMessage(outcome))),
+    );
   }
 
   /// 打开外部链接 —— 🔴 **失败必须让用户看见**（不能静默）。

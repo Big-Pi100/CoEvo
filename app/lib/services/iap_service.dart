@@ -73,24 +73,11 @@ enum IapAvailability {
   unavailable,
 }
 
-/// 「恢复购买」的结果 —— 供 UI 决定提示文案。
-///
-/// 🔑 为什么要有这个枚举（而不是只更新状态）：`ui-ux §4.4.3` 明确要求
-///    「成功则提示『已恢复』；**无记录则提示『未找到订阅记录』**」——
-///    两种情况的提示**不同**，而 StoreKit 不会告诉你「恢复结束了但什么都没有」。
-enum RestoreOutcome {
-  /// 恢复到了有效订阅
-  restored,
-
-  /// 调用成功，但该 Apple ID 名下没有有效订阅
-  notFound,
-
-  /// 调用抛异常
-  failed,
-
-  /// 商店不可用（没连上 / 设备不支持）
-  unavailable,
-}
+// 🔴 2026-10-12 晚：原在这里的 `enum RestoreOutcome` **已移到 `iap_plan.dart`** ——
+//    它现在要驱动文案映射（`restoreOutcomeMessage`），而**文案必须可断言**；
+//    本文件 import 了 Flutter 插件 ⇒ 本机验不了（见文件头）。
+//    📌 判据：**把能验证的尽量下沉**。
+//    ⚠️ 本文件仍可照常使用 `RestoreOutcome` —— 上面已 `import 'iap_plan.dart'`。
 
 /// 服务层对外暴露的一段订阅状态（**端侧权威**）。
 @immutable

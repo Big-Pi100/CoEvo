@@ -18,7 +18,6 @@ import '../providers/auth_provider.dart';
 import '../providers/iap_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/iap_plan.dart';
-import '../services/iap_service.dart';
 import '../providers/achievement_notifier.dart';
 import '../providers/achievement_provider.dart';
 import '../providers/memory_settings_provider.dart';
@@ -1879,13 +1878,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
     final outcome = await ref.read(iapServiceProvider).restore();
     if (!mounted) return;
-    final msg = switch (outcome) {
-      RestoreOutcome.restored => '已恢复订阅',
-      RestoreOutcome.notFound => '未找到订阅记录',
-      RestoreOutcome.failed => '恢复购买失败，请稍后重试',
-      RestoreOutcome.unavailable => '当前无法连接 App Store',
-    };
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    // 🔴 2026-10-12：文案改走**全库唯一事实源** `restoreOutcomeMessage`
+    //    （原先这里与订阅页各写了一份同样的 switch ⇒ 必然漂）。
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(restoreOutcomeMessage(outcome))),
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════════
