@@ -256,6 +256,34 @@ D:\flutter\bin\flutter.bat build apk --release --target-platform android-arm64 -
 
 🔴 **iOS 只能走 CI**（没有 Mac；Windows 上 Flutter 出不了 iOS 包）⇒ **必须公开仓库**（§1.1 额度）。
 
+### 4.1 🔴 上传成功 ≠ TestFlight 可见（2026-10-12 实测踩到）
+
+`xcodebuild` 打印 `Upload succeeded` **只说明「传输完成」**，之后还有两段**异步**流程：
+
+| 阶段 | 谁在做 | 典型耗时 | 卡住时的表现 |
+|---|---|---|---|
+| ① ASC **处理**（Processing） | Apple | **10 分钟 – 1 小时** | ASC 的「构建版本」里显示「**正在处理**」 |
+| ② **分发到测试组** | **你**（除非该组开了自动分发） | — | 处理完成、但测试者仍看不到 ⇒ 要去「测试组」里**把这个 build 加进去** |
+
+**判断顺序**（都在 ASC 网页 → 该 App → **TestFlight** → 「构建版本」tab）：
+
+| ASC 显示 | 含义 | 处置 |
+|---|---|---|
+| 「正在处理」 | ① 还没跑完 | **等**（本项目 build 3 / 5 / 6 均在上传后 1 小时内可见）|
+| 「缺少出口合规信息」 | 没回答加密问题 | 本项目**已声明** `ITSAppUsesNonExemptEncryption=false`（`app/ios/Runner/Info.plist:135`）⇒ **不应出现**；真出现说明该声明丢了 |
+| 「已准备好提交」但测试者还是看不到 | ② 没分发 | 去 **测试组** 添加该 build |
+| 「无效 / Invalid Binary」 | 处理被拒 | ASC 会**发邮件**给 Apple ID 邮箱，看邮件里的原因 |
+
+🔑 **怎么确认「真上传了、号也对」**（比看 ASC 更早可得的证据）：
+
+```bash
+gh run view <run-id> --log | grep -aE "Uploaded |FLUTTER_BUILD_NUMBER"
+# 期望两行：export FLUTTER_BUILD_NUMBER=<N>   +   Uploaded <AppName>
+```
+
+⚠️ `CFBundleVersion` 在 `Info.plist` 里写的是 `$(FLUTTER_BUILD_NUMBER)` ⇒ 它**跟随 `pubspec.yaml` 的 `+N`**
+⇒ 忘了 bump `+N` 会导致 **ASC 拒收重复的 build 号**（ITMS-4238 Redundant Binary Upload）。
+
 ---
 
 ## 5. CI 触发方式对照（`ci.yml`）
