@@ -161,10 +161,17 @@ ASC → *Users and Access* → **Sandbox** → *Testers* → 新建。
 
 ### 🔴 两处**需要你定**的边界项（我不替你签这个字）
 
-| # | 项 | 事实 | 我的建议 |
-|---|---|---|---|
-| 1 | **Device ID**（Identifiers 下）| 同步时会发一个**本机随机生成**的匿名标识（`device_id.dart` 用 `Random.secure()`，**不是** IDFA/IDFV、**不是**设备级）| **不建议申报 Device ID** —— Apple 对它的定义是「设备级标识（如 IDFA/IDFV）」，而这个是**应用实例级**的随机串（重装即变），且我们**不用**它做追踪（`Data Used to Track You` = 无）|
-| 2 | **Usage Data → Product Interaction** | 该标识用于「某个词被多少**不同设备**查过」的**去重统计**（`generated_card_hit(spelling, device_id)`，用于决定哪些词要补词典内容）| **倾向申报** —— 它确实是对「用户如何使用 App」的统计。⚠️ 但这是**你的签名声明** ⇒ **你定**；你定了我同步改材料包与隐私政策措辞（政策 §2.3 已如实写了这个标识的用途，两种答法都不与政策冲突）|
+> 📌 **Apple 官方定义**（`developer.apple.com/app-store/app-privacy-details`，2026-10-12 复核）：
+> · **Device ID** = 「the device's advertising identifier, or **other device-level ID**」→ 关键词是 **device-level**
+> · **Product Interaction** = 「app launches, taps, clicks, scrolling information, … or **other information about how the user interacts with the app**」→ 定义**很宽**
+
+| # | 项 | 事实（已核代码）| 我的建议 | 依据 |
+|---|---|---|---|---|
+| 1 | **Device ID**（Identifiers 下）| 上报 `dev_` + 32 位 hex 的随机串；**存在 `SharedPreferences`**（`device_id.dart:22` 注释原文：「卸载重装 → 新 id（SharedPreferences 被系统清空）」）⇒ **重装即变** | ✅ **不申报** | Apple 要的是 **device-level** ID（IDFA / IDFV 这类系统级、跨重装稳定的）。我们是**应用实例级**随机串 —— **连「设备」这个身份都不稳定** ⇒ 不构成 device-level ID。且 `Data Used to Track You` = **无** |
+| 2 | **Usage Data → Product Interaction** | 该标识 + 词（`spelling`）上报到 `/api/generate-card` → 写 `generated_card_hit(spelling, device_id)`，`COUNT(*)` = `distinct_user_count`（决定给词库补哪些词）。**另有「划词历史」本身也随账号同步** | ✅ **建议申报** | 「这台（匿名）设备查了哪个词」正是「**information about how the user interacts with the app**」。建议：用途勾 **App Functionality**（内容供给 + 同步）· **Linked to you = ✅**（划词历史随账号同步 ⇒ 可关联）· Track = **否** |
+
+> ⚠️ 这一栏是**你的签名声明**（我没法替你签）⇒ **你定**。你定了我同步改本表口径；
+> 隐私政策 §2.1 / §2.3 已**如实**写了这个标识的存在、性质与用途 ⇒ **两种答法都不与政策冲突**。
 
 > 📌 判据：**平台声明（ASC 标签）与法务文本是「同一事实的两处描述」** ——
 > 两处都必须与实现一致；**不一致的任一侧都是失实**。
