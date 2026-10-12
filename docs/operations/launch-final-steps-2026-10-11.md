@@ -347,14 +347,51 @@ ASC 首页 → 顶部「用户和访问」(Users and Access)
 > | 3 | **月度**订阅产品 `…pro.monthly` | ✅ 已建（「准备提交」）| 白哥 |
 > | 4 | **年度**订阅产品 `…pro.yearly` | ✅ **已建**（2026-10-12 白哥）—— ⚠️ 只差**审核截图** | 白哥 |
 > | 5 | **沙盒账号** | ✅ **已建**（`baixu1986@foxmail.com` · 中国大陆）| 白哥 |
-> | 6 | **In-App Purchase Key**（3 样）| 🔴 **仍在找** —— 位置见 **§5.2.2 详解**（在「用户和访问 → 集成」，**不在 App 里**）| 🔴 **白哥 · 现在这一步** |
-> | 7 | 后端 `IAP_*` 4 个变量 | ❌ **零配置**（实测 `.env` 里 `IAP_` 个数 = **0**）| 我（等 6）|
+> | 6 | **In-App Purchase Key**（3 样）| ✅ **已拿到**（Key ID `83T749QG5Z` · Issuer `f0896b91-…` · `.p8` EC P-256）| 白哥 |
+> | 7 | 后端 `IAP_*` 4 个变量 | ✅ **已配置**（2026-10-12 18:03 · `Sandbox`）—— 见下方「配置与验证」| 我 |
+> | 7b | 🔴 **服务端验证链路** | ✅ **已打通到最后一环** —— 实测调通 Apple Sandbox API | — |
 > | 8 | build 装到真机 | ⏳ TestFlight **build 3** 可用 | 白哥 |
 > | 9 | 端侧购买 | ⏳ 依赖 3 / 5 / 8 | 白哥 |
 > | 10 | 服务端验证 | ⏳ 依赖 7（`/api/iap/verify` 现在必然 503）| 我查库 |
 >
 > 📌 **记账表全空**（实测）：`iap_transactions` **0 行** · `payment_orders` **0 行**
 > ⇒ 从未有过任何交易（含沙盒）✓ 符合预期。
+
+#### ✅ 配置与验证记录（2026-10-12 18:03）
+
+**写入** `/opt/coevo/.env`（**先备份** → `.env.bak-iap-20261012180330`）：
+`IAP_KEY_ID` · `IAP_ISSUER_ID` · `IAP_ENVIRONMENT=Sandbox` · `IAP_PRIVATE_KEY`。
+
+🔑 **一个实测发现**：服务由 `EnvironmentFile=/opt/coevo/.env` 加载（**systemd 自己解析**），
+而 **`.env` 里的 `IAP_PRIVATE_KEY` 是「双引号跨行」的多行 PEM** ——
+**systemd 支持这种写法** ✓（直查 `/proc/<pid>/environ` 确认 **6 行 PEM 完整**，
+非空行数也对，且其他 key 未受影响）。后端读的是变量**原文**（无 `\n` 转义处理）。
+
+**三层对照验证**（`POST /api/iap/verify`）：
+
+| 测试 | 结果 | 判据 |
+|---|---|---|
+| 🔴 **合法 token + 非空 transactionId** | **HTTP 502** | 见下 |
+| 无 token | 401 | 鉴权层有效 ✓ |
+| `transactionId` 为空 | 400 | 参数层有效 ✓ |
+| 空 body `{}` | 422 | axum JSON 反序列化层（**到不了业务逻辑**）|
+
+**(a) 的响应体是决定性证据**：
+
+```json
+"交易查证失败: Apple 返回 400 Bad Request … 响应: {"errorCode":4000006,"errorMessage":"Invalid transaction id."}"
+```
+
+🔴 `4000006 Invalid transaction id` **是 Apple 服务器亲自回的** —— 我喂的是假 ID `0`。
+⇒ 这同时证明：**① 配置读到了**（不再是 503）· **② JWT 用 `.p8` 签名成功**
+（否则 Apple 回 401 而非业务错误）· **③ 真的调到了 Apple Sandbox API**
+（`api.storekit-sandbox.itunes.apple.com`）。
+⇒ **服务端链路已打通到最后一环，只差一笔真实沙盒交易。**
+
+> ⚠️ **上架前必须把 `IAP_ENVIRONMENT` 改回 `Production`**（否则查生产交易会 404，
+> 而报错**不指向环境不匹配** —— 见 §5.4）。
+> ⚠️ **私钥安全**：`IAP_PRIVATE_KEY` 只存在于服务器 `.env`（`600 root:root`），
+> **不进 git、不进文档**。本地那份 `.p8` 建议**移出云盘同步目录**（Apple 明文要求妥善保管）。
 >
 > ✅ **一个重要澄清：这一轮【不用】重新出包。**
 > 价格是从 **StoreKit** 取的（端侧 `fallbackFen` 只在拉不到商品时兜底）⇒
