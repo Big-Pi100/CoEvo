@@ -75,7 +75,7 @@ echo "════════════════════════�
 echo " CoEvo 法律文本页部署"
 echo " 运营者：$OPERATOR"
 echo " 邮箱：  $EMAIL"
-echo " 站点：  $PUBLIC_BASE/privacy · /terms"
+echo " 站点：  $PUBLIC_BASE/privacy · /terms · /support"
 echo "════════════════════════════════════════════════════════"
 echo
 
@@ -108,13 +108,13 @@ fi
     --base-url "$PUBLIC_BASE" --out build/legal "${EXTRA[@]}"
 
 # 本地先自查一次残留 —— **不把可能残缺的产物传上去**
-for f in privacy terms; do
+for f in privacy terms support; do
   if grep -q '【待填' "$REPO_ROOT/build/legal/$f.html"; then
     echo "🔴 $f.html 仍有未替换占位符 ⇒ 中止（不上传）"
     exit 1
   fi
 done
-echo "  ✅ 两份产物本地自查通过（无残留占位符）"
+echo "  ✅ 三份产物本地自查通过（无残留占位符）"
 echo
 
 # ── ② 上传 ───────────────────────────────────────────────────────────────
@@ -155,6 +155,12 @@ BLOCK = """    # >>> coevo-legal (managed by scripts/legal/publish_legal_pages.s
     location = /terms {
         root /var/www/coevo-legal;
         try_files /terms.html =404;
+        add_header Cache-Control "public, max-age=3600";
+    }
+    # 🆕 2026-10-12 /support —— Apple 上架必填的「**技术支持网址**」。
+    location = /support {
+        root /var/www/coevo-legal;
+        try_files /support.html =404;
         add_header Cache-Control "public, max-age=3600";
     }
     # <<< coevo-legal <<<

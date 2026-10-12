@@ -52,6 +52,9 @@ TEMPLATE = LEGAL_DIR / "templates" / "legal-page.html"
 PAGES = [
     ("privacy-policy.md", "privacy.html", "记住一切 隐私政策"),
     ("terms-of-service.md", "terms.html", "记住一切 用户协议"),
+    # 🆕 2026-10-12：Apple 的「技术支持网址」是**必填项** —— 原先没有这一页（/support → 404）。
+    #    独立成页，比拿隐私政策顶替正规（审核员会点开看）。
+    ("support.md", "support.html", "记住一切 技术支持"),
 ]
 
 # 🔴 占位符 → 替换值的映射（`{operator}` / `{email}` / `{privacy_url}` 由参数填充）
