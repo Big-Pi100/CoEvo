@@ -446,6 +446,17 @@ appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书�
 把「用的哪个 Xcode / 哪个 SDK」变成**日志里的证据**，而不是靠外部文章推断。  
 （更硬的做法是钉 `runs-on: macos-26`；但浮动标签眼下是对的 ⇒ **先加可观测性，不动能跑通的路径**。）
 
+✅ **2026-10-12 实证（本次出包日志）**：构建实际用的工具链是
+`/Applications/Xcode_26.6.app/…/Developer/SDKs/iPhoneOS26.5.sdk`
+⇒ 上面第一条（**iOS 26 SDK**）**已满足**，而且这次是**实测证据**（不再靠 runner 标签推断）。
+📌 但仍建议加那一步 —— 本次是从 `clang -v` 的 `-isysroot` 参数里**间接**看到的，
+一行 `xcodebuild -version` 会直接得多。
+
+📌 **另一条预警**（尚无明确日期）：本次构建日志出现
+`UIScene lifecycle support will soon be required`（→ `flutter.dev/to/uiscene-migration`）
+⇒ Flutter 的 iOS 启动方式将来要从 `AppDelegate` 迁到 **UIScene 生命周期**。
+现在**不影响上架**，但下次 iOS 大版本升级时要留意（记在此，免得日后被突然告知）。
+
 ---
 
 ### 6.2 ✅ workflow 假红缺陷 —— **已修**（2026-10-12 白哥批准）
@@ -537,6 +548,28 @@ push 到 main ⇒ event_name = push（≠ workflow_dispatch）
 📌 **结论**：这 4 个红 run（`9fdacdc` · `f8bef9f` · `5466e1d` · `959944d`）只需**知道性质**（额度，非代码）；
 真正该做的是**在下次公开窗口补一次 push**，让这批 commit 的代码**在 CI 上真跑一次**。
 （本地等价门禁已全绿：`cargo test` **299** · `analyze_inproc` **0 error** · `query_verify` **54 脚本** · `iap_verify` **213** —— 但 **CI 是权威门禁**，不能只靠本地。）
+
+---
+
+### 6.4 📦 本次出包的 IPA 在哪？—— **没有文件；包在 ASC 上**
+
+`upload=true` ⇒ `destination=upload` ⇒ Xcode **直传 App Store Connect、本地不落文件**
+⇒ artifact 步骤被跳过（我给它加的 `if: env.DEST == 'export'`）⇒ **没有任何可下载的 `.ipa`**。
+
+| 位置 | 内容 | 说明 |
+|---|---|---|
+| **ASC / TestFlight** | **build 3** · `1.0.0 (3)` · **¥6 / ¥58** | 🔴 **唯一能拿到「新包」的地方** |
+| GitHub artifact | **（空）** | upload 模式无本地产物 —— **设计如此，不是丢失** |
+| ⚠️ 本地 `/tmp/…/coevo_app.ipa`（38.9 MB）<br>+ GitHub `coevo-ios-ipa`（36.3 MB）| 10-11 的 **ad-hoc** · `1.0.0 (2)` · **旧价 ¥9.9 / ¥78** | 🔴 **别拿它测**（价格是旧的）· artifact **2026-10-18 过期** |
+
+> 🔑 **为什么不留一份本地拷贝**：`upload=true` 的**产物就是「ASC 上的一个 build」**，
+> 本地存 36 MB 拷贝没有意义（走 TestFlight 也用不到它）。
+> ⇒ 这也正是 **§6.2 那条假红的由来**（`upload` 模式却去断言本地文件）。
+
+**若确实需要 IPA 文件本身**（例如想在 Windows 上直装 iPhone）：
+必须用 **`method=ad-hoc` + `upload=false`** 另出一次 —— 那时才有 artifact。
+⚠️ 但 ad-hoc 包**不能上架**，且 Windows 直装 iPhone 本就麻烦
+⇒ **走 TestFlight 更顺**（新包已经在那边了）。
 
 ---
 
