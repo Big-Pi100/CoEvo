@@ -13,7 +13,7 @@
 |---|---|---|---|
 | **后端上线** | **A · WSL 构建 + scp**（§2.1）⭐ | ❌ 不需要 | 白哥构建 + agent 上传/重启/验证 |
 | **安卓包**（真机测试） | 本地 `flutter build apk`（§3）| ❌ | 白哥 |
-| **iOS 包**（TestFlight / 真机） | CI `ios-archive.yml` **手动触发**（§4）| 🔴 **需要** | 白哥触发 + agent 看结果 |
+| **iOS 包**（TestFlight / 真机） | CI `ios-archive.yml` **手动触发**（§4）| 🔴 **需要** | **agent**（`gh workflow run` · 2026-10-12 起 gh 已认证）|
 | iOS 能否编过（快速） | CI `ios-build`（tag 触发）（§5）| 🔴 需要 | agent 推 tag |
 
 🔴 **默认顺序（2026-10-08 白哥定）**：
@@ -46,6 +46,24 @@
 ✅ 处置：**改 public**（公开仓库 Actions 免费无限）。
 🔴 改前先跑历史审计：`python scripts/audit_git_history_secrets.py .`
 ⚠️ 改公开**不会重跑**已失败的 run ⇒ 要**删 tag 重推**（或界面 re-run）才触发。
+
+🆕 **2026-10-12 起，这一步 agent 可全自动** —— `gh` 已认证
+（账号 `Big-Pi100` · token scope 含 `repo`）⇒ 可见性切换与 workflow 触发都不需要人工：
+
+```bash
+gh repo edit Big-Pi100/CoEvo --visibility public  --accept-visibility-change-consequences
+git push origin main
+gh workflow run ios-archive.yml -f upload=true -f method=app-store
+gh repo edit Big-Pi100/CoEvo --visibility private --accept-visibility-change-consequences
+```
+
+🔴🔴 **顺序不可颠倒：`改公开` 必须排在 `push` 之前**。
+2026-10-12 实测踩到：写成 `push → 改公开` 时，`push` 那一刻仓库还是私有
+⇒ `ci.yml` 虽然起来了，但 **job 起不来（`steps=0`）**，看起来是「绿色的空跑」。
+⚠️ 那次代价很大：本轮新增的依赖**只有 CI 能解析**（本机跑不了 `flutter pub get`），
+而它**从没被真跑过** —— 直到收尾核对才发现。
+
+🔑 **恢复私有不需要等 run 结束**（实测两次：run 照常跑完并 success）。
 
 ### 1.2 提交才有得部署
 

@@ -356,5 +356,31 @@ WARN api_server::iap_handlers: IAP 归属冲突 ⇒ 拒绝开通
 后端防线（B1/B2 + 409）仍然有效且**必须保留** —— 它守的是**旧数据与异常路径**；
 新口径只是在**源头**（端侧）不再产生无绑定交易。
 
+### 4.3 出包验证（build 6）
+
+| 项 | 值 |
+|---|---|
+| 版本 | **`1.0.0+6`**（pubspec `+5 → +6`）|
+| 提交 | `5aea8fb` |
+| iOS run | `38258608857` · **completed / success** · `Archive & Export IPA` ✅ |
+| 上传证据 | `✅ upload 模式：已确认上传成功（Upload succeeded + EXPORT SUCCEEDED）` · `Uploaded Runner` |
+| CI run | `38258579125` · **completed / success** · **8 个门禁全绿**（含 `IAP Verify (pure Dart)` = 新 ⑰ 组）· 3 个部署 job 按设计 **skipped** |
+| 仓库 | 已改回 **PRIVATE** ✅ |
+
+🔑 执行顺序：**`改公开 → push → 触发 workflow → 立刻改回私有`**
+（顺序不可颠倒，理由见 `docs/deploy/README.md` §1.1）。
+
+🔴 **公开前的密钥审计结论**：`scripts/audit_git_history_secrets.py` 报出的 `[真值?]` 命中
+**逐条核实均非真密钥** ——
+PEM 命中全是「文档说明 / workflow 格式校验 / Rust 单测」；
+唯一命中密钥前缀的是 `backend/.../tests/fixtures/npr_page.html`，
+那是 **NPR 自己的公开前端 key**（抓取 fixture，非我方凭据）；
+`.env` / `.p8` / `.pem` / `.mobileprovision` 经 `git log --diff-filter=A` 验证**从未入库**。
+
+🟠 **两条日志警告（不阻塞，记作技术债）**：
+1. `Deployment target too low` —— 当前 iOS **13.0**；**2027-04 起** Apple 要求 ≥**15.0** 才能上传/提交。
+2. `UIScene lifecycle support will soon be required`（Flutter 侧迁移提示）。
+
+
 
 
