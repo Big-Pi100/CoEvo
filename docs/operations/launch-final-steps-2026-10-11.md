@@ -377,6 +377,17 @@ appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书�
 >
 > ✅ **仓库已自动改回 PRIVATE**（脚本 `trap EXIT` 生效，已核实 `visibility=PRIVATE`）。
 >
+> 🔴 **但这次仍然要重新出包** —— 理由**不是**本次 workflow 修复，而是**端侧改价还没进包**：
+> 当时有 **29 个 commit 只在本地**（远程 main 停在 `5bde56a`，本次出包用的就是它），
+> 其中含 `app/lib/services/iap_plan.dart`（`fallbackFen` **990→600 / 7800→5800**）
+> 与 `subscribe_screen.dart` ⇒ **ASC 上那个 build 仍是旧价 ¥9.9/¥78 + 省 34%**。
+>
+> ⇒ 重出前要做两件：
+> 1. ✅ **已 push**（`5bde56a..9fdacdc`）—— CI 从**远程**取代码，不推上去就用不到修复
+> 2. **bump `1.0.0+2` → `+3`**（build 2 已占用，同号上传会被拒）
+>
+> ⇒ 这一次重出**顺带验证 §6.2 的修复**（应看到 `✅ upload 模式：已确认上传成功`）。
+>
 > 🔴 **顺带收到一条 Apple 官方警告（新期限，来自本次上传的服务器响应 —— 证据最强）**：
 > > `Deployment target too low. Your app targets iOS 13.0.`
 > > **`Starting in April 2027`, iOS apps must target 15.0 or later** to be uploaded to
