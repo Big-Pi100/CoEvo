@@ -1351,5 +1351,78 @@ void main() {
     check('🔴 明说「电子书文件本身会备份到云端」', privacy.contains('电子书文件本身会备份到云端'));
   }
 
+  // ────────────────────────────────────────────────────────────────
+  // ⑯ 🆕 2026-10-12 端侧权益的**账号归属**（换账号误显示那次事故）
+  // ────────────────────────────────────────────────────────────────
+  //
+  // # 🔴 事故（白哥多账号真机）
+  //
+  // 换账号（`123@qq.com`）后「我的」页仍显示「订阅中 · 到期日 2026-10-13」，
+  // 而同屏云朵胶囊写着「同步失败」—— nginx 显示同步接口反复 **403 未订阅**。
+  //
+  // 根因：`subscriptionActiveNow = 端侧.isActive || 服务端.isActive` 把**两层不同归属**的
+  //   权益 OR 成一个布尔值：
+  //     · 端侧 IAP 权益 → 属于 **Apple ID**（沙盒 Apple 账户）
+  //     · 服务端订阅     → 属于**我们的 `user_id`**
+  //   ⇒ 任一层为真就认为"有全部权益" ⇒ **一个不可用的能力被显示成可用**。
+  //
+  // 定案（白哥 2026-10-12）：**订阅只有一个口径 = App 账号**
+  //   ⇒ 端侧那一侧必须经 `iapEntitlementBelongsToAccount` 过滤。
+  //
+  // 🔑 与 ⑬ 组的关系：⑬ 说「登出**不**复位端侧 IAP（它是 Apple ID 级）」——
+  //    本组**不冲突**：我们照样保留端侧状态，只是不把它**算给别的账号**。
+  //
+  // # 🔴 证伪方式
+  // · 把 `iapEntitlementBelongsToAccount` 的「无绑定 + 已登录 ⇒ 不算」改成 `true`
+  //   ⇒ 真值表那条必红。
+  // · 把 provider 里那两处过滤删掉 ⇒ 「真的用了过滤」必红。
+  print('\n[⑯] 端侧权益的账号归属（订阅只有一个口径 = App 账号）');
+  {
+    const me = 'u-me';
+    const other = 'u-other';
+
+    check(
+        '有绑定且 == 当前账号 ⇒ 算',
+        iapEntitlementBelongsToAccount(
+            ownerUserId: me, currentUserId: me));
+    check(
+        '🔴 有绑定但 != 当前账号 ⇒ **不算**（换账号误显示的根因）',
+        !iapEntitlementBelongsToAccount(
+            ownerUserId: other, currentUserId: me),
+        '不算 ⇒ 不会把"别人的订阅"显示成"你的"');
+    check(
+        '有绑定但当前**未登录** ⇒ 不算',
+        !iapEntitlementBelongsToAccount(
+            ownerUserId: me, currentUserId: null));
+    check(
+        '无绑定 + 未登录 ⇒ 算（本机权益：刚买完还没登录）',
+        iapEntitlementBelongsToAccount(
+            ownerUserId: null, currentUserId: null));
+    check(
+        '🔴 无绑定 + **已登录** ⇒ 不算（交给服务端对账定归属）',
+        !iapEntitlementBelongsToAccount(
+            ownerUserId: null, currentUserId: me),
+        '首测那笔交易 app_account_token=None ⇒ 任何账号登录都会看到"订阅中" ⇒ 必须从严');
+
+    // ── 接线：防「函数写了没人调」（本项目已记判据「写了没人跑 = 迟早失效」）──
+    final iapProv = codeOnly(readApp('providers/iap_provider.dart'));
+    final used = 'iapEntitlementBelongsToAccount'.allMatches(iapProv).length;
+    check('🔴 `subscriptionActiveNow` 真的用了归属过滤（防写了没人调）', used >= 1,
+        '用了 $used 处');
+    check('🔴 `subscriptionLapsedNow` 也用了（否则对从未订阅的人显示"续订"）', used >= 2,
+        '用了 $used 处 —— 少于 2 说明只过滤了一处');
+
+    // ── 快照要能携带归属（否则上面的过滤永远拿到 null ⇒ 已登录用户全被拒）──
+    final iapSvc = codeOnly(readApp('services/iap_service.dart'));
+    check('`IapSnapshot` 有 `ownerUserId` 字段', iapSvc.contains('ownerUserId'));
+    check(
+        '🔴 归属取自**交易自带**的 `appAccountToken`（不是"当前 userId"）',
+        iapSvc.contains('pd.appAccountToken'),
+        '用当前 userId 会把延迟投递的**别人的交易**标成你的（正是串号）');
+    check(
+        '`copyWith` 支持把归属**清回 null**（无绑定是真实状态，`??` 会写不掉）',
+        iapSvc.contains('clearOwnerUserId'));
+  }
+
   _report();
 }

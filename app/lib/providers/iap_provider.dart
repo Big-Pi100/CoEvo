@@ -176,9 +176,25 @@ IapSnapshot iapSnapshotOf(WidgetRef ref) {
 ///
 /// 🔑 服务端那一侧在**未登录**时必然为 false（`_checkSubscription` 不 fetch）
 ///    ⇒ 未登录用户显示「未订阅」—— 正确：他没有订阅。
+///
+/// # 🔴 2026-10-12：端侧那一侧**必须带归属过滤**（白哥多账号实测）
+///
+/// 换账号后（`123@qq.com`）订阅卡仍显示「订阅中」，而同屏云朵写着「同步失败」
+/// （服务端对同步接口回 403 未订阅）。
+/// 根因：端侧 IAP 权益属于 **Apple ID**、服务端订阅属于 **我们的 `user_id`**，
+/// 而这里把两者 OR 成一个布尔值 ⇒ **一个不可用的能力被显示成可用**。
+/// ⇒ 端侧只有在「这份权益确实属于**当前账号**」时才算数
+///   （规则与推导见 [iapEntitlementBelongsToAccount]）。
+/// 🔑 注意：这**不违背**「登出不复位端侧 IAP」那条判据 ——
+///    我们照样保留端侧状态，只是不把它**算给别的账号**。
 bool subscriptionActiveNow(WidgetRef ref) {
+  final snap = iapSnapshotOf(ref);
   return subscriptionActive(
-    iapActive: iapSnapshotOf(ref).isActive,
+    iapActive: snap.isActive &&
+        iapEntitlementBelongsToAccount(
+          ownerUserId: snap.ownerUserId,
+          currentUserId: ref.watch(authProvider).userId,
+        ),
     backendActive: ref.watch(subscriptionProvider).isActive,
   );
 }
@@ -193,8 +209,14 @@ bool subscriptionActiveNow(WidgetRef ref) {
 bool subscriptionLapsedNow(WidgetRef ref, IapSnapshot snap) {
   final backend = ref.watch(subscriptionProvider);
   return subscriptionLapsed(
-    // 端侧语义已经是「有购买记录且已过期」（从未购买给的是 `none`）
-    iapExpired: snap.entitlement == IapEntitlementStatus.expired,
+    // 端侧语义已经是「有购买记录且已过期」（从未购买给的是 `none`）；
+    // 🔴 2026-10-12：同样**要带归属过滤** —— 否则「另一个账号买的、且已过期」
+    //    会被算成本账号的「会员已到期」，对从未订阅的人显示"续订"（错得方向相反）。
+    iapExpired: snap.entitlement == IapEntitlementStatus.expired &&
+        iapEntitlementBelongsToAccount(
+          ownerUserId: snap.ownerUserId,
+          currentUserId: ref.watch(authProvider).userId,
+        ),
     // 服务端「有过记录」= 有效期字段非空（NULL 才是「从未订阅」）
     backendHasRecord: (backend.expiresAt ?? '').trim().isNotEmpty,
     backendExpired: backend.isExpired,

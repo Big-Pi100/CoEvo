@@ -93,6 +93,21 @@ class IapSnapshot {
   final IapEntitlementStatus entitlement;
   final DateTime? expiresAtUtc;
 
+  /// 🆕 2026-10-12：这份端侧权益**属于哪个 App 账号**。
+  ///
+  /// 取自交易自带的 **`appAccountToken`** —— 端侧购买时用
+  /// `PurchaseParam.applicationUserName` 写入（= 当时的登录 `userId`），
+  /// **Apple 原样签进 JWS**，所以我们读到的不是"自己记的账"，而是**权威依据**。
+  ///
+  /// | 值 | 含义 |
+  /// |---|---|
+  /// | 某个 `userId` | 这笔是**那个账号**买的 |
+  /// | `null` | **无绑定** —— 未登录时买的 / StoreKit 1 / 旧交易 |
+  ///
+  /// 🔑 它不决定端侧状态，只供 [iapEntitlementBelongsToAccount] 判断
+  ///    「这份权益算不算**当前**登录账号的」—— 详见该函数的推导（换账号误显示那次事故）。
+  final String? ownerUserId;
+
   /// StoreKit 返回的商品（用于展示**权威价格**）。
   final List<IapPlanDisplay> plans;
 
@@ -106,6 +121,7 @@ class IapSnapshot {
     this.availability = IapAvailability.unknown,
     this.entitlement = IapEntitlementStatus.unknown,
     this.expiresAtUtc,
+    this.ownerUserId,
     this.plans = const [],
     this.purchasing = false,
     this.lastError,
@@ -117,15 +133,21 @@ class IapSnapshot {
     IapAvailability? availability,
     IapEntitlementStatus? entitlement,
     DateTime? expiresAtUtc,
+    String? ownerUserId,
     List<IapPlanDisplay>? plans,
     bool? purchasing,
     String? lastError,
     bool clearError = false,
+    /// ⚠️ 必须能**清回 null**：「无绑定」（未登录购买）是一种真实状态，
+    ///    而 `ownerUserId ?? this.ownerUserId` 会让它**永远改不掉**（同 `clearError` 的理由）。
+    bool clearOwnerUserId = false,
   }) =>
       IapSnapshot(
         availability: availability ?? this.availability,
         entitlement: entitlement ?? this.entitlement,
         expiresAtUtc: expiresAtUtc ?? this.expiresAtUtc,
+        ownerUserId:
+            clearOwnerUserId ? null : (ownerUserId ?? this.ownerUserId),
         plans: plans ?? this.plans,
         purchasing: purchasing ?? this.purchasing,
         lastError: clearError ? null : (lastError ?? this.lastError),
@@ -381,6 +403,11 @@ class IapService {
   Future<void> _deliver(PurchaseDetails pd) async {
     // ① 端侧解锁
     final expires = _parseExpiry(pd);
+    // 🆕 2026-10-12：记下**这份权益属于哪个 App 账号**（见 `IapSnapshot.ownerUserId`）。
+    //    ⚠️ 必须取**交易自带**的 `appAccountToken`，**不能**用"当前登录 userId" ——
+    //       交易可能延迟投递（重启重投 / 恢复购买），那时登录的可能已经是另一个账号，
+    //       用当前账号会把**别人的交易**标成你的（这正是串号）。
+    final owner = _parseOwnerUserId(pd);
     _emit(_snapshot.copyWith(
       purchasing: false,
       entitlement: resolveEntitlement(
@@ -389,6 +416,9 @@ class IapService {
         nowUtc: DateTime.now().toUtc(),
       ),
       expiresAtUtc: expires,
+      ownerUserId: owner,
+      // 无绑定也是一种明确状态 ⇒ 必须能把它写回去（`??` 会写不掉）
+      clearOwnerUserId: owner == null,
       clearError: true,
     ));
 
@@ -399,7 +429,9 @@ class IapService {
     //    🆕 2026-10-12：服务端返回的到期日是**权威值**（Apple 验签后）⇒ 回填。
     final serverExpires = await _report(pd);
     if (serverExpires != null) {
-      applyServerExpiry(serverExpires);
+      // ⚠️ 服务端的记录是**按上报者 user_id 记的** ⇒ 归属就是当时的登录账号。
+      //    这里传 `_reporterAccountKey`（= 上报时绑定的账号），不是"再读一次当前账号"。
+      applyServerExpiry(serverExpires, ownerUserId: _reporterAccountKey);
     }
   }
 
@@ -497,7 +529,11 @@ class IapService {
         // 留着下次再试（不删 ⇒ 不会丢）
       }
     }
-    if (latest != null) applyServerExpiry(latest);
+    // ⚠️ 归属取 `_reporterAccountKey`（= 本次补报所用的账号）——
+    //    服务端是按上报者 `user_id` 记账的，所以那份记录就属于这个账号。
+    if (latest != null) {
+      applyServerExpiry(latest, ownerUserId: _reporterAccountKey);
+    }
   }
 
   /// 从 StoreKit 的 `PurchaseDetails` 里取**订阅到期时间**。
@@ -524,6 +560,16 @@ class IapService {
     return parseStoreKitExpiryMillis(pd.expirationDate);
   }
 
+  /// 从交易里取**归属账号**（`appAccountToken` = 购买时传入的 `applicationUserName`）。
+  ///
+  /// ⚠️ StoreKit 1（`AppStorePurchaseDetails`）**没有**这个字段 ⇒ 回退 null（无绑定）。
+  /// 🔑 该值由 Apple **原样签进 JWS** ⇒ 是「这笔交易属于谁」的**权威依据**。
+  String? _parseOwnerUserId(PurchaseDetails pd) {
+    if (pd is! SK2PurchaseDetails) return null;
+    final t = pd.appAccountToken?.trim();
+    return (t == null || t.isEmpty) ? null : t;
+  }
+
   /// 用**服务端确认的**到期时间刷新端侧状态（对账成功的回填）。
   ///
   /// 🔑 为什么需要它：端侧从 StoreKit 读的值是"购买那一刻"的；
@@ -532,7 +578,10 @@ class IapService {
   ///
   /// ⚠️ 只允许**向后推进**（新值比已知的更晚才覆盖）：并发/乱序响应下，
   ///    不能让一个较旧的值把刚续期的到期时间**改回去**。
-  void applyServerExpiry(DateTime expiresUtc) {
+  ///
+  /// [ownerUserId] = 这份权益归属的 App 账号（服务端是**按上报者 `user_id` 记账**的，
+  ///    所以取上报时绑定的那个账号；见 `_deliver` 与 `reportEntitlementsIfSignedIn`）。
+  void applyServerExpiry(DateTime expiresUtc, {required String? ownerUserId}) {
     final known = _snapshot.expiresAtUtc;
     if (known != null && !expiresUtc.isAfter(known)) return;
 
@@ -543,6 +592,8 @@ class IapService {
         nowUtc: DateTime.now().toUtc(),
       ),
       expiresAtUtc: expiresUtc,
+      ownerUserId: ownerUserId,
+      clearOwnerUserId: ownerUserId == null,
     ));
   }
 
