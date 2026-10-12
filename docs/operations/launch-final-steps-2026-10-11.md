@@ -388,6 +388,11 @@ appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书�
 >
 > ⇒ 这一次重出**顺带验证 §6.2 的修复**（应看到 `✅ upload 模式：已确认上传成功`）。
 >
+> 🚀 **已重出**（2026-10-12 13:01）：bump `+3` → commit → **push** → 改公开 → 触发。
+> 脚本含 **硬断言**：push 后 `origin/main...HEAD` 的**本地独有必须为 0**，否则**中止**
+> —— 防止又出一份旧代码（刚才就是这么差点踩到）。
+> ⏳ 构建中；**无论成败，结束即改回私有**（`trap EXIT`）。
+>
 > 🔴 **顺带收到一条 Apple 官方警告（新期限，来自本次上传的服务器响应 —— 证据最强）**：
 > > `Deployment target too low. Your app targets iOS 13.0.`
 > > **`Starting in April 2027`, iOS apps must target 15.0 or later** to be uploaded to
