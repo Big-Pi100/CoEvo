@@ -360,6 +360,11 @@ appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书�
 
 ## 6. 【我做】出上架用的 app-store 包
 
+> ### 🚀 **出包进行中**（2026-10-12 12:39 已触发）
+> 白哥已把仓库改为 **PUBLIC** ⇒ 触发 `ios-archive`（`method=app-store` + `upload=true`）。
+> ⏳ 约 6–10 分钟。**脚本已兜底：无论成败，结束即改回私有**（`trap EXIT`）。
+> 产物：IPA（artifact）+ **自动上传 ASC** ⇒ TestFlight 可见。
+
 ⚠️ 当前那个 IPA 是 **ad-hoc**，**不能上架**。上架必须用 `method=app-store` 出一次包。  
 （说一声我全自动跑，约 6–8 分钟；仓库会临时改公开，出完立刻改回私有。）
 
