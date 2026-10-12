@@ -496,6 +496,50 @@ if [ "$UPLOAD" = "true" ]; then PlistBuddy -c "Set :destination upload"; fi   # 
 
 ---
 
+### 6.3 ⚠️ 那几个红的 `ci.yml` 要不要重跑？—— **不用；而且不能手动跑**
+
+**答案：现在重跑毫无意义** —— 私有仓 + 额度用尽 ⇒ 重跑**还是 `steps=0` 的红**。
+
+🔴🔴 **更要紧的一条：`ci.yml` 绝对不能手动触发**（`gh workflow run ci.yml`）。
+
+它里面有三个 job 的 `if` 是 `github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')`：
+
+| job | 手动触发时会跑什么 |
+|---|---|
+| `backend-release` | 打包后端 |
+| 🔴 **`backend-deploy`** | **`Deploy backend to VPS` —— 会真的部署到生产！** |
+| `ios-build` | 跑 macOS 构建（**费 10× 额度**）|
+
+⇒ 手动触发 = **未经批准的**生产部署 + 白烧额度。**别碰。**
+
+**唯一安全的触发路径 = `push` 到 main**（此时那三个 `if` 全为假）：
+
+```
+push 到 main ⇒ event_name = push（≠ workflow_dispatch）
+              ref       = refs/heads/main（非 refs/tags/v）
+   ⇒ 只跑这 8 个（都无 if 条件）：
+      backend · frontend · fsrs-verify · trace-verify
+      · query-verify · iap-verify · ebook-verify · native-readiness
+   ⇒ 不碰生产、不跑 macOS
+```
+
+**正确做法：在公开窗口里 `push` 一次**（哪怕 `--allow-empty`）⇒ `ci.yml` 真跑；
+可以和出包**同一个公开窗口**里办掉（两件事互不干扰）。
+
+> ⚠️ **更正我此前一句不准确的话**：曾说过「下次出包（仓库公开）时会**自然转绿**」——
+> **不对**。出包是**手动触发 `ios-archive`**，而那个公开窗口里**没有 push**
+> ⇒ `ci.yml` **不会自己跑**。必须**主动 push**。
+
+✅ **这些红 run 不阻塞任何事**：个人私有仓，**无分支保护**
+（API 返回 `403 Upgrade to GitHub Pro or make this repository public…`）
+⇒ 红 run 不影响 push / 合并 / 出包 / TestFlight。
+
+📌 **结论**：这 4 个红 run（`9fdacdc` · `f8bef9f` · `5466e1d` · `959944d`）只需**知道性质**（额度，非代码）；
+真正该做的是**在下次公开窗口补一次 push**，让这批 commit 的代码**在 CI 上真跑一次**。
+（本地等价门禁已全绿：`cargo test` **299** · `analyze_inproc` **0 error** · `query_verify` **54 脚本** · `iap_verify` **213** —— 但 **CI 是权威门禁**，不能只靠本地。）
+
+---
+
 ## 7. 我这边已经做 / 待做
 
 | 状态    | 事项                                                                             |
