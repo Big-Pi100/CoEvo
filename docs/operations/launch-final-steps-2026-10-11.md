@@ -441,6 +441,46 @@ Team ID `TTM43MDWDA` · 有效期 2026-10-07 → 2027-10-07 · profile 类型 **
 - **经营性**：App 有订阅，但收费走 **Apple IAP**（收费主体是 Apple，即国务院令 810 号定义的「平台企业」，且 Apple 已代扣 6% 增值税）⇒ 个人主体**暂不需** ICP 经营许可证。⚠️ 转正阈值（月流水 ≥ ¥5,000）要更严格执行。
 - **公安联网备案**：已有（粤公网安备 44060602003333 号）。⚠️ 腾讯云明确「**APP 备案不支持生成公安联网备案数据码**」⇒ 上架后 30 日内 App 要**单独**去公安备案。
 
+### 9.8 备案表里那两项 SDK 怎么填（已实测核实）
+
+| 字段 | 填 | 依据 |
+|---|---|---|
+| **对外提供 SDK** | **不提供** | 我们不给任何外部用户 / 企业提供 SDK 接口服务 |
+| **使用外部 SDK** | **不使用** | 见下（实测 + 官方规则）|
+
+**为什么是「不使用」——证据（实测，不是推断）**：
+
+**① 实际打进包的原生库**（读 IPA 的 `Frameworks/` 列表，比读 `pubspec.yaml` 可靠）：
+```
+App · Flutter · audioplayers_darwin · file_selector_ios · flutter_secure_storage
+image_picker_ios · in_app_purchase_storekit · path_provider_foundation · share_plus
+shared_preferences_foundation · sign_in_with_apple · sqflite_darwin · url_launcher_ios
+```
+⇒ 全是**开源库 / Flutter 官方包 / Apple 系统能力**，**没有一个第三方商业 SDK**。
+
+**② 二进制扫描**（Runner 主二进制，21 个商业 SDK 关键字）：
+`UMeng / 友盟` · `JPush / 极光` · `Bugly` · `AdMob` · `Firebase` · `Sentry` · `支付宝` ·
+`微信 SDK` · `高德` · `讯飞` · `Gromore` · `Pangle` · `Mintegral` … ⇒ **全部 0 命中**
+（✅ **阳性对照**：`Flutter`=9 · `coevoApp`=4 ⇒ 证明检测方法在这个二进制上确实有效）
+
+**③ 规则依据**（腾讯云官方 FAQ + `document/product/243/100154` 的服务商列表）：
+> 「如 SDK 功能类型选择后，**找不到对应的 SDK 厂商**，该 SDK 功能类型就无需选择，
+>  同时选择**不使用外部 SDK**。」
+
+🔑 服务商列表里**全是国内公司**（腾讯 / 百度 / 阿里云 / 字节 / 快手 / 支付宝 / 科大讯飞 /
+友盟 / 极光 / 神策…），**没有 Apple、没有 Google、没有 Flutter**
+⇒ 连「**框架类**」也**不用选**。
+
+> ⚠️ 唯一需要想一下的两个：**Apple IAP（StoreKit）** 与 **Sign in with Apple** ——
+> 它们是 **Apple 的系统能力**（系统框架），不是第三方 SDK；且 **Apple 不在服务商列表里**
+> ⇒ **不选**。
+>
+> 📌 保险做法（可选，非必需）：备注里写一句 ——
+> 「本 App 未使用第三方 SDK 服务商；支付与登录均为 Apple 官方系统能力
+>  （App Store 内购 / Sign in with Apple）。」
+> （UCloud 的备案指引明确写「若 SDK 服务商不在提供的列表内，请备注名称和类型」；
+>  腾讯云未强制，但写了更稳。）
+
 ---
 
-*2026-10-11（2026-10-12 补 §9）· 本文与 `docs/legal/README.md`、`docs/deploy/README.md`、`docs/operations/appstore-submission-package-2026-10-11.md` 配套*
+*2026-10-11（2026-10-12 补 §9、§9.8）· 本文与 `docs/legal/README.md`、`docs/deploy/README.md`、`docs/operations/appstore-submission-package-2026-10-11.md` 配套*
