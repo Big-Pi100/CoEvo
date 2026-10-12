@@ -110,5 +110,29 @@
 	     留着反而会在审核时被问「你这个 App 到底用不用麦克风」。
 	     📌 若将来真做录音：加回 `record` 依赖 + **同时**补回这个 key
 	     （缺它时 iOS 不是报错，是**直接 kill 进程**）。 -->
+
+	<!-- ═══════════════════════════════════════════════════════════════════
+	     🆕 2026-10-12 出口合规（Export Compliance）
+	     ═══════════════════════════════════════════════════════════════════ -->
+
+	<!-- 🔴 为什么是 `false`：App 的加密**全部限于 Apple 操作系统内** ——
+	     · HTTPS / TLS          → 系统网络栈（URLSession）
+	     · flutter_secure_storage → **Keychain**（Apple 系统）
+	     · `crypto` 包          → 仅用于 **sha256 内容指纹**（识别「同一本书」去重），
+	                              属**哈希/摘要**、非加密用途，且为标准算法
+	     · **无任何自实现加密**（已 grep `app/lib`：无 aes / rsa / cipher / hmac）
+
+	     Apple 官方判据（Export compliance documentation for encryption）：
+	       「Your app uses encryption limited to that within the Apple operating system
+	         ⇒ **No documentation required in App Store Connect**」
+	     ⇒ `false`（= 不使用**非豁免**加密）⇒ 无需上传任何文稿。
+
+	     🔴 不设此项的代价：**每次上传构建**都会在 TestFlight 里挂
+	        「缺少出口合规证明」，必须人工回答一次问卷才能测试 / 提交。
+	     📌 本 key **只对今后的新构建生效**；已上传的构建（如 build 2/3）
+	        仍需在 ASC 里手动回答一次。
+	     （依据：Apple「Complying with Encryption Export Regulations」） -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
