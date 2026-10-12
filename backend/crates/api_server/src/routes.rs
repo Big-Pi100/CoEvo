@@ -293,9 +293,9 @@ pub fn build_router(llm_config: LlmConfig) -> Router {
 
 /// GET /health — 服务器健康检查
 /// 请求: 无
-/// 响应: "记忆笔记 API — OK"
+/// 响应: "记住一切 API — OK"
 async fn health_check() -> &'static str {
-    "记忆笔记 API — OK"
+    "记住一切 API — OK"
 }
 
 #[derive(Deserialize)]

@@ -126,7 +126,7 @@ List<IapPlanDisplay> defaultPlans(
     [
       IapPlanDisplay(
         productId: kProductMonthly,
-        title: '记忆笔记 专业版',
+        title: '记住一切 专业版',
         months: 1,
         durationLabel: '1 个月',
         // 🔴 与后端 seed（`subscription_plans.price`）一致：600 分
@@ -137,7 +137,7 @@ List<IapPlanDisplay> defaultPlans(
       ),
       IapPlanDisplay(
         productId: kProductYearly,
-        title: '记忆笔记 专业版',
+        title: '记住一切 专业版',
         months: 12,
         durationLabel: '1 年',
         fallbackFen: 5800,

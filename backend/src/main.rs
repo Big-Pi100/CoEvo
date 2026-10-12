@@ -316,19 +316,19 @@ async fn main() {
             // 🔑 用 `INSERT OR IGNORE`：管理端可改套餐（`plans_handlers`），
             //    无条件 UPDATE 会**覆盖管理员改动**。改价走 ASC，不依赖本 seed。
             // 🔑 id 直接用 Apple Product ID，省掉「本地 id ↔ productId」映射层。
-            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.monthly', '记忆笔记 专业版 · 月度', 30, 600, 0, 1, datetime('now'))",
-            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.yearly', '记忆笔记 专业版 · 年度', 365, 5800, 1, 1, datetime('now'))",
+            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.monthly', '记住一切 专业版 · 月度', 30, 600, 0, 1, datetime('now'))",
+            "INSERT OR IGNORE INTO subscription_plans (id, name, duration_days, price, sort_order, is_active, created_at) VALUES ('com.coevo.coevoApp.pro.yearly', '记住一切 专业版 · 年度', 365, 5800, 1, 1, datetime('now'))",
             // 🔴 2026-10-11 补：**老库的名字要单独 UPDATE 一次**。
             //    上面两条是 `INSERT OR IGNORE` ⇒ 对**已存在的行是空操作**
             //    ⇒ 老库的 `name` 会**永久停在改名前的旧值**（2026-10-11 之前线上就是这种）。
             //    📌 判据：**配置类 seed 若是唯一权威，不能只靠 `OR IGNORE`/`DO NOTHING`**
             //       —— 必须配一条 `UPDATE ... WHERE 有变化`，否则老库永远漂移。
             //    （`WHERE name <> 新值` 让它在已更新后成为 0 行影响的空操作 ⇒ 幂等。）
-            // 🔴 2026-10-12：再次改名（产品名 `记忆之书` → **`记忆笔记`**，ICP 备案要求）。
+            // 🔴 2026-10-12：再次改名（产品名 `记忆之书` → **`记住一切`**，ICP 备案要求）。
             //    ⇒ 上面两条 INSERT 与下面两条 UPDATE 的 `name` 串**同时**改成新值；
             //      靠这条 UPDATE 把**已部署的老库**从「记忆之书 专业版 · *」刷成新名。
-            "UPDATE subscription_plans SET name = '记忆笔记 专业版 · 月度' WHERE id = 'com.coevo.coevoApp.pro.monthly' AND name <> '记忆笔记 专业版 · 月度'",
-            "UPDATE subscription_plans SET name = '记忆笔记 专业版 · 年度' WHERE id = 'com.coevo.coevoApp.pro.yearly' AND name <> '记忆笔记 专业版 · 年度'",
+            "UPDATE subscription_plans SET name = '记住一切 专业版 · 月度' WHERE id = 'com.coevo.coevoApp.pro.monthly' AND name <> '记住一切 专业版 · 月度'",
+            "UPDATE subscription_plans SET name = '记住一切 专业版 · 年度' WHERE id = 'com.coevo.coevoApp.pro.yearly' AND name <> '记住一切 专业版 · 年度'",
             // 🔴 2026-10-11 同样补：**价格**在老库也要 UPDATE 一次。
             //    理由同上（`INSERT OR IGNORE` 对已存在的行是空操作）。
             //    ⚠️ 与上面那条注释（「无条件 UPDATE 会覆盖管理员改动」）的取舍：

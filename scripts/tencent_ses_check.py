@@ -58,7 +58,7 @@ from _tencent_api import (
 DEFAULT_DOMAIN = "mail.keyievolution.fun"
 # 我们的密码重置模板（白哥 2026-10-05 提交，ID 从控制台抄录）
 DEFAULT_TEMPLATE_ID = 221378
-SUBJECT = "记忆笔记 验证码"  # 与 backend/crates/api_server/src/tencent_ses.rs 的 SUBJECT 保持一致
+SUBJECT = "记住一切 验证码"  # 与 backend/crates/api_server/src/tencent_ses.rs 的 SUBJECT 保持一致
 
 
 def _line(ok: bool | None, label: str, detail: str = "") -> None:

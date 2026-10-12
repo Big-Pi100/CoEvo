@@ -1,5 +1,5 @@
 name: coevo_app
-description: "记忆笔记 - 英语阅读与记忆（iOS）"
+description: "记住一切 - 英语阅读与记忆（iOS）"
 publish_to: 'none'
 # 🔴 `+N` 是 Android 的 **versionCode**（每次构建必须递增）——
 #    2026-09-28 之前它一直是 `+1`，导致「装了没装上新包」无法判断：

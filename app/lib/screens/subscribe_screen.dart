@@ -542,7 +542,7 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
     final notice = selected == null
         ? SubscriptionLegalText.autoRenewNoticeGeneric()
         : SubscriptionLegalText.autoRenewNotice(
-            title: '记忆笔记 专业版',
+            title: '记住一切 专业版',
             durationLabel: selected.durationLabel,
             priceLabel: selected.priceLabel,
           );

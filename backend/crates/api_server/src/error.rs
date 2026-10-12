@@ -1,4 +1,4 @@
-//! Unified error types for the 记忆笔记 API server.
+//! Unified error types for the 记住一切 API server.
 //!
 //! Replaces ad-hoc `String` errors and `Json(serde_json::json!({"error": ...}))`
 //! with structured, thiserror-powered error handling.
