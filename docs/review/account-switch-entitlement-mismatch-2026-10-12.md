@@ -210,5 +210,50 @@ check('🔴 登出**不**碰端侧 IAP（它是 Apple ID 级，不是 App 账号
 
 ### 7.5 出包
 
-需重新出包（纯端侧改动，**后端无需重新部署**）。
+纯端侧改动，**后端无需重新部署**。
+
+| 项 | 值 |
+|---|---|
+| 版本 | `1.0.0+5` · headSha `a5bdb24` |
+| run | `38246775476` · **`completed/success`** · 仓库已改回 **PRIVATE** |
+| 步骤 | `Archive` ✅ · `Export IPA` ✅ · 「校验 IPA 产物」「Upload IPA as artifact」按设计 **skipped** |
+| 上传证据 | `✅ upload 模式：已确认上传成功（Upload succeeded + EXPORT SUCCEEDED）` |
+
+### 7.6 ⚠️ 出包脚本的**顺序缺陷**（本次踩到，已修）
+
+做完 build 5 才发现：`ci.yml` 又是红的（run `38246761288`）。
+
+**根因**：出包脚本的顺序是
+
+```
+push  →  改公开  →  触发 ios-archive  →  改回私有
+```
+
+⇒ **push 发生时仓库还是私有** ⇒ `ci.yml` 被触发但 **job 起不来**（`steps=0`，额度假红）。
+
+🔴 **这次比以往严重**，因为本轮 pubspec **新增了 `in_app_purchase_storekit` 依赖**，
+而 pubspec 里明确写着：**本机跑不了 `flutter pub get`**（`flutter` 命令建不了子进程）
+⇒ **新依赖能否解析，只能靠 CI 验证** —— 而它根本没跑。
+
+✅ **修法**：把顺序改成 **先改公开、再 push**：
+
+```
+改公开  →  push（触发 ci.yml）  →  触发出包  →  改回私有
+```
+
+📌 判据：**「私有仓 = CI 必然红」** ⇒ 想让某次 push 真的过 CI，
+**必须在 push 那一刻仓库就是公开的** —— 不能指望"等一下会改公开"。
+
+✅ **补齐结果**：按新顺序补跑（`9620eaf` · run `38248142354`）→ **`completed/success`**
+
+| job | 结论 |
+|---|---|
+| **Frontend (Flutter)** | ✅ ← 🔑 **这一项验证了 `flutter pub get` 能解析新依赖** |
+| IAP Verify (pure Dart) | ✅（232 项在 CI 上过）|
+| Backend (Rust) · Query/DB Verify · Ebook Verify · Native Readiness · Pure Dart Verify | ✅ 全绿 |
+| Backend Release / iOS Build / Deploy backend | ⏭️ skipped（无 tag / 非 `workflow_dispatch` ⇒ 正确）|
+
+⇒ **`in_app_purchase_storekit: ^0.4.13` 与 `in_app_purchase ^3.3.1` 无版本冲突** ✓
+
+
 
