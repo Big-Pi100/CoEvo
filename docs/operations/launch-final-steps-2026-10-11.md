@@ -359,8 +359,9 @@ appstoreconnect.apple.com/apps  →「我的 App」→  **点进「记忆之书�
 | 4 | 🔴 **iOS 技术信息**：**公钥 + 证书 SHA-1 指纹**（**不是 MD5**，MD5 是安卓的）| ✅ **已算出** → §9.5 |
 | 5 | **后台服务域名** ── 🔴 **「域名」那一栏就填它**：`api.keyievolution.fun`（已 ICP 备案、实名与主体一致）| ✅ |
 | 6 | 隐私政策 | ✅ `https://api.keyievolution.fun/privacy` |
-| 7 | 3–5 张核心界面截图 | ✅ 界面已在 |
-| 8 | 《APP 备案承诺书》 | 腾讯云小程序内有模板 |
+| 7 | **APP 图标**（1024×1024）| ✅ `app/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png`<br>已验：**1024×1024** · 颜色类型 **RGB（无 alpha）** · 朱砂底白「记」字 —— 备案与 App Store **同一个文件可直接用** |
+| 8 | 3–5 张核心界面截图 | ✅ 界面已在 |
+| 9 | 《APP 备案承诺书》 | 腾讯云小程序内有模板 |
 
 ### 9.5 ✅ 公钥 / SHA-1 已拿到（不用 Mac、不用钥匙串）
 
