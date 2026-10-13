@@ -188,3 +188,67 @@ codesign -f -s - --entitlements app/ios/Runner/Runner.entitlements \
 
 *2026-10-13 · 方法：解析真 IPA 的代码签名 blob（A/B 对照 + 阳性对照）·
 git 定位引入点 · Apple Developer Forums 官方机制说明 · SSH 直查服务端日志*
+
+---
+
+## 六、✅ 修复与验证（同日完成 · 白哥定案**方案 ①**）
+
+### 6.1 改动
+
+| # | 位置 | 改动 |
+|---|---|---|
+| ① | `.github/workflows/ios-archive.yml` Archive 步骤 | `CODE_SIGNING_ALLOWED=NO` / `CODE_SIGNING_REQUIRED=NO`<br>→ **`CODE_SIGN_IDENTITY=-` + `AD_HOC_CODE_SIGNING_ALLOWED=YES` + `CODE_SIGN_STYLE=Automatic`** |
+| ② | 同文件，Archive **之后**新加一步 | **校验归档产物的 entitlements**（`scripts/deploy/verify_ipa_entitlements.py`）|
+| ③ | `app/lib/widgets/auth_dialog.dart` | Apple 授权失败（非取消）改为**可见**，文案带 `code` |
+
+🔑 **① 为什么同时解决两个问题**：ad-hoc identity（`-`）**不需要证书/profile**
+⇒ 10-11 要解决的「Development 证书堆积」依然根治；
+但它**会真的写一次签名** ⇒ entitlements 有载体 ⇒ **导出时能保留**。
+
+### 6.2 判据设计（这是本批最该留下的部分）
+
+`verify_ipa_entitlements.py`：
+
+| 设计 | 为什么 |
+|---|---|
+| 解析 **Mach-O 代码签名 blob** 里实际携带的 entitlements | 运行时生效的就是这一份；描述文件里「被授予」的是另一回事 —— 事故恰恰出在这层差 |
+| **要求哪些 key 直接读 `Runner.entitlements`** | 唯一权威。将来加推送/关联域/App Groups…**不必改脚本、也不必改 workflow** |
+| **阳性对照**：先断言 `SuperBlob(0xfade0cc0)` 命中 ≥1 | 「什么都没扫到」可能是**检测器坏了**而不是「真的没有」 |
+| 放在 Archive 后 / Export 前 | 拦在源头；且**两种模式都跑**（`upload` 模式本地没有 IPA，只能拿归档产物当判据）|
+
+### 6.3 验证链（三步，逐步收紧）
+
+| # | 验什么 | 结果 |
+|---|---|---|
+| ① | 脚本自测（真 IPA 正反两例）| 改动**前**的包 **exit 0** · 改动**后**的包 **exit 1** ✅ |
+| ② | CI 拦门：**归档产物** | `签名实际携带 1 项：['com.apple.developer.applesignin']` ✅ |
+| ③ | **最终 IPA**（决定性）| `签名实际携带 **5 项**`：`application-identifier` · **`beta-reports-active`** · **`com.apple.developer.applesignin`** · `team-identifier` · `get-task-allow` ✅ |
+
+⚠️ **② 与 ③ 是两个不同的东西** —— 归档里有 **不等于** 最终 IPA 里有（中间还有一次重签）。
+⇒ 只验归档是不够的；**能拿到最终产物时一定验最终产物**。
+
+### 6.4 一个曾被担心的风险，实测解除
+
+`pbxproj` 里有一句**带条件**的赋值：
+```
+"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+```
+担心它会**覆盖**命令行传的无条件 `CODE_SIGN_IDENTITY=-`。
+**实测：没有覆盖**（拦门与最终 IPA 都带上了 entitlement）。
+⇒ 但正因为当时不确定，才必须加那道拦门 —— **不确定的修法必须配一个当轮可红的判据**。
+
+### 6.5 出包
+
+| 轮次 | 目的 | run | 结果 |
+|---|---|---|---|
+| 第 1 轮 | `export` 模式 → 拿 IPA 验签名 | `38383968001` | **success**（拦门绿 · 最终 IPA 5 项 ✅）|
+| 第 2 轮 | `upload` 模式 → build **9** 上 ASC | `38385278758` | 见下 |
+
+📌 **先 export 验签、再 upload** 这条顺序值得固化：它把「往 ASC 推一个坏包」变成
+   「在本地就发现」。本轮正是靠它两次拿到确定性结论。
+
+### 6.6 待真机确认
+
+⏳ build **9** 装上后：点「通过 Apple 继续」应能正常唤起 Apple 授权界面。
+⏳ 之后才会触发 C 项的 `authorizationCode → refresh_token` 落地（此前**从未真实触发过**）。
+
