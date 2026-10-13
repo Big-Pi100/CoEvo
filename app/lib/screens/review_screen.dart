@@ -938,130 +938,112 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
 
-    if (filtered) {
-      // 🔴 2026-10-13（白哥反馈）：原为**一行 13px 小字**（无图标、无标题）。
-      //
-      // 真机上读起来像「页面空了」—— 用户**不会**意识到只是筛选条件挡住了词，
-      // 第一反应是「我的生词没了」。
-      // ✅ 改为与**书架空态同构**的形态：图标 + 标题 + 说明。
-      // 📌 判据沿用 `book_library_screen._emptyState` 的原话：
-      //    **空态「必须给『下一步做什么』，不是一个空页面」** ——
-      //    筛选态尤其需要，因为它**长得像词丢了**。
-      return Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(
-              horizontal: CoSpacing.xxl, vertical: CoSpacing.xl),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.filter_alt_off_outlined,
-                  size: 44, color: Color(t.ink3.argb32)),
-              const SizedBox(height: CoSpacing.lg),
-              Text(
-                '没有符合条件的词',
-                style: TextStyle(
-                  fontFamily: CoFonts.uiSans,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: Color(t.ink.argb32),
-                ),
-              ),
-              const SizedBox(height: CoSpacing.sm),
-              Text(
-                // 🔑 「你的生词都还在」是第一句，不是修饰 ——
-                //    它直接消掉「词没了」的恐慌，再教下一步怎么找回来。
-                '你的生词都还在。\n换个排序、或关掉「已到期」筛选看看。',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: CoFonts.uiSans,
-                  fontSize: 13,
-                  height: 1.6,
-                  color: Color(t.ink3.argb32),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // 🔴 2026-10-07 真机修复（白哥反馈 #6）：让空状态**真正在页面居中**。
+    // ══════════════════════════════════════════════════════════════════════
+    // 🔴 本组件**只摆内容** —— 高度 / 居中 / 滚动**一律不做**
+    // ══════════════════════════════════════════════════════════════════════
     //
-    // 原实现是 `SingleChildScrollView(padding: fromLTRB(22,52,22,52)) + Column`：
-    //   · **垂直不居中** —— 从顶部起算 + 52 上边距 ⇒ 内容浮在偏上
-    //   · **水平可能被收缩** —— 外层 `Column(crossAxisAlignment: .start)`
-    //     （见 `build` 里那个 `.start`，它是**有意给 header / sortBar 用的，不要动**）
-    //     会给孩子**宽松宽度约束** ⇒ 空状态可能收缩到内容宽度 ⇒ 视觉上靠左
+    // # 为什么（2026-10-13 真机回归修复）
     //
-    // 修法：`LayoutBuilder` + `ConstrainedBox(minHeight: 可用高度)` +
-    //      `Column(mainAxisAlignment: center)`
-    //   ⇒ **内容短时垂直居中、内容超屏时可滚动**，两头都顾到。
-    // ⚠️ 不能直接写 `Center(child: SingleChildScrollView(...))` ——
-    //    scroll view 的 viewport 高度会取 `maxHeight` ⇒ 撑满 ⇒ `Center` 就失效了。
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(22, 24, 22, 24),
-        child: ConstrainedBox(
-          // 🔴 2026-10-07 真机修复（**第二次**）：必须**同时**给 `minWidth`。
-          //
-          // 第一次只加了 `minHeight` ⇒ 修好了「上/下居中」，**留下了「左/右靠左」**。
-          // 原因：只约束高度时，宽度仍是外层
-          // `Column(crossAxisAlignment: CrossAxisAlignment.start)` 传下来的
-          // **宽松约束** ⇒ 内层 `Column` 会 shrink-wrap 到内容宽度 ⇒ 视觉上靠左。
-          // ⇒ 用 `minWidth: double.infinity` 强制撑满可用宽度，
-          //   内层 `Column` 的 `center` 才真正相对于**页面**居中。
-          constraints: BoxConstraints(
-            minHeight: constraints.maxHeight - 48,
-            minWidth: double.infinity,
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-          // 粘土凹陷圆环（与收藏清单同一版式语言，两页解决的是同一个问题）
-          SizedBox(
-            width: 74,
-            height: 74,
-            child: Clay(
-              state: ClayState.pressed,
-              fill: t.sunken,
-              borderRadius: BorderRadius.circular(37),
-              child: Center(
-                child: Icon(
-                  Icons.style_outlined,
-                  size: 26,
-                  color: Color(t.ink3.argb32),
-                ),
+    // 2026-10-10 为「空态也能下拉刷新」在外层加了 `_alwaysScrollable`
+    // （`LayoutBuilder → SingleChildScrollView → ConstrainedBox(minHeight: 视口高)`）。
+    // 而本组件当时**自带**一整套 `LayoutBuilder + SingleChildScrollView +
+    // ConstrainedBox(minHeight: constraints.maxHeight - 48)` ⇒ **两层嵌套滚动**。
+    //
+    // 🔴 内层的 `LayoutBuilder` 拿到的是**无界** `maxHeight`
+    //    （外层 scroll view 必然给无界约束）⇒ `constraints.maxHeight - 48`
+    //    算出来是 **`double.infinity`** ⇒ Column 被撑成无穷高 ⇒
+    //    `mainAxisAlignment: center` 把孩子摆到**无穷远** ⇒
+    //    **真机上只剩那个凹陷圆环、两行文字全不见**（白哥 2026-10-13 反馈）。
+    //
+    // 🔑 判据：**「谁能滚动」只能有一个**。嵌套滚动视图 + 无界约束**一定**算错高度，
+    //    而且**不报错**（只是内容消失）—— 与书架页空态（`Center +
+    //    SingleChildScrollView`，外层给的是**有界**高度）的差别正在这里。
+    //    📌 教训：这次排查我上一轮找错了方向 —— 查的是「文案有没有被删」，
+    //       而**文案一直在，坏的是布局**。「字符串存在」≠「能渲染出来」。
+    //
+    // ✅ 现在：高度/居中/可滚动**统一交给外层 `_alwaysScrollable`**
+    //    （它给 `minHeight = 视口高`）⇒ 本组件只用一个
+    //    `Column(mainAxisAlignment: center)` 摆内容。
+    //    ⇒ 无论外层给有界还是无界约束，都**不会再算出无穷高度**。
+    // ⚠️ 前提：调用方**必须**用 `_alwaysScrollable` 包它（否则内容会挤在顶部）。
+    //    `scripts/query_verify/bin/verify_review_tab.dart` 的 ⑥ 组守着这条。
+    final List<Widget> children = filtered
+        ? <Widget>[
+            // ── 筛选态：**有词但被筛掉** ──
+            // 第一句必须是「你的生词都还在」—— 直接消掉「词没了」的恐慌，
+            // 再教下一步怎么找回来。
+            Icon(Icons.filter_alt_off_outlined,
+                size: 44, color: Color(t.ink3.argb32)),
+            const SizedBox(height: CoSpacing.lg),
+            Text(
+              '没有符合条件的词',
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                color: Color(t.ink.argb32),
               ),
             ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            '还没有要复习的词',
-            style: TextStyle(
-              fontFamily: CoFonts.uiSans,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Color(t.ink.argb32),
-            ),
-          ),
-          const SizedBox(height: 9),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 250),
-            child: Text(
-              '读文章时遇到不认识的词，长按选中就能查看释义，'
-              '查过的词会自动收进来，按记忆曲线安排复习。',
+            const SizedBox(height: CoSpacing.sm),
+            Text(
+              '你的生词都还在。\n换个排序、或关掉「已到期」筛选看看。',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontFamily: CoFonts.uiSans,
                 fontSize: 13,
-                height: 1.7,
-                color: Color(t.ink2.argb32),
+                height: 1.6,
+                color: Color(t.ink3.argb32),
               ),
             ),
-          ),
-            ],
-          ),
-        ),
+          ]
+        : <Widget>[
+            // ── 真空态：粘土凹陷圆环（与收藏清单同一版式语言）──
+            SizedBox(
+              width: 74,
+              height: 74,
+              child: Clay(
+                state: ClayState.pressed,
+                fill: t.sunken,
+                borderRadius: BorderRadius.circular(37),
+                child: Center(
+                  child: Icon(Icons.style_outlined,
+                      size: 26, color: Color(t.ink3.argb32)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              '还没有要复习的词',
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Color(t.ink.argb32),
+              ),
+            ),
+            const SizedBox(height: 9),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 250),
+              child: Text(
+                '读文章时遇到不认识的词，长按选中就能查看释义，'
+                '查过的词会自动收进来，按记忆曲线安排复习。',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 13,
+                  height: 1.7,
+                  color: Color(t.ink2.argb32),
+                ),
+              ),
+            ),
+          ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+          horizontal: CoSpacing.xxl, vertical: CoSpacing.xl),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: children,
       ),
     );
   }

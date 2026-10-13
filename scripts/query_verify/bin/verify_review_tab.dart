@@ -183,6 +183,50 @@ void main() {
       screen.contains('还没有要复习的词') &&
           screen.contains('读文章时遇到不认识的词'));
 
+  // ── 🆕 2026-10-13 真机回归：空态「只剩那个凹陷圆环、两行文字全不见」──────
+  //
+  // # 根因（**不是文案被删** —— 文案一直在，坏的是**布局**）
+  //
+  // 2026-10-10 为「空态也能下拉刷新」在**外层**加了 `_alwaysScrollable`
+  // （`LayoutBuilder → SingleChildScrollView → ConstrainedBox(minHeight: 视口高)`），
+  // 而 `_EmptyState` 当时**自带**一整套
+  // `LayoutBuilder + SingleChildScrollView + ConstrainedBox(minHeight: constraints.maxHeight - 48)`
+  // ⇒ **两层嵌套滚动**。内层 `LayoutBuilder` 拿到的是**无界** `maxHeight`
+  // （外层 scroll view 必然给出无界约束）⇒ `maxHeight - 48` 算出来是
+  // **`double.infinity`** ⇒ Column 被撑成无穷高 ⇒ `mainAxisAlignment: center`
+  // 把孩子摆到**无穷远** ⇒ 真机上只剩图标。
+  //
+  // 🔑 判据：**「谁能滚动」只能有一个**。
+  //    嵌套滚动视图 + 无界约束**一定**算错高度，而且**不报错**（只是内容消失）。
+  // 📌 两条方法论（本次踩到）：
+  //    ① **「字符串存在」≠「能渲染出来」** —— 我上一轮只查了「文案有没有被删」，
+  //       查不到就断言「不是回归」，**判据选错了对象**（该查的是布局约束）。
+  //    ② 空态/错误态的**高度、居中、滚动**应由**一处**统一提供；
+  //       组件自带一半、外层再补一半 ⇒ 必然打架。
+  //
+  // # 🔴 证伪方式
+  // · 在 `_EmptyState` 里重新引入 `constraints.maxHeight` ⇒ ⑥-5 必红
+  // · 给 `_EmptyState` 加回 `SingleChildScrollView` ⇒ ⑥-6 必红
+  // · 把 `_alwaysScrollable(_EmptyState(` 拆开 ⇒ ⑥-7 必红
+  final _esStart = screen.indexOf('class _EmptyState');
+  final _esEnd = _esStart < 0 ? -1 : screen.indexOf('\n}', _esStart);
+  final _emptyState =
+      (_esStart >= 0 && _esEnd > _esStart) ? screen.substring(_esStart, _esEnd) : '';
+  check('⑥-5 🔴 `_EmptyState` 不得依赖 `constraints.maxHeight`（外层给它的是无界约束）',
+      _emptyState.isNotEmpty &&
+          !_emptyState.contains('constraints.maxHeight'),
+      '嵌套滚动下它算出来是 infinity ⇒ 内容被摆到无穷远，只剩图标（10-13 真机事故）');
+  check('⑥-6 🔴 `_EmptyState` 不得自带滚动视图（「谁能滚动」只能有一个）',
+      _emptyState.isNotEmpty &&
+          !_emptyState.contains('SingleChildScrollView'),
+      '与外层 `_alwaysScrollable` 形成两层嵌套 ⇒ 高度算错且**不报错**');
+  check('⑥-7 🔴 空态仍被 `_alwaysScrollable` 包着（由它提供高度 + 下拉刷新）',
+      // ⚠️ 必须容忍换行/缩进 —— 源码里写成了
+      //    `_alwaysScrollable(\n    _EmptyState(...)`（格式化后必然断行），
+      //    死写一个不含空白的字面量会**假红**。
+      RegExp(r'_alwaysScrollable\(\s*_EmptyState\(').hasMatch(screen),
+      '不包 ⇒ 内容挤在顶部，且空态无法下拉刷新（10-10 的需求）');
+
   print('');
   print('═' * 74);
   if (_failures.isEmpty) {
