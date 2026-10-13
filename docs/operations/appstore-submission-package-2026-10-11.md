@@ -346,9 +346,9 @@ ASC → *Users and Access* → **Sandbox** → *Testers* → 新建。
 |---|---|---|
 | ~~1~~ | ~~你~~ | ✅ **2026-10-13 已拿到** `AuthKey_MTUH2XZUP5.p8`（`E:\云盘\`）—— Key ID `MTUH2XZUP5` · Team ID `TTM43MDWDA` |
 | ~~2~~ | ~~我~~ | ✅ **2026-10-13 已写入** `/opt/coevo/.env`：`APPLE_TEAM_ID` / `APPLE_KEY_ID` / `APPLE_PRIVATE_KEY`（多行 PEM，与 IAP 同格式）<br>🔑 **凭据已端到端验证**：假 code 打 `/auth/token` 得 `invalid_grant`（**不是** `invalid_client`）⇒ Apple 接受了我们的 `client_secret` |
-| 3 | 我 | 部署后端（`docs/deploy/README.md` §2.1 路径 A：**WSL 构建 + scp**，不需公开仓库）—— ⏳ **待你跑构建命令** |
-| 4 | 我 | 重新发布法务页（隐私政策加了「注销会同时撤销 Apple 授权」一句，见 §10.3）|
-| 5 | 我 | 出 **app-store 方式**的包（与 §九⑥ 合并，一次出包）|
+| ~~3~~ | ~~我~~ | ✅ **2026-10-13 已部署**（`1.0.0` 后端 · 二进制 sha256 `d117f6c6…` 与构建产物一致）<br>验证：健康 OK · 探针 **35/35** · 重启窗口 **0 ERROR** · `users.apple_refresh_token` 列已就位 · 进程内 PEM 的 DER sha256 与本地一致 |
+| ~~4~~ | ~~我~~ | ✅ **2026-10-13 已重发**：三页均 200，线上已含「注销会同时撤销 Apple 授权」 |
+| 5 | 我 | ⏳ 出 **app-store 方式**的包（build **8**，`1.0.0+8`）—— 进行中 |
 
 ### 10.3 🔴 时效性与边界（如实记录）
 
@@ -358,7 +358,7 @@ ASC → *Users and Access* → **Sandbox** → *Testers* → 新建。
 | **失败不阻断注销** | 撤销失败只记 `error` 日志，注销照常完成 —— Apple 5.1.1(v) 的核心是「用户随时能删号」，不能用一个次要问题卡住主要权利 |
 | **不可重试** | 撤销失败后 refresh token 仍随注销被删 ⇒ 该次失败**无法自动补**，需人工在 Apple 侧处理（故日志等级为 error）|
 | **顺序** | 「先撤销、后 purge」—— 反过来 token 已随行删除，永远取不到 |
-| **法务** | `docs/legal/privacy-policy.md` 已补两处披露（§2.1 与 §六），**待重新发布** |
+| **法务** | `docs/legal/privacy-policy.md` 已补两处披露（§2.1 与 §六），**2026-10-13 已重新发布** ✅ |
 
 ---
 
