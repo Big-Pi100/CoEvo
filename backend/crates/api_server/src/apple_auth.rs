@@ -1192,4 +1192,67 @@ mod tests {
         assert_eq!(a, der, "形态①（真实多行）解出的 DER 应与原文一致");
         assert_eq!(b, der, "形态②（\\n 转义）必须解出同一份 DER");
     }
+
+    /// 🔴🔴 **真·端到端**：本模块的 `client_secret()` 必须被 **Apple 本人**接受。
+    ///
+    /// 默认 `#[ignore]` —— CI 没有凭据、也不该依赖 Apple 的可用性。
+    ///
+    /// # 手动跑法
+    ///
+    /// ```bash
+    /// export APPLE_TEAM_ID=TTM43MDWDA APPLE_KEY_ID=MTUH2XZUP5
+    /// export APPLE_PRIVATE_KEY="$(cat 'E:/云盘/AuthKey_MTUH2XZUP5.p8')"
+    /// cargo +1.98.0 test -p api_server --offline -- --ignored apple_probe
+    /// ```
+    ///
+    /// # 判据：**看 Apple 回的是哪个错误码**
+    ///
+    /// 拿一个**假 code** 打 `/auth/token`：
+    ///
+    /// | Apple 回 | 含义 |
+    /// |---|---|
+    /// | `invalid_grant` | ✅ Apple **先通过了 `client_secret`**，才去挑 code 的毛病 ⇒ 凭据与签名格式全对 |
+    /// | `invalid_client` | 🔴 凭据 / 签名格式有问题 |
+    ///
+    /// 📌 为什么必须这条而**不能**用「Node/Python 复刻一份 JWT 试试」代替：
+    ///    复刻验证的是**那份脚本**，不是**这段 Rust**。二者的 DER 编码、claims 顺序、
+    ///    `kid` 大小写、有效期边界都可能不同，而它们**都会表现为 `invalid_client`**。
+    ///    ⇒ 唯一能证明「这段实现是对的」的办法，就是让**这段实现**去打 Apple。
+    ///
+    /// ⚠️ 需要网络；且会向 Apple 发两次真实请求（都带**无效**凭据，不改动任何数据）。
+    #[tokio::test]
+    #[ignore = "需要真凭据 + 网络；用 --ignored 手动跑"]
+    async fn apple_probe_client_secret_and_revoke() {
+        if std::env::var("APPLE_PRIVATE_KEY").is_err() {
+            panic!("未设置 APPLE_PRIVATE_KEY（见本测试文档注释里的跑法）");
+        }
+
+        // ── ① 换 token：假 code ⇒ 期望 invalid_grant（不是 invalid_client）──
+        let err = exchange_authorization_code("PROBE-INVALID-AUTH-CODE-000000")
+            .await
+            .unwrap_err();
+        assert!(
+            !err.contains("invalid_client"),
+            "🔴 Apple 拒绝了我们的 client_secret ⇒ 凭据 / 签名格式有问题。实际：{err}"
+        );
+        assert!(
+            err.contains("invalid_grant"),
+            "🔴 未拿到期望的 invalid_grant（说明请求根本没走到 code 校验那步）。实际：{err}"
+        );
+        println!("① /auth/token  → client_secret 被接受：{err}");
+
+        // ── ② 撤销：假 refresh token ⇒ 期望 200（Apple 对未知 token 幂等）──
+        //
+        // 📌 实测发现：**Apple 的 revoke 对「不存在的 token」回 200 空 body**，
+        //    而不是 `invalid_grant` ⇒ `revoke_refresh_token` 里那条
+        //    「`invalid_grant` ⇒ 视为已撤销」的分支在真实行为下**基本不会命中**
+        //    （留着无害：它守的是另一种 Apple 行为，且不影响正确性）。
+        let r = revoke_refresh_token("PROBE-INVALID-TOKEN-0000000000000000").await;
+        assert!(
+            r.is_ok(),
+            "🔴 撤销请求失败（若为 invalid_client 则是凭据问题）。实际：{:?}",
+            r
+        );
+        println!("② /auth/revoke → client_secret 被接受：Ok(())");
+    }
 }
