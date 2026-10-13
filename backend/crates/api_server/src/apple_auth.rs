@@ -110,9 +110,25 @@ fn env_required(key: &str) -> Result<String, String> {
 ///
 /// 🔑 只剥 `-----` 行、忽略空行 —— **不**假设 base64 的换行宽度
 ///    （Apple 的 `.p8` 是 64 列，但任何宽度都应能解）。
+///
+/// # 🔑 两种「换行形态」都要认（2026-10-13 加固）
+///
+/// 环境变量里的 PEM 可能以**两种**形态出现，取决于怎么写进 `.env`：
+///
+/// | 形态 | 样子 |
+/// |---|---|
+/// | ① 真实多行（systemd `EnvironmentFile` 的跨行引号值）| `...BEGIN...\nMIGT...\n...END..."` |
+/// | ② **压成一行、用 `\n` 转义**（某些面板 / CLI 粘贴会这样）| `"-----BEGIN...\\nMIGT...\\n-----END..."` |
+///
+/// 形态 ② 下若不做归一化，整串只有一个 `lines()` 元素、且以 `-----` 开头
+/// ⇒ 会被当成「PEM 头尾行」全部滤掉 ⇒ 报「私钥 PEM 为空」。
+/// 📌 不做归一化也能被发现（有明确报错），但**在部署后才发现**成本高得多
+///    —— 那时候排查方向会先怀疑「密钥是不是错了」。
 fn pem_pkcs8_der(pem: &str) -> Result<Vec<u8>, String> {
     use base64::engine::general_purpose::STANDARD;
-    let body: String = pem
+    // 归一化：字面 `\n` → 真换行；再去掉 `\r`（CRLF 文件）
+    let normalized = pem.replace("\\n", "\n").replace('\r', "");
+    let body: String = normalized
         .lines()
         .map(str::trim)
         .filter(|l| !l.is_empty() && !l.starts_with("-----"))
@@ -1145,5 +1161,35 @@ mod tests {
             refresh_token_of(&conn, "不存在").is_none(),
             "查不到的 id 不该 panic"
         );
+    }
+
+    /// 🔴 PEM 的**两种换行形态**必须都能解（2026-10-13 加固）。
+    ///
+    /// | 形态 | 来源 |
+    /// |---|---|
+    /// | 真实多行 | systemd `EnvironmentFile` 的跨行引号值（生产 `.env` 就是这么存的）|
+    /// | 单行 + `\n` 转义 | 某些面板 / CLI 粘贴会压成这种 |
+    ///
+    /// 🔑 不做归一化时形态 ② 会报「私钥 PEM 为空」—— 报错是对的，但**部署后才发现**，
+    ///    而那时第一反应会是「密钥是不是错了」（排查方向被带偏）。
+    /// ⇒ 单测直接断言两者产出**同一份 DER**。
+    #[test]
+    fn test_pem_accepts_multiline_and_escaped_newline_forms() {
+        use ring::rand::SystemRandom;
+        use ring::signature::{EcdsaKeyPair, ECDSA_P256_SHA256_FIXED_SIGNING};
+
+        let rng = SystemRandom::new();
+        let pkcs8 = EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &rng).unwrap();
+        let der = pkcs8.as_ref().to_vec();
+
+        let multiline = pem_from_der(&der);
+        // 形态 ②：把真实换行替换成字面 `\n`
+        let escaped = multiline.replace('\n', "\\n");
+        assert!(!escaped.contains('\n'), "前提：形态②确实没有真实换行");
+
+        let a = pem_pkcs8_der(&multiline).unwrap();
+        let b = pem_pkcs8_der(&escaped).unwrap();
+        assert_eq!(a, der, "形态①（真实多行）解出的 DER 应与原文一致");
+        assert_eq!(b, der, "形态②（\\n 转义）必须解出同一份 DER");
     }
 }

@@ -344,9 +344,9 @@ ASC → *Users and Access* → **Sandbox** → *Testers* → 新建。
 
 | # | 谁 | 动作 |
 |---|---|---|
-| 1 | **你** | 给我 **Sign in with Apple Key 的 `.p8` 内容**（Key ID `MTUH2XZUP5` · Team ID `TTM43MDWDA` **已确认**）|
-| 2 | 我 | 往 `/opt/coevo/.env` 加 `APPLE_TEAM_ID` / `APPLE_KEY_ID` / `APPLE_PRIVATE_KEY` |
-| 3 | 我 | 部署后端（`docs/deploy/README.md` §2.1 路径 A：**WSL 构建 + scp**，不需公开仓库）|
+| ~~1~~ | ~~你~~ | ✅ **2026-10-13 已拿到** `AuthKey_MTUH2XZUP5.p8`（`E:\云盘\`）—— Key ID `MTUH2XZUP5` · Team ID `TTM43MDWDA` |
+| ~~2~~ | ~~我~~ | ✅ **2026-10-13 已写入** `/opt/coevo/.env`：`APPLE_TEAM_ID` / `APPLE_KEY_ID` / `APPLE_PRIVATE_KEY`（多行 PEM，与 IAP 同格式）<br>🔑 **凭据已端到端验证**：假 code 打 `/auth/token` 得 `invalid_grant`（**不是** `invalid_client`）⇒ Apple 接受了我们的 `client_secret` |
+| 3 | 我 | 部署后端（`docs/deploy/README.md` §2.1 路径 A：**WSL 构建 + scp**，不需公开仓库）—— ⏳ **待你跑构建命令** |
 | 4 | 我 | 重新发布法务页（隐私政策加了「注销会同时撤销 Apple 授权」一句，见 §10.3）|
 | 5 | 我 | 出 **app-store 方式**的包（与 §九⑥ 合并，一次出包）|
 
