@@ -417,6 +417,67 @@ PEM 命中全是「文档说明 / workflow 格式校验 / Rust 单测」；
 ⚠️ 而要验证「**购买成功**」的全链路（付款 → 权益落到当前账号 → 换设备可恢复），
 必须**换一个没买过的沙盒 Apple ID** —— 当前那个沙盒账号已订阅，Apple 会一直拦。
 
+---
+
+## 五、🆕 2026-10-13 提前上线：**注销撤销 Apple 授权**（C 项）+ build 8
+
+本节与 IAP 沙盒测试同批（同一个 `ios-archive` 流程），一并留档。
+
+### 5.1 为什么要赶在提审前做
+
+Apple 5.1.1(v)：用过 Sign in with Apple 的账号**注销时必须向 Apple 撤销授权**。
+🔴 **时效性**：撤销要的 `refresh_token` 只能由 `authorizationCode` 换得，
+而后者**只在登录那一刻由 Apple 返回**（一次性、约 5 分钟过期）
+⇒ **功能上线前已登录过的用户永久撤不了**。⇒ 越早越好。
+
+### 5.2 链路（跨语言三段，缺一段都不报错 —— 静默失效）
+
+| # | 位置 | 改动 |
+|---|---|---|
+| ① | 端侧 `auth_dialog`/`auth_provider`/`auth_client` | 取插件返回的 `authorizationCode` 并随登录请求发出 |
+| ② | `routes.rs::auth_apple` | 换 refresh token → **AES-GCM 加密落库**（`users.apple_refresh_token`）|
+| ③ | `user_purge.rs::delete_me_handler` | 注销**之前**调 `revoke_refresh_token`（失败**不阻断**注销）|
+
+### 5.3 后端部署核对（2026-10-13）
+
+| 项 | 结果 |
+|---|---|
+| 二进制 sha256 | `d117f6c6…` 与构建产物**逐字节一致**（旧版 `e6dcc3fd…` 留 `.prev`）|
+| health / 探针 / ERROR | OK · **35/35** · **0 条** |
+| schema 迁移 | `users.apple_refresh_token` ✅（部署前已在**生产库副本**预演）|
+| 进程真读到 Key | `/proc/<pid>/environ` 里 PEM 跨行 6 行，DER sha256 与本地一致 |
+| `/api/auth/apple` 冒烟 | 带 `authorization_code` → 200 + 业务错误（**非 500**）|
+
+### 5.4 🔴 凭据验证：**让 Rust 自己去打 Apple**（本批最值得记的一步）
+
+先用 Node 复刻 JWT 打 Apple 验「凭据本身对」—— 但**复刻验证的是那份脚本，不是这段 Rust**：
+DER 编码 / claims / `kid` / 有效期边界任一处不同，**症状都是 `invalid_client`**。
+⇒ 新增 `#[ignore]` 的真联调测试 `apple_probe_client_secret_and_revoke`：
+
+| 探测 | 实测 |
+|---|---|
+| 假 code 打 `/auth/token` | `HTTP 400 · error=Some("invalid_grant")` ⇒ **Apple 先通过了 client_secret** |
+| 假 token 打 `/auth/revoke` | `Ok(())` |
+
+📌 判据：**「区分两种错误码」就是在区分病因** —— 能让远端先走到「后一步」，
+    就证明「前一步」是好的。
+📌 顺带实测：Apple 的 revoke 对**不存在的 token** 回 **200 空 body**（不是 `invalid_grant`）
+    ⇒ 代码里那条「`invalid_grant` ⇒ 视为已撤销」的分支实际几乎不命中（留着无害，已注释标清）。
+
+### 5.5 出包（build 8）
+
+| 项 | 值 |
+|---|---|
+| 版本 | `1.0.0+8` |
+| iOS | run `38379283880` **success** · `Uploaded Runner` · `FLUTTER_BUILD_NUMBER=8` |
+| CI | run `38379278889` **success** · **8 门禁全绿** |
+| 仓库 | 已改回 PRIVATE |
+
+build 8 一次带上三批改动：**Apple 撤销授权** + 主题「跟随系统」修复 + 复习页空态引导。
+
+⏳ **唯一的真实流量验证**（此前都靠单测 + 探针）：
+build 8 上用 Apple 登录一次 ⇒ 查 `users.apple_refresh_token` 是否真写进去。
+
 
 
 
