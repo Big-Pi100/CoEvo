@@ -765,6 +765,34 @@ void main() {
     // 🔴 refresh token 是**长期凭据** ⇒ 必须密文落库（明文 = 拿库就能长期冒充用户）
     check('🔴 refresh token 密文落库（走 `encryption::encrypt`）',
         appleRs.contains('encryption::encrypt'));
+
+    // ── ④ Apple 授权失败的**可见出口**（2026-10-13 真机实测后补）──
+    //
+    // # 为什么
+    //
+    // 原来「非用户取消」类的授权失败**只 `debugPrint`** ⇒ 用户看到的是「点了没反应」。
+    // 当天根因是**出包产物丢了 `applesignin` entitlement**
+    // （`docs/review/ios-archive-entitlements-lost-2026-10-13.md`），
+    // 而三重静默叠在一起：① 界面无反馈 ② `debugPrint` 在 release 真机取不到
+    // ③ iOS 对缺 entitlement 既不弹窗也不报错 ⇒ 排查只能一路挖到「解包 IPA 验签名」。
+    //
+    // 🔑 证伪：把 `_validationError = ...` 那行删掉（退回只打日志）⇒ 第一条必红。
+    check('🔴 Apple 授权失败必须落到**可见的** `_validationError`（不得只打日志）',
+        dialogCode.contains('_validationError =') &&
+            dialogCode.contains('Apple 登录未完成'),
+        '只 debugPrint ⇒ 用户看到「点击无反应」，真机也拿不到 code');
+    check('🆕 错误文案带上 `code`（下次同族问题一眼可报）',
+        dialogCode.contains('e.code.name'));
+    // 🔑 反向：**用户主动取消**仍须静默 —— 别因为上面那条改成「一律报错」
+    //    （用户只是改了主意，弹「登录失败」会让他以为系统出问题）。
+    //    用**文本顺序**断言「先判取消、后给消息」：取消分支带 `return`，
+    //    所以它必须排在赋值之前才可能生效。
+    //    ⚠️ 这里「文本顺序」是可信的：两句在**同一语句序列**里，没有求值过程夹在中间。
+    //       （与本项目另一条禁忌不同 —— 那条说的是 `f(g(x))` 这种**表达式内**的顺序。）
+    check('🔑 「用户取消」仍静默（取消判断必须在错误赋值**之前**）',
+        dialogCode.indexOf('AuthorizationErrorCode.canceled') > 0 &&
+            dialogCode.indexOf('AuthorizationErrorCode.canceled') <
+                dialogCode.indexOf('Apple 登录未完成'));
   }
 
   _report();

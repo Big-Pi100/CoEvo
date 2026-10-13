@@ -207,8 +207,30 @@ class _AuthDialogState extends ConsumerState<AuthDialog> {
         if (mounted) setState(() => _isSubmitting = false);
         return;
       }
-      debugPrint('auth_dialog: Apple 授权失败 code=${e.code} msg=${e.message}');
-      if (mounted) setState(() => _isSubmitting = false);
+      // 🔴🔴 非「取消」类失败**必须可见**（2026-10-13 真机实测后修）
+      //
+      // 原先这里只 `debugPrint` ⇒ 用户看到的就是**「点了没反应」**。
+      // 而当天 Apple 授权失败的真实原因，是**出包产物里丢了 `applesignin` entitlement**
+      // （见 `docs/review/ios-archive-entitlements-lost-2026-10-13.md`）——
+      // iOS 遇到这种情况**既不弹窗也不报错**，直接静默返回失败。
+      //
+      // 三个后果叠在一起，让那次排查只能一路挖到「解包 IPA 验签名」：
+      //   ① 界面上没有任何反馈（用户以为 App 坏了）
+      //   ② `debugPrint` 在 release 真机上取不到（拿不到 `code`）
+      //   ③ iOS 本身也不给提示
+      // ⇒ 现在把 `code` **显示出来** —— 让下一次同族问题一眼可报。
+      //
+      // 📌 判据：**「静默失败 + 无出口」比报错更糟** ——
+      //    报错至少给了用户一条路（重试 / 换方式），静默只留下「App 坏了」的猜测。
+      final code = e.code.name;
+      debugPrint('auth_dialog: Apple 授权失败 code=$code msg=${e.message}');
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+          _validationError =
+              'Apple 登录未完成（$code）。\n请重试，或改用下方的邮箱登录。';
+        });
+      }
     } catch (e) {
       // 服务端/网络错误：文案已由 `authProvider` 归一化并写进 `authState.error`
       // ⇒ 这里只 `setState` 触发重绘，**不重复拼一遍原始异常**

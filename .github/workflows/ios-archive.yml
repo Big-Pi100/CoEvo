@@ -261,26 +261,46 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          # 🔴🔴 2026-10-11（根治）：**Archive 阶段不签名**，签名全部交给 Export 阶段。
+          # ══════════════════════════════════════════════════════════════════
+          # 🔴🔴 归档阶段必须**签一次名**（哪怕只是 ad-hoc）—— 别改回「不签名」
+          # ══════════════════════════════════════════════════════════════════
           #
-          # # 为什么（这是「Development 证书堆积」的真正病根）
+          # ## 病史（两次都撞在这条线上，方向相反）
           #
-          # `app/ios/Runner.xcodeproj/project.pbxproj` 是 Flutter 模板默认值：
-          #     "CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";   ← Development
-          #     CODE_SIGN_STYLE = Automatic;
-          # ⇒ **Archive 阶段**用 Development 签名 ⇒ 需要 `iOS App Development` profile；
-          #   配合本步骤原来的 `-allowProvisioningUpdates`（自动管理）
-          #   ⇒ 每次 CI 归档都可能**新增一张 Development 证书** ⇒ 只增不减
-          #   ⇒ 攒到 Apple 账号上限即**出包失败**（2026-10-11 连续撞了两次）。
+          # **2026-10-11（`6575f35`）**：`pbxproj` 是 Flutter 模板默认值
+          #   `"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer"` + `Automatic`
+          #   ⇒ 归档用 Development 签名 + `-allowProvisioningUpdates`
+          #   ⇒ **每次 CI 都新增一张 Development 证书**（只增不减）
+          #   ⇒ 攒到账号上限就出包失败（那天连续撞两次）。
           #
-          # 🔑 修法：**Archive 根本不签名** —— 归档只需要产物，签名可以晚一步做。
-          #    · `CODE_SIGNING_ALLOWED=NO` ⇒ 跳过签名（因此**不再需要 Development 证书/profile**）
-          #    · `CODE_SIGNING_REQUIRED=NO` ⇒ 「没签名也不许报错」（两者要一起给）
-          #    · 同时**去掉** `-allowProvisioningUpdates` 与 API Key 参数 ——
-          #      它们只在「归档时签名」这条路上有用；留着反而可能触发证书创建。
-          #    · **Export 阶段**（下一步 `-exportArchive`）仍用 `signingStyle=automatic`
-          #      + API Key + `-allowProvisioningUpdates` ⇒ 由它完成**Distribution 签名**。
-          #      Distribution 证书 / profile 是**每个 bundle id 一套、长期复用**，不会每次新建。
+          #   当时的修法是 `CODE_SIGNING_ALLOWED=NO`（**完全不签名**）。
+          #   ✅ 证书问题确实解决了；❌ 但它**静默砍掉了所有自定义 entitlements**。
+          #
+          # **2026-10-13 发现（真机点「通过 Apple 继续」毫无反应）**：
+          #   Apple 官方（Developer Forums thread 720887）：
+          #   > entitlements are carried by the **code signature**, so **if the app in
+          #   > the archive isn't signed then there's nothing to preserve**.
+          #
+          #   导出阶段只补得上**base 项**（`CODE_SIGN_INJECT_BASE_ENTITLEMENTS=YES`
+          #   从描述文件注入）⇒ 所以 `application-identifier` 在、
+          #   **`com.apple.developer.applesignin` 不在** ⇒ 真机上授权静默失败。
+          #   🔴 影响面：`build 6/7/8` 的 Apple 登录全部不工作（build 1–5 正常）；
+          #      而且**今后任何新加的自定义 entitlement 都会同样丢失**
+          #      （推送 `aps-environment` / 关联域 / App Groups / 钥匙串共享…）。
+          #   📄 完整调查（含 A/B 对照与真 IPA 解析）：`docs/review/ios-archive-entitlements-lost-2026-10-13.md`
+          #
+          # ## 现在的修法（2026-10-13 · 白哥定案「方案 1」）
+          #
+          # 🔑 **用 ad-hoc identity 签名**：`CODE_SIGN_IDENTITY=-` + `AD_HOC_CODE_SIGNING_ALLOWED=YES`
+          #    · 它**不需要任何证书 / profile** ⇒ Development 证书堆积问题依旧被根治（10-11 的目标不丢）
+          #    · 但它**会真的写一次签名** ⇒ entitlements 有载体 ⇒ 导出时能保留（10-11 的副作用被修掉）
+          #    ⇒ **两个目标同时满足**，不是二选一。
+          #    📌 依据：Apple Developer Forums thread 756119（同一问题的现场解法）。
+          #
+          # ⚠️ 本机无 macOS ⇒ **只能靠 CI 判定**。所以下一步（`Archive 后校验 entitlements`）
+          #    是**必需的**，不是可选项：万一 `pbxproj` 那句带 `[sdk=iphoneos*]` 的条件赋值
+          #    覆盖了命令行传的值，那一步会**当轮变红**（而不是又悄悄出一个坏包，
+          #    再等真机踩一次 —— 10-11 那次就是这么过去的）。
           #
           # ⚠️ 为什么**不**去改 `pbxproj` 的 identity（试过、行不通，别再试）：
           #    ① `"CODE_SIGN_IDENTITY[sdk=iphoneos*]"="…"` **不是 shell 赋值**
@@ -295,9 +315,28 @@ jobs:
             -archivePath build/ios/archive/Runner.xcarchive \
             -sdk iphoneos \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=- \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_STYLE=Automatic \
             archive
+
+      # ── 🔴 归档后立刻校验 entitlements（**这是本流程唯一的「产物可用」判据**）────
+      #
+      # 为什么放在这里（Archive 之后、Export 之前）：
+      #   · 拦在**源头** —— 一旦少了能力，当轮就红，不会推到 ASC、也不会等你装到手机上
+      #   · **两种模式都跑**（`export` 与 `upload`）—— 归档产物在本地，两边都有
+      #     （而 `upload` 模式下最终 IPA 在 ASC，本地拿不到 ⇒ 只能用归档产物当判据）
+      #
+      # 🔑 判据从哪来：脚本直接读 `app/ios/Runner/Runner.entitlements`，
+      #    所以将来新增能力（推送/关联域/App Groups…）**不必改本文件**。
+      - name: 校验归档产物的 entitlements（缺自定义能力 ⇒ 当轮失败）
+        run: |
+          set -euo pipefail
+          # ⚠️ 本 job 的 cwd 是 `app`（见 `defaults.run.working-directory`）
+          #    ⇒ 脚本用 `../scripts/...`；脚本自己会按 `__file__` 定位仓库根，
+          #      所以它读 `Runner.entitlements` 不受 cwd 影响。
+          python3 ../scripts/deploy/verify_ipa_entitlements.py \
+            build/ios/archive/Runner.xcarchive
 
       # ── 导出（上传与否由 plist 的 destination 决定）─────────────────────
       - name: Export IPA（upload 时同时上传 ASC）
