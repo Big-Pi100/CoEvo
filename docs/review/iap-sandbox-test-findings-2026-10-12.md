@@ -482,3 +482,66 @@ build 8 上用 Apple 登录一次 ⇒ 查 `users.apple_refresh_token` 是否真�
 
 
 
+
+---
+
+## 六、🆕 2026-10-13 晚间：注销端到端实测 + 串号脏数据修复 + **串号机制定论**
+
+### 6.1 注销端到端（真注销了两个账号）
+
+| # | 账号 | 触发 | 结果 |
+|---|---|---|---|
+| ① | `145f2f18`（`mr.bigpi`，**有年订阅 + 2 笔支付记录**）| 我（`POST /api/user/me/delete`）| 匿名 2 / 删除 7 · 撤销授权 ✅ |
+| ② | `b23e328f`（白哥 App 里 Apple 登录新建的号）| **白哥真机点注销**（nginx：`Dart/3.11 (dart:io)` 200）| 匿名 0 / 删除 2 · 撤销授权 ✅ |
+
+**验证**（两次都做了）：`users` 行删除 · 个人数据**逐表**核对 · 支付记录**匿名化**为同一 `deleted:` id ·
+审计留痕 · 🔴 **零残留**（全表扫 `*_id` 列）· 撤销日志
+· 🔴🔴 **外部铁证**：拿 Apple refresh token 去换 access_token ⇒ `invalid_grant · has expired or has been revoked`。
+
+📌 **「删除 7 行」曾与我数到的 6 行不符** ⇒ 逐表核对才发现漏了 `DELETE_TARGETS` **末项
+`("users","id")`**（清单 20 项）。**判据：「数字对上」≠「成员对上」**。
+
+### 6.2 🔴 串号脏数据修复（白哥确认「串号串来的」）
+
+`transaction_id = 2000001249787368`（月订阅）在两表归属不一致：
+
+| 表 | 归属 | 说明 |
+|---|---|---|
+| `payment_orders` | `b5b3a29d`（**690861018**）| 走 `ensure_order`，**不改写 user_id** ⇒ 保留原始值 |
+| `iap_transactions` | `c96e3b62`（baixu100）| `created_at`(10:38:35) ≠ `updated_at`(10:40:20) ⇒ **被改写过** |
+
+**证据链（三条独立印证真实买家 = `690861018`）**：
+1. `payment_orders.created_at = 10-12T10:37:35Z` **与 Apple JWS 的 `purchaseDate` 完全相同**
+2. `payment_orders` 是「不被改写」的那张表（`ensure_order`）
+3. 该交易 `appAccountToken` —— **JWS 里根本没有这个字段**（无绑定）⇒ 「谁上报谁认领」的土壤
+
+**动作**（备份 `coevo.db.bak-subfix2-20261013`）：
+`baixu100.subscription_expires → NULL` · `iap_transactions.user_id → 690861018` ·
+`admin_audit_log` 插 `data_repair_iap_ownership`（留痕）⇒ **3 笔交易两表归属全部一致**。
+
+### 6.3 🔴🔴 重大发现：**串号的真正机制 = 同一 Apple ID 换 app 账号**
+
+修复过程中 `iap_transactions` 多出一笔（21:57:36），细查发现：
+
+- 新账号 `5391ad37`，email `mr.bigpi@foxmail.com`，
+  **`apple_user_id` 与当日被注销的 `145f2f18` 完全相同** ⇒ ✅ 印证「注销后重新 Apple 登录会建新号」
+- 新交易 `2000001250547911`：`original_transaction_id = 2000001249787368`
+  （**同上那条订阅链**）· `appAccountToken = 5391ad37…`（**新账号自己**）· `PURCHASE`（续期）
+
+⇒ **Apple 把订阅续给了「当前登录的 app 账号」**，新账号因此自动获得订阅。
+
+**这同时解释了两件事**：
+1. 10-12 那次「串号」**很可能不是纯 bug** —— 土壤是「**同一 Apple ID + 换 app 账号 + 交易无绑定**」，
+   `upsert` 改写 user_id 的缺陷只是**放大了**它。
+2. §4.2 之后的预告「注销后订阅可能又回来」**成真**了（形式是**新的续期交易**，不是重放旧交易）。
+
+### 6.4 🔑 结论：「一一绑定」的准确含义
+
+**Apple 的订阅永远跟 Apple ID 走**，我们**挡不住** Apple 向新登录的账号发续期交易。
+
+因此「订阅与账号一一绑定」能守住的边界是：
+✅ **一笔交易只归一个账号**（`app_account_token` 校验 + 409 冲突）
+❌ 不是「订阅锁死在某账号上」—— 那个做不到（也不该做，用户有权在自己设备上用自己买的订阅）
+
+📌 **对我们的实际影响**：一个 Apple ID 名下的订阅，会给**当前登录的那个 app 账号**权益；
+换账号后旧账号在各自 expiry 前仍显示有效，之后不再续。**符合「一人一份订阅」的商业直觉。**
