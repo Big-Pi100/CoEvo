@@ -1691,5 +1691,34 @@ void main() {
         '复活 ⇒ 「提示已恢复 + 显示未订阅」会再次出现');
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // ⑲ 服务端「孤儿放行」判据必须**两处都有**（防「修了一处漏一处」）
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // 🔴 由来（2026-10-13）：只修了 **B1'（绑定层）** 就以为完事 —— 本地 307 项单测全绿，
+  // 但**端到端**上报仍被 **B2'（归属层）** 以「该交易已归属其他账号」挡回 409。
+  // ⇒ 判据：**补丁 ≠ 修法**；且「单测覆盖我改的地方」≠「覆盖完整链路」。
+  // ⇒ 本组把「两处都用同一判据」变成**断言**，下次漏一处就会红。
+  {
+    final rust = File('../../backend/crates/api_server/src/iap_handlers.rs');
+    final src = rust.existsSync() ? rust.readAsStringSync() : '';
+
+    final uses = 'account_id_exists('.allMatches(src).length;
+    check(
+        '⑲-1 🔴 孤儿判据 `account_id_exists` 至少 3 次出现（定义 1 + 调用 2）',
+        uses >= 3,
+        '实际 $uses 次 —— 少于 3 说明 B1\'（绑定层）或 B2\'（归属层）漏了一处');
+
+    check(
+        '⑲-2 孤儿重新认领必须**显式**改写 user_id（UPSERT 的 SET 里故意没有它）',
+        src.contains('UPDATE iap_transactions SET user_id'),
+        '不显式改写 ⇒ 判了 Claimed 但归属仍留在已注销账号上');
+
+    check(
+        '⑲-3 🔴 防串号防线不得被删（「活跃账号 ⇒ Conflict」仍在）',
+        src.contains('return Ok(Ownership::Conflict'),
+        '删了它 ⇒ 任何账号都能抢别人的交易');
+  }
+
   _report();
 }

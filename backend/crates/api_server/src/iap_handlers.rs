@@ -233,14 +233,22 @@ pub fn account_binding_conflict<'a>(
     Some(bound)
 }
 
-/// 该绑定指向的账号**当前是否还存在**。
+/// 某个账号 id 在当前库中**是否仍存在**。
 ///
-/// 存在 = 仍可对抗（要拦）；不存在 = 已注销（绑定失去意义，见 [`effective_binding`]）。
-fn bound_account_exists(conn: &rusqlite::Connection, bound: &str) -> bool {
-    conn.query_row("SELECT 1 FROM users WHERE id = ?1", params![bound], |_| {
-        Ok(())
-    })
-    .is_ok()
+/// 两处用它，同一判据：
+/// · **B1'**：`appAccountToken` 指向的绑定（见 [`effective_binding`]）
+/// · **B2**：`iap_transactions.user_id` 里的**原归属**（见 [`upsert_transaction`]）
+///
+/// 🔑 判据：**归属/绑定的唯一目的是防「另一个活跃账号来抢」**；
+///    目标已不存在（已注销）⇒ 失去对抗对象 ⇒ 允许**重新认领**。
+///    `purge_user` 写的匿名 id 形如 `deleted:<uuid>` ⇒ 本函数必然返回 false
+///    ⇒ 天然落入「可重新认领」，**无需**额外的前缀特判。
+fn account_id_exists(conn: &rusqlite::Connection, id: &str) -> bool {
+    if id.trim().is_empty() {
+        return false;
+    }
+    conn.query_row("SELECT 1 FROM users WHERE id = ?1", params![id], |_| Ok(()))
+        .is_ok()
 }
 
 /// 把「指向**已注销账号**的绑定」归一化成「**无绑定**」。
@@ -308,15 +316,39 @@ pub fn upsert_transaction(
         )
         .ok();
 
-    let outcome = match existing_owner {
+    // 🆕 2026-10-13（**B2'**）：**孤儿归属**（原归属账号已注销）⇒ 允许**重新认领**。
+    //
+    // 🔴 与 B1' 是**同一判据、两处落点** —— 这是**端到端验证抓出来的**：
+    //    只修 B1' 时，请求仍被 B2 以「该交易已归属其他账号」挡回 409
+    //    （本地 307 项单测全绿，因为它们只覆盖了我改的那一处）。
+    //    📌 判据：**补丁 ≠ 修法** —— 找到一个洞，必须先问「还有哪些地方有同样的问题」。
+    //
+    // 典型场景：注销账号 → 重新 Apple 登录 → Apple 重放/续期**同一笔**交易。
+    //   注销时 `purge_user` 把 `iap_transactions.user_id` 写成 `deleted:<uuid>`，
+    //   而 `users` 里查不到它 ⇒ 该归属**已失去可对抗的对象** ⇒ 应允许新账号认领。
+    let reclaim_orphan = match existing_owner {
         Some(ref owner) if owner != user_id => {
-            // 🔴 **一个字都不写**就返回 —— 交给调用方拒绝。
-            return Ok(Ownership::Conflict {
-                owner: owner.clone(),
-            });
+            if account_id_exists(conn, owner) {
+                // 🔴 **一个字都不写**就返回 —— 交给调用方拒绝（防串号的防线，不能动）
+                return Ok(Ownership::Conflict {
+                    owner: owner.clone(),
+                });
+            }
+            tracing::info!(
+                "IAP 孤儿归属（原归属账号已注销）⇒ 允许重新认领 tx={} 原归属={} 新归属={}",
+                tx.transaction_id,
+                owner,
+                user_id
+            );
+            true
         }
-        Some(_) => Ownership::SameOwner,
-        None => Ownership::Claimed,
+        _ => false,
+    };
+
+    let outcome = if reclaim_orphan || existing_owner.is_none() {
+        Ownership::Claimed
+    } else {
+        Ownership::SameOwner
     };
 
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
@@ -349,6 +381,18 @@ pub fn upsert_transaction(
     )
     .map_err(|e| format!("写 iap_transactions 失败: {}", e))?;
 
+    // 🔴 B2'：重新认领时必须**显式**改写 `user_id` ——
+    //    UPSERT 的 `SET` 里**故意没有** `user_id`（归属一旦确定就不再改），
+    //    那是防串号的核心设计；此处是它**唯一的例外**，且仅在「原归属已失效」时发生。
+    //    ⚠️ 只写 `user_id`，不碰其它列（`expires_date` 等已由 UPSERT 处理）。
+    if reclaim_orphan {
+        conn.execute(
+            "UPDATE iap_transactions SET user_id = ?1 WHERE transaction_id = ?2",
+            params![user_id, tx.transaction_id],
+        )
+        .map_err(|e| format!("重新认领归属失败: {}", e))?;
+    }
+
     Ok(outcome)
 }
 
@@ -357,6 +401,16 @@ pub fn upsert_transaction(
 /// 🔑 `payment_orders` 是**面向用户的订单视图** —— 查询接口（`pay_handlers`）复用它，
 ///    所以 IAP 的交易也要在这里留一条，否则「我的订单」是空的。
 /// ⚠️ Apple 的 `transactionId` 天然唯一 ⇒ 以它为去重键。
+///
+/// # 🔴 「有意差异」：孤儿重新认领后，本表与 `iap_transactions` 的 `user_id` **会不同**
+///
+/// 两列语义**不同**，别顺手改：
+/// · `iap_transactions.user_id` = 「**这笔交易现在归谁**」—— 会随「孤儿重新认领」变更
+/// · `payment_orders.user_id`   = 「**当时是谁下的单**」—— **历史事实，不改**
+///
+/// 例：u1 购买 → u1 注销（其交易被匿名化）→ u2 重新 Apple 登录并认领
+/// ⇒ `iap_transactions` 归 u2，而本表仍是 u1（幂等：`exists ⇒ return`）。
+/// 📌 判据：**有意差异必须写下来**，否则下一个人会把它当 bug「修」掉。
 fn ensure_order(
     conn: &rusqlite::Connection,
     tx: &AppleTransaction,
@@ -679,7 +733,7 @@ pub async fn iap_verify_handler(
     let bound_exists = if need_exists {
         let conn = crate::db_pool::get_conn();
         let b = raw_binding.map(str::trim).unwrap_or("");
-        let ok = bound_account_exists(&conn, b);
+        let ok = account_id_exists(&conn, b);
         if !ok {
             tracing::info!(
                 "IAP 孤儿绑定（指向已注销账号）⇒ 视为无绑定，允许重新认领 tx={} 旧绑定={} 上报者={}",
@@ -1076,6 +1130,67 @@ mod tests {
             now_expires, original_expires,
             "冲突时不该更新 expires_date（拒绝 = 一个字都不写）"
         );
+    }
+
+    /// 🆕 2026-10-13（**B2'**）：**孤儿归属**（原归属账号已注销）⇒ 允许重新认领。
+    ///
+    /// 🔴 这条是**端到端验证抓出来的**：只修 B1'（绑定层）时，请求仍被 B2
+    /// 以「该交易已归属其他账号」挡回 409 —— 而本地 307 项单测**全绿**，
+    /// 因为它们只覆盖了我改的那一处。
+    /// 📌 判据：**补丁 ≠ 修法**；也说明**单测覆盖「改的地方」≠ 覆盖「完整链路」**。
+    #[test]
+    fn test_upsert_transaction_reclaims_orphan_owner() {
+        let conn = setup_db();
+        conn.execute(
+            "INSERT INTO users (id, username, created_at) VALUES ('u2','t2', datetime('now'))",
+            [],
+        )
+        .unwrap();
+        let tx = sample_tx();
+
+        assert_eq!(
+            upsert_transaction(&conn, &tx, "u1").unwrap(),
+            Ownership::Claimed
+        );
+
+        // 🔴 反向（防串号防线，**不能被本次改动动摇**）：另一个**活跃**账号 ⇒ 冲突
+        assert_eq!(
+            upsert_transaction(&conn, &tx, "u2").unwrap(),
+            Ownership::Conflict {
+                owner: "u1".to_string()
+            },
+            "活跃账号之间的归属冲突必须仍然拒绝"
+        );
+
+        // ── 模拟**注销账号**后 `iap_transactions` 的状态 ──
+        // `purge_user` 会把 `user_id` 匿名化成 `deleted:<uuid>`，同时删掉 users 行。
+        // 🔴 注意：`iap_transactions.user_id` 有 **外键** `REFERENCES users(id)`
+        //    ⇒ 写 `deleted:` 形态必须像真实注销那样**先关外键**
+        //    （`purge_user` 正是用 `with_foreign_keys_off` 包的）。
+        //    ⚠️ 该外键**没有 `ON DELETE CASCADE`** —— 这是有意的：支付记录必须留在库里供对账。
+        conn.execute_batch("PRAGMA foreign_keys=OFF;").unwrap();
+        conn.execute(
+            "UPDATE iap_transactions SET user_id='deleted:fake-uuid' WHERE transaction_id=?1",
+            params![tx.transaction_id],
+        )
+        .unwrap();
+
+        // 🔴🔴 核心：孤儿归属 ⇒ 新账号可认领（判 `Claimed` 而非 `Conflict`）
+        assert_eq!(
+            upsert_transaction(&conn, &tx, "u2").unwrap(),
+            Ownership::Claimed,
+            "原归属账号已注销 ⇒ 必须允许重新认领（否则「注销后重登」永远 409）"
+        );
+
+        // 🔴 必须**显式**改写 user_id —— UPSERT 的 `SET` 里故意没有它
+        let owner: String = conn
+            .query_row(
+                "SELECT user_id FROM iap_transactions WHERE transaction_id = ?1",
+                params![tx.transaction_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(owner, "u2", "🔴 孤儿重新认领后，归属必须落到新账号");
     }
 
     /// 🔑 这条测的是「续期能更新到期日」—— `DO NOTHING` 会在这里挂。

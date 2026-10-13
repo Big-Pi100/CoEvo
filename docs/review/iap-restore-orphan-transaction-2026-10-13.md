@@ -248,3 +248,59 @@ appAccountToken = 5391ad37…（= 当下登录的账号自己）· PURCHASE（�
 
 - 后端：**待白哥跑 WSL 构建**（`wsl.exe` 在 agent 沙箱被封禁）→ 之后由 agent 上传/替换/重启/验证
 - 端侧：随 **build 12**（`1.0.0+12`）出包
+
+---
+
+## 十、🔴🔴 部署后**端到端验证抓出第二处**（B2'）—— 「补丁 ≠ 修法」
+
+### 10.1 第一次部署后：仍然 409，但**错误文案变了**
+
+```
+HTTP 409 · {"error":"该交易已归属其他账号，无法重复开通"}
+```
+
+对照两处 409 的文案：
+| 层 | 文案 | 位置 |
+|---|---|---|
+| B1（绑定层）| 「该交易**绑定的账号**与当前登录账号不一致」| `account_binding_conflict` |
+| **B2（归属层）** | 「该交易**已归属其他账号**，无法重复开通」| `upsert_transaction` |
+
+⇒ 文案是 B2 的 ⇒ **B1' 生效了，但 B2 那一层还有同一个洞**。
+
+**而我本地 307 项单测全绿** —— 因为它们只覆盖了「我改的那一处」。
+
+📌 **判据（两条，都值得长期记）**：
+1. **补丁 ≠ 修法** —— 找到一个洞，必须先问「**还有哪些地方有同样的问题**」。
+2. **单测覆盖「改的地方」≠ 覆盖「完整链路」** ⇒ 这次是**端到端验证**（不是单测）抓出来的。
+
+### 10.2 B2' 修法
+
+`upsert_transaction` 里的原归属判定原本只比字符串（`owner != user_id`）：
+- 🆕 改成：`account_id_exists(conn, owner)` 为 false（**账号已注销**）⇒
+  不返 `Conflict`，而是**允许重新认领**（判 `Claimed`）
+- 🔴 并且**显式改写** `user_id` —— UPSERT 的 `SET` 里**故意没有** `user_id`
+  （归属一旦确定不再改，是防串号核心）；此处是它**唯一的例外**
+- 🔴 **保留**「活跃账号 ⇒ Conflict」
+
+`bound_account_exists` → 改名 **`account_id_exists`**（B1' / B2' 共用同一判据）。
+
+**新增测试** `test_upsert_transaction_reclaims_orphan_owner`（含「活跃⇒Conflict」反向断言）。
+⚠️ 测试里写 `deleted:` 形态**必须先关外键** —— `iap_transactions.user_id` 有
+`FOREIGN KEY REFERENCES users(id)`（**无 CASCADE**，有意为之：支付记录必须留库对账），
+真实注销（`purge_user`）也是用 `with_foreign_keys_off` 包的。
+
+### 10.3 防止再漏：⑲ 组断言（3 条）
+
+把「两处都用同一判据」变成**断言**（`iap_verify` 直接读 Rust 源码）：
+- ⑲-1 `account_id_exists` 至少出现 3 次（定义 1 + 调用 2）—— **删任一处即红**
+- ⑲-2 孤儿重新认领必须**显式** `UPDATE iap_transactions SET user_id`
+- ⑲-3 防串号防线仍在（`return Ok(Ownership::Conflict` 不得被删）
+
+### 10.4 验证
+
+`cargo test` **308 passed**（+1）· fmt ✅ · clippy `-D warnings` **exit 0** ·
+`iap_verify` **270 项**（+3，⑲ 组）
+
+🔴 **证伪 ×2 精确命中**：
+- B2' 退回旧行为 ⇒ Rust **只** `test_upsert_transaction_reclaims_orphan_owner` 红
+- 删掉 B1' 的一处 `account_id_exists` 调用 ⇒ ⑲-1 红（「实际 2 次」）
