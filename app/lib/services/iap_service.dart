@@ -376,9 +376,20 @@ class IapService {
     await Future<void>.delayed(const Duration(milliseconds: 1200));
     _emit(_snapshot.copyWith(purchasing: false));
 
-    return _snapshot.entitlement == IapEntitlementStatus.active
-        ? RestoreOutcome.restored
-        : RestoreOutcome.notFound;
+    // 🔴 2026-10-13：判定必须与 UI 的「订阅中」**同源**（含归属过滤）。
+    //
+    // 原先这里直接判 `_snapshot.entitlement == active` —— 而 UI 走
+    // `subscriptionActiveNow`（带归属过滤）⇒ 只要「收到了交易但归属不是当前账号」，
+    // 就会同时出现「提示已恢复」与「显示未订阅」（白哥 2026-10-13 实测：
+    // 注销后重登，Apple 重放的交易仍写着已注销的旧 userId）。
+    // ⇒ 判据下沉到 `iap_plan.judgeRestoreOutcome`（纯函数、可断言）。
+    return judgeRestoreOutcome(
+      entitlement: _snapshot.entitlement,
+      ownerUserId: _snapshot.ownerUserId,
+      // 归属过滤的「当前账号」用**上报绑定值** —— 与 `_deliver` / `applyServerExpiry`
+      // 用的是同一个口径，避免出现「第三套账号来源」。
+      currentUserId: _reporterAccountKey,
+    );
   }
 
   /// 商店事件处理。

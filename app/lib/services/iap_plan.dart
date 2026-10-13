@@ -713,6 +713,44 @@ String restoreOutcomeMessage(RestoreOutcome outcome) => switch (outcome) {
       RestoreOutcome.unavailable => '当前无法连接 App Store',
     };
 
+/// 「恢复购买」结束时的**结果判定** —— 全库唯一判据。
+///
+/// # 🔴 为什么必须有它（2026-10-13 白哥实测：提示「已恢复」但仍是未订阅）
+///
+/// 原先 `IapService.restore()` 直接判 `_snapshot.entitlement == active`，
+/// 而 UI 的「订阅中」走 `iapProvider.subscriptionActiveNow`（**带归属过滤** + 服务端侧）
+/// ⇒ 只要出现「**收到了交易、但归属不是当前账号**」，就必然产出
+/// **「提示已恢复」+「界面显示未订阅」**这一对自相矛盾的输出。
+///
+/// 典型触发场景：**注销账号后重新登录** —— Apple 重放/续期的交易上仍写着
+/// **已注销的旧 userId**（`appAccountToken` 由 Apple 签，我们改不掉）。
+///
+/// ⇒ 本函数把**归属过滤**并进来，成为唯一判据：
+///    只有「有效 **且** 属于当前账号」才算 [RestoreOutcome.restored]。
+///
+/// 📌 判据：**同一件事的口径只能有一处权威**。
+///
+/// ⚠️ 服务端那一侧（`subscriptionProvider.isActive`）不在此函数视野内
+///    （service 层拿不到）—— 但服务端认领后会把**权威到期日**回传，
+///    `IapService` 随即 `applyServerExpiry(..., ownerUserId: 当前账号)`
+///    把归属**改写成当前账号** ⇒ 下一次判定自然为 `restored`。
+///    （端侧因此**不需要**知道服务端状态，判据仍是单入口。）
+///
+/// ⚠️ 未登录（`currentUserId == null`）时沿用既有语义：
+///    无绑定的交易算「本机权益」；有绑定的交易不算（交给服务端对账）。
+RestoreOutcome judgeRestoreOutcome({
+  required IapEntitlementStatus entitlement,
+  required String? ownerUserId,
+  required String? currentUserId,
+}) {
+  final usable = entitlement == IapEntitlementStatus.active &&
+      iapEntitlementBelongsToAccount(
+        ownerUserId: ownerUserId,
+        currentUserId: currentUserId,
+      );
+  return usable ? RestoreOutcome.restored : RestoreOutcome.notFound;
+}
+
 // ════════════════════════════════════════════════════════════════════════
 // 外部链接（订阅页 / 关于页共用）
 // ════════════════════════════════════════════════════════════════════════

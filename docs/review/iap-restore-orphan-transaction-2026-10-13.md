@@ -1,7 +1,7 @@
-# 【调查报告 · 未修】「恢复购买」显示已恢复但权益未生效 —— 注销后的「孤儿交易」
+# 【调查报告】「恢复购买」显示已恢复但权益未生效 —— 注销后的「孤儿交易」
 
-*2026-10-13 22:40 · 依赖：SSH 直查生产库 + 服务端日志 + nginx access.log + 读端侧/服务端代码*
-*⭐ 本报告**未修改任何代码**，等白哥审批*
+*2026-10-13 22:40 出报告 · 23:00 白哥定案「**跟**」并实施（见 §九）*
+*依赖：SSH 直查生产库 + 服务端日志 + nginx access.log + 读端侧/服务端代码*
 
 ---
 
@@ -203,3 +203,48 @@ appAccountToken = 5391ad37…（= 当下登录的账号自己）· PURCHASE（�
 1. **产品决策**：注销后重新登录，订阅**跟**还是**不跟**？（§6.1，我推荐跟）
 2. 批准后我改：服务端孤儿处理（A）+ `restore()` 口径统一（B）+ 两条断言。
 3. ⚠️ 若最终**不跟**，则**必须**改注销页文案（明确告知权益不恢复）—— 这条是审核风险，优先级高于功能本身。
+
+---
+
+## 九、✅ 实施记录（2026-10-13 23:00 · 白哥定案「**跟**」）
+
+### 9.1 服务端（主修）：孤儿绑定归一化
+
+`iap_handlers.rs`
+- 🆕 纯函数 `effective_binding(app_account_token, user_id, bound_exists)` ——
+  「绑定指向**已注销账号**」⇒ 归一化成 `None`（视为无绑定）
+- 🆕 `bound_account_exists(conn, bound)` —— 只在**必要时**查一次库
+- 调用点：**B1' 在 B1 之前**（先归一化、再比对）。顺序不可反 —— 反了孤儿仍会 409
+- 🔴 **必须保留**「绑定指向另一个**活跃**账号 ⇒ 拒绝」（防串号防线，有反向断言守着）
+- 新增 `test_effective_binding`（含端到端组合：归一化 → `account_binding_conflict` 的最终结论）
+
+### 9.2 端侧（次修）：`restore()` 判定与 UI 同源
+
+- 🆕 `iap_plan.judgeRestoreOutcome({entitlement, ownerUserId, currentUserId})` —— 唯一判据（带归属过滤）
+- `iap_service.restore()` 改走它；旧的 `_snapshot.entitlement == active` 内联判定**已删**
+- 🔑 端侧**不需要**知道服务端状态：服务端认领后会回传权威到期日 ⇒
+  `applyServerExpiry(..., ownerUserId: 当前账号)` 把归属**改写成本账号** ⇒ 自愈
+
+### 9.3 验证
+
+| 项 | 结果 |
+|---|---|
+| `cargo test -p api_server` | **307 passed / 0 failed**（+1）|
+| `cargo fmt --check` / clippy `--workspace -- -D warnings` | ✅ / **exit 0** |
+| `analyze_inproc` | **error=0 / warning=0** |
+| `iap_verify` | **267 项**（258 → +9，新增 ⑱ 组）|
+| `verify_app_version` | 12 项 |
+
+🔴 **证伪 ×3，全部精确命中**：
+- `judgeRestoreOutcome` 去掉归属过滤 ⇒ 红 **4 条**（⑱-2/3/6/7）
+- `restore()` 真改回内联判定 ⇒ 红 **2 条**（⑱-8/9）
+- `effective_binding` 不再归一化 ⇒ Rust **只** `test_effective_binding` 红
+
+⚠️ 首版断言差点写**假绿**：「无绑定 + 未登录」我按直觉写成 `restored`，
+独立核对 `iapEntitlementBelongsToAccount` 实现（`ownerUserId == null ⇒ false`）后才改回 `notFound`。
+📌 判据：**期望值必须独立核实**，不能凭印象。
+
+### 9.4 部署
+
+- 后端：**待白哥跑 WSL 构建**（`wsl.exe` 在 agent 沙箱被封禁）→ 之后由 agent 上传/替换/重启/验证
+- 端侧：随 **build 12**（`1.0.0+12`）出包

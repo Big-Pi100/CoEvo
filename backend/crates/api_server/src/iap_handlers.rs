@@ -233,6 +233,58 @@ pub fn account_binding_conflict<'a>(
     Some(bound)
 }
 
+/// 该绑定指向的账号**当前是否还存在**。
+///
+/// 存在 = 仍可对抗（要拦）；不存在 = 已注销（绑定失去意义，见 [`effective_binding`]）。
+fn bound_account_exists(conn: &rusqlite::Connection, bound: &str) -> bool {
+    conn.query_row("SELECT 1 FROM users WHERE id = ?1", params![bound], |_| {
+        Ok(())
+    })
+    .is_ok()
+}
+
+/// 把「指向**已注销账号**的绑定」归一化成「**无绑定**」。
+///
+/// # 🔴 为什么需要它（2026-10-13 白哥实测：注销后重登 ⇒ 拿不到权益）
+///
+/// 端侧购买时把 userId 写进 `appAccountToken`，Apple 把它签进 JWS。
+/// 用户**注销账号**再重新 Apple 登录时：
+///   · 我们的库：旧 userId 那行被 purge 删除（`iap_transactions.user_id` 也已匿名化）
+///   · Apple 的 JWS：`appAccountToken` **改不掉** —— 那是 Apple 签的
+/// ⇒ 重放/续期的交易上仍写着**已不存在的 userId**
+/// ⇒ 旧的严格比对会**一律 409**（实测日志 `IAP 账号绑定不匹配` 连发 6 次）
+/// ⇒ 用户 Apple ID 没变、订阅仍在有效期内，却**永远拿不到权益**
+///   （⚠️ 且撞 Apple 3.1.1「恢复购买必须能恢复」）。
+///
+/// # 判据
+///
+/// 这个绑定的**唯一目的**是防「另一个**活跃**账号来抢这笔交易」。
+/// 绑定目标**已不存在** ⇒ 它失去了可对抗的对象 ⇒ 继续按「有绑定」拒绝没有意义。
+/// ⇒ 归一化成「无绑定」，交给 [`upsert_transaction`] 的「首次上报确立归属」重新绑定。
+///
+/// ⚠️ **必须保留**「绑定指向另一个**活跃**账号 ⇒ 拒绝」（见 [`account_binding_conflict`]）——
+///    那才是防串号的正解；本函数只放开「绑定目标已不存在」这一格。
+///
+/// 本函数是**纯函数**（存在性由调用方查库后传入）⇒ 判定可被断言覆盖。
+pub fn effective_binding<'a>(
+    app_account_token: Option<&'a str>,
+    user_id: &str,
+    bound_exists: bool,
+) -> Option<&'a str> {
+    let token = app_account_token?;
+    let bound = token.trim();
+    // 空绑定 / 绑定就是上报者自己 ⇒ 原样（下游 `account_binding_conflict` 会放行）
+    if bound.is_empty() || bound.eq_ignore_ascii_case(user_id) {
+        return app_account_token;
+    }
+    // 绑定指向**另一个活跃账号** ⇒ 原样（下游会拒绝 —— 这才是防串号）
+    if bound_exists {
+        return app_account_token;
+    }
+    // 绑定指向的账号**已不存在**（已注销）⇒ 视为无绑定，允许重新认领
+    None
+}
+
 /// 幂等写入 `iap_transactions`，并返回**归属判定**。
 ///
 /// 🔑 为什么用 `DO UPDATE ... WHERE 有变化` 而不是 `DO NOTHING`：
@@ -613,7 +665,36 @@ pub async fn iap_verify_handler(
     //   · **B1（这里）**：交易**有**绑定 ⇒ 绑定错就直接拒（比"先到先得"强）
     //   · **B2（`upsert_transaction`）**：交易**没**绑定（未登录购买 / StoreKit 1）
     //     ⇒ 由**首次上报**确立归属，之后别的账号来报一律 409
-    if let Some(bound) = account_binding_conflict(tx.app_account_token.as_deref(), &body.user_id) {
+    //
+    // 🆕 2026-10-13（**B1'**）：B1 之前先做一步「**孤儿绑定归一化**」——
+    //   绑定指向的账号**已注销**（库里查不到）⇒ 视为「无绑定」再走 B1。
+    //   🔑 理由与判据见 [`effective_binding`]：绑定只防「**活跃**账号来抢」，
+    //     目标已不存在就失去了对抗对象；否则「注销后重登」的合法用户会**永远 409**。
+    //   📌 顺序不可反 —— 必须先归一化、再比对。
+    let raw_binding = tx.app_account_token.as_deref();
+    let need_exists = matches!(
+        raw_binding.map(str::trim),
+        Some(b) if !b.is_empty() && !b.eq_ignore_ascii_case(&body.user_id)
+    );
+    let bound_exists = if need_exists {
+        let conn = crate::db_pool::get_conn();
+        let b = raw_binding.map(str::trim).unwrap_or("");
+        let ok = bound_account_exists(&conn, b);
+        if !ok {
+            tracing::info!(
+                "IAP 孤儿绑定（指向已注销账号）⇒ 视为无绑定，允许重新认领 tx={} 旧绑定={} 上报者={}",
+                tx.transaction_id,
+                b,
+                body.user_id
+            );
+        }
+        ok
+    } else {
+        true
+    };
+    let effective_token = effective_binding(raw_binding, &body.user_id, bound_exists);
+
+    if let Some(bound) = account_binding_conflict(effective_token, &body.user_id) {
         tracing::warn!(
             "IAP 账号绑定不匹配 ⇒ 拒绝 tx={} 绑定={} 上报者={}",
             tx.transaction_id,
@@ -858,6 +939,58 @@ mod tests {
 
         // 🔴 绑定 != 上报者 ⇒ **冲突**（这正是「一笔交易被别的账号认领」）
         assert_eq!(account_binding_conflict(Some("u2"), "u1"), Some("u2"));
+    }
+
+    /// 🆕 2026-10-13（B1'）：**孤儿绑定**归一化。
+    ///
+    /// 场景：用户注销账号 → 重新 Apple 登录（新 userId）⇒ Apple 重放/续期的交易上
+    /// 仍写着**已注销的旧 userId**（JWS 由 Apple 签，我们改不掉）。
+    /// 若不归一化 ⇒ 一律 409 ⇒ 用户 Apple ID 没变、订阅仍在有效期内却**拿不到权益**。
+    #[test]
+    fn test_effective_binding() {
+        let me = "c96e3b62-9e84-49f3-86a9-17226cc80411";
+        let gone = "5391ad37-8043-4d8e-91ec-01ea3286d9c5";
+
+        // 🔴 核心：绑定指向**已注销**账号 ⇒ 归一化成「无绑定」⇒ 允许重新认领
+        assert_eq!(
+            effective_binding(Some(gone), me, false),
+            None,
+            "绑定目标已不存在 ⇒ 必须放行，否则「注销后重登」的用户永远拿不到权益"
+        );
+
+        // 🔴🔴 反向（防串号防线，**不能被这次改动动摇**）：
+        //      绑定指向**另一个活跃**账号 ⇒ 原样保留 ⇒ 下游仍拒绝
+        assert_eq!(
+            effective_binding(Some(gone), me, true),
+            Some(gone),
+            "活跃账号的绑定必须保留 —— 否则串号防线失守"
+        );
+        assert_eq!(
+            account_binding_conflict(effective_binding(Some(gone), me, true), me),
+            Some(gone),
+            "端到端：活跃绑定 ⇒ 最终仍冲突"
+        );
+        assert_eq!(
+            account_binding_conflict(effective_binding(Some(gone), me, false), me),
+            None,
+            "端到端：孤儿绑定 ⇒ 最终放行"
+        );
+
+        // 绑定就是自己 ⇒ 原样（下游放行）；⚠️ **不得**因「查不到自己」而改变行为
+        assert_eq!(effective_binding(Some(me), me, true), Some(me));
+        assert_eq!(effective_binding(Some(me), me, false), Some(me));
+
+        // 无绑定 / 空绑定 ⇒ 原样（交给下游 `account_binding_conflict`）
+        assert_eq!(effective_binding(None, me, true), None);
+        assert_eq!(effective_binding(Some(""), me, false), Some(""));
+        assert_eq!(effective_binding(Some("   "), me, false), Some("   "));
+
+        // 大小写差异仍视为「自己」
+        let upper = me.to_uppercase();
+        assert_eq!(
+            effective_binding(Some(&upper), me, false),
+            Some(upper.as_str())
+        );
     }
 
     #[test]

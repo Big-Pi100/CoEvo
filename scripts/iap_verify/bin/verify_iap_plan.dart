@@ -1590,5 +1590,106 @@ void main() {
     check('🔴 降级说明也要提「云端可下载」', downgradeNotice().contains('下载'));
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // ⑱ 🔴 「恢复购买」的结果判定必须与 UI 的「订阅中」**同源**
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // 白哥 2026-10-13 实测：**注销账号 → 重新 Apple 登录** →
+  // 点恢复购买**显示「已恢复」**，但订阅状态**仍是未订阅**。
+  //
+  // 根因：`restore()` 判 `_snapshot.entitlement == active`（**不过滤归属**），
+  // 而 UI 走 `subscriptionActiveNow`（**过滤归属**）⇒ **两套口径**。
+  // Apple 重放的交易上写着**已注销的旧 userId**（`appAccountToken` 由 Apple 签，改不掉）
+  // ⇒ 「有交易、但不属于你」正好卡在两套口径之间。
+  //
+  // 🔴 证伪方式
+  // · 把 `judgeRestoreOutcome` 里的归属过滤删掉 ⇒ ⑱-2 / ⑱-3 必红
+  // · 把 `restore()` 改回内联判定 ⇒ ⑱-8 或 ⑱-9 必红
+  {
+    const me = 'u-me';
+    const other = 'u-other';
+
+    check(
+        '⑱-1 有效 + 归属=当前账号 ⇒ restored',
+        judgeRestoreOutcome(
+              entitlement: IapEntitlementStatus.active,
+              ownerUserId: me,
+              currentUserId: me,
+            ) ==
+            RestoreOutcome.restored);
+
+    check(
+        '⑱-2 🔴 有效但归属=**另一个活跃账号** ⇒ notFound（不得谎报已恢复）',
+        judgeRestoreOutcome(
+              entitlement: IapEntitlementStatus.active,
+              ownerUserId: other,
+              currentUserId: me,
+            ) ==
+            RestoreOutcome.notFound,
+        '这条正是「注销后重登」的形状：交易仍写着旧账号 ⇒ 提示必须与界面一致');
+
+    check(
+        '⑱-3 🔴 有效但归属=**已注销的旧账号** ⇒ notFound',
+        judgeRestoreOutcome(
+              entitlement: IapEntitlementStatus.active,
+              ownerUserId: '5391ad37-8043-4d8e-91ec-01ea3286d9c5',
+              currentUserId: me,
+            ) ==
+            RestoreOutcome.notFound,
+        '⚠️ 端侧**无法**判断旧账号是否已注销 ⇒ 仍算 notFound；'
+            '权益由**服务端认领后回传**（届时 applyServerExpiry 把归属改写成本账号）');
+
+    check(
+        '⑱-4 已过期 ⇒ notFound',
+        judgeRestoreOutcome(
+              entitlement: IapEntitlementStatus.expired,
+              ownerUserId: me,
+              currentUserId: me,
+            ) ==
+            RestoreOutcome.notFound);
+
+    check(
+        '⑱-5 从未购买 ⇒ notFound',
+        judgeRestoreOutcome(
+              entitlement: IapEntitlementStatus.none,
+              ownerUserId: null,
+              currentUserId: me,
+            ) ==
+            RestoreOutcome.notFound);
+
+    check(
+        '⑱-6 无绑定 + 已登录 ⇒ notFound（沿用「订阅必须登录」口径）',
+        judgeRestoreOutcome(
+              entitlement: IapEntitlementStatus.active,
+              ownerUserId: null,
+              currentUserId: me,
+            ) ==
+            RestoreOutcome.notFound);
+
+    // ⚠️ 期望值**独立核对过** `iapEntitlementBelongsToAccount` 的实现：
+    //    `ownerUserId == null ⇒ false`（无绑定一律不算，2026-10-12 定案）
+    //    —— 所以这里必须是 notFound，**不是** restored。（首版差点写反 ⇒ 假绿）
+    check(
+        '⑱-7 无绑定 + 未登录 ⇒ notFound（与 ⑯ 组真值表一致）',
+        judgeRestoreOutcome(
+              entitlement: IapEntitlementStatus.active,
+              ownerUserId: null,
+              currentUserId: null,
+            ) ==
+            RestoreOutcome.notFound,
+        '2026-10-12 定案「订阅必须登录」后，本机权益那一格已作废');
+
+    // ── 接线：防「函数写了没人调」──
+    final iapSvcSrc = codeOnly(readApp('services/iap_service.dart'));
+    check('⑱-8 🔴 `restore()` 必须走 `judgeRestoreOutcome`（唯一判据）',
+        iapSvcSrc.contains('judgeRestoreOutcome('),
+        '不接 ⇒ 口径又变回两套');
+    check(
+        '⑱-9 🔴 旧的内联判定**不得复活**（反向断言，对重构免疫）',
+        !iapSvcSrc.contains(
+            'return _snapshot.entitlement == IapEntitlementStatus.active'),
+        '复活 ⇒ 「提示已恢复 + 显示未订阅」会再次出现');
+  }
+
   _report();
 }
