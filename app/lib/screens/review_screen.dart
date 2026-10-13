@@ -294,8 +294,24 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               child: RefreshIndicator(
                 onRefresh: () => _pullToRefresh(dueOnly),
                 child: list.when(
-                  // 首次加载 → **什么都不画**（画空状态会在有词时先闪一下「还没有生词」，是谎报）
-                  loading: () => const SizedBox.shrink(),
+                  // 🔴 2026-10-13 改（白哥反馈「复习页为空时没有任何引导文字」）。
+                  //
+                  // 原实现是 `SizedBox.shrink()`（**完全空白**），判据是
+                  // 「画空状态会在有词时先闪一下『还没有生词』= 谎报」——
+                  // 那判断本身**没错**，但代价是**加载期一片空白**：
+                  // 用户分不清「在加载」还是「页面坏了」，而这段恰恰是
+                  // **换账号 / 首次从云端拉数据**时最长的一段（白哥正是这么撞上的）。
+                  //
+                  // ✅ 改为与**书架页同款**（`book_library_screen.dart:96` 逐字一致）：
+                  //    **转圈**。它既不谎报（没写「没有词」），也不是空白。
+                  // 📌 判据：**避免谎报的正确做法是「说中性的话」，不是「什么都不说」**。
+                  loading: () => const Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
                   // 读失败 → 给**准确**的话，不冒充「还没有生词」
                   error: (e, st) => _alwaysScrollable(const _Unavailable()),
                   data: (rows) => rows.isEmpty
@@ -923,18 +939,47 @@ class _EmptyState extends StatelessWidget {
     final t = CoEvoTokensExt.of(context);
 
     if (filtered) {
+      // 🔴 2026-10-13（白哥反馈）：原为**一行 13px 小字**（无图标、无标题）。
+      //
+      // 真机上读起来像「页面空了」—— 用户**不会**意识到只是筛选条件挡住了词，
+      // 第一反应是「我的生词没了」。
+      // ✅ 改为与**书架空态同构**的形态：图标 + 标题 + 说明。
+      // 📌 判据沿用 `book_library_screen._emptyState` 的原话：
+      //    **空态「必须给『下一步做什么』，不是一个空页面」** ——
+      //    筛选态尤其需要，因为它**长得像词丢了**。
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            '没有符合条件的词。\n换个排序、或关掉「已到期」筛选看看。',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontFamily: CoFonts.uiSans,
-              fontSize: 13,
-              height: 1.7,
-              color: Color(t.ink2.argb32),
-            ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(
+              horizontal: CoSpacing.xxl, vertical: CoSpacing.xl),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.filter_alt_off_outlined,
+                  size: 44, color: Color(t.ink3.argb32)),
+              const SizedBox(height: CoSpacing.lg),
+              Text(
+                '没有符合条件的词',
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: Color(t.ink.argb32),
+                ),
+              ),
+              const SizedBox(height: CoSpacing.sm),
+              Text(
+                // 🔑 「你的生词都还在」是第一句，不是修饰 ——
+                //    它直接消掉「词没了」的恐慌，再教下一步怎么找回来。
+                '你的生词都还在。\n换个排序、或关掉「已到期」筛选看看。',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 13,
+                  height: 1.6,
+                  color: Color(t.ink3.argb32),
+                ),
+              ),
+            ],
           ),
         ),
       );
