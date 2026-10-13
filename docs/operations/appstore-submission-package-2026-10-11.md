@@ -17,7 +17,7 @@
 
 | # | 待办 | 谁做 | 核实状态 |
 |---|---|---|---|
-| **1** | **`/support` 页面部署**（§一 技术支持 URL）| **我**（一条命令）| 🔴 实测 **404**（`/privacy` 200）⇒ 尚未部署<br>⚠️ 未部署时 ASC 里可先用 `/privacy` 顶上（能过审）|
+| ~~**1**~~ | ~~`/support` 页面部署~~（§一 技术支持 URL）| ~~我~~ | ✅ **2026-10-13 已部署**：HTTP **200** · 10442 字节 · 0 处待填占位<br>⇒ ASC 的「技术支持 URL」直接填 `https://api.keyievolution.fun/support` |
 | **2** | **ASC 订阅显示名**改 `记住一切 专业版` | **你**（ASC）| ⏳ 仍是旧名「记忆之书 pro」（§二 有 Apple 弹窗原文为证）<br>⚠️ 价格 ¥6/¥58 **是对的，别动** |
 | **3** | **C 项：注销撤销 Apple 授权** | 你决策 → 我实现 | 🟠 **未实现**（§十；⚠️ **有时效性**，越晚做越没意义）|
 | 4 | §一 描述 / 关键词 / 推广文本 | 你过目 | ⏳ 均为 `【草稿】`，文案已核对与实态一致 |
@@ -43,7 +43,7 @@
 | **主要语言** | 简体中文 | 中国区 |
 | **隐私政策 URL** | `https://api.keyievolution.fun/privacy` | `iap_plan.dart:519` · **已上线** |
 | **服务条款 URL** | `https://api.keyievolution.fun/terms` | `:522` · **已上线** |
-| **技术支持 URL** | `https://api.keyievolution.fun/support` —— 🆕 **页面已做好**（`docs/legal/support.md` → `build/legal/support.html` + 发布脚本已加 nginx location）<br>⏳ **待部署**（一条命令）；🔴 部署前**可先用** `https://api.keyievolution.fun/privacy` 顶上（能过审）| 2026-10-12 |
+| **技术支持 URL** | ✅ `https://api.keyievolution.fun/support` —— **2026-10-13 已上线**（实测 HTTP 200 · 10442 字节 · 0 处待填占位）| 2026-10-13 |
 | **联系邮箱** | `support@keyievolution.fun` | 项目既有 |
 | **版权** | `© 2026 白旭`（上限 200 字符；**个人主体** ⇒ 用本人姓名）| 2026-10-12 |
 | **主类别** | **工具**（Utilities）—— 🔴 **不要选「教育」，也不要选「图书」**（两者都会触发备案的前置审批；且须与备案「应用类型 = 生活-工具」一致）| 白哥 10-12 定 |

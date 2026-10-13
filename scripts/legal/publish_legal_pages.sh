@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════════════════
-# CoEvo 法律文本页 · 部署到生产（api.keyievolution.fun/privacy · /terms）
+# CoEvo 法律文本页 · 部署到生产（api.keyievolution.fun/privacy · /terms · /support）
 # ══════════════════════════════════════════════════════════════════════════
 #
 # 🔴 使用前提：**已获得白哥明确批准**（项目铁律：动生产必须先请示，含静态文件）。
@@ -24,7 +24,7 @@
 #   ② 上传到 /var/www/coevo-legal/
 #   ③ **幂等**插入 nginx location（带起止标记，重复跑不会重复插入）
 #   ④ nginx -t 校验 → reload（**校验失败自动从备份恢复**）
-#   ⑤ 公网验证两个 URL（HTTP 200 + 内容检查 + **无残留占位符**）
+#   ⑤ 公网验证**三个** URL（HTTP 200 + 内容检查 + **无残留占位符**）
 #
 # 🔴 本脚本的三条安全约束（都是本项目踩过的坑）：
 #
@@ -232,9 +232,17 @@ fi
 echo
 
 # ── ⑤ 公网验证 ───────────────────────────────────────────────────────────
+#
+# 🔴 2026-10-13 修：原先 `for path in privacy terms` —— **漏了 `/support`**。
+#    而 ③ 步**已经**给它插了 nginx location ⇒ 结果是
+#    「部署脚本报告成功，但那个页面**从没被验证过**」。
+#    📌 判据：**「加了什么」与「验了什么」必须一一对应** ——
+#       新增站点而忘了加验证，是本项目「静默失效」的又一入口。
+#       （本次正是靠手工 curl 才发现 `/support` 没被验；它当时**确实**是好的，
+#        但那是运气，不是流程。）
 echo "▶ ⑤ 公网验证"
 FAIL=0
-for path in privacy terms; do
+for path in privacy terms support; do
   url="$PUBLIC_BASE/$path"
   code=$(curl -sS -o /tmp/legal_$path.html -w "%{http_code}" --max-time 20 "$url" || echo 000)
   size=$(wc -c < /tmp/legal_$path.html 2>/dev/null | tr -d ' ' || echo 0)
@@ -255,6 +263,8 @@ done
 # 内容抽查：能读到正文关键串（防止「200 但是空页/错误页」）
 grep -q '隐私政策' /tmp/legal_privacy.html || { echo "  🔴 privacy 页面内容异常"; FAIL=1; }
 grep -q '用户协议' /tmp/legal_terms.html   || { echo "  🔴 terms 页面内容异常"; FAIL=1; }
+# 🆕 2026-10-13：support 页也要抽查（Apple 上架必填的「技术支持网址」）
+grep -q '技术支持' /tmp/legal_support.html || { echo "  🔴 support 页面内容异常"; FAIL=1; }
 
 # 顺带确认**邻居站点**仍然正常（共享机器，只加不改）
 echo
@@ -264,12 +274,15 @@ remote "for s in coevo vibedollar-pay mailproxy nginx; do printf '    %-16s %s\n
 echo
 if [[ "$FAIL" == "0" ]]; then
   echo "════════════════════════════════════════════════════════"
-  echo " ✅ 部署完成"
-  echo "    $PUBLIC_BASE/privacy"
-  echo "    $PUBLIC_BASE/terms"
+  echo " ✅ 部署完成（三页均已公网验证）"
+  echo "    $PUBLIC_BASE/privacy   ← 隐私政策"
+  echo "    $PUBLIC_BASE/terms     ← 用户协议"
+  echo "    $PUBLIC_BASE/support   ← 技术支持（🍎 ASC 必填）"
   echo
-  echo " 📌 下一步：把这两个 URL 填进 app/lib/services/iap_plan.dart 的"
-  echo "    kPrivacyPolicyUrl / kTermsOfServiceUrl（订阅页与「我的」页会用）"
+  echo " 📌 下一步："
+  echo "    · 前两个 URL 填进 app/lib/services/iap_plan.dart 的"
+  echo "      kPrivacyPolicyUrl / kTermsOfServiceUrl（订阅页与「我的」页会用）"
+  echo "    · /support 填进 ASC 的「技术支持 URL」"
   echo "════════════════════════════════════════════════════════"
 else
   echo "🔴 有检查未通过（见上）"
