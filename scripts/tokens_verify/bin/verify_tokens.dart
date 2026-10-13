@@ -19,6 +19,7 @@
 import 'dart:io';
 
 import '../../../app/lib/theme/coevo_tokens.dart';
+import '../../../app/lib/services/theme_settings.dart';
 int _pass = 0;
 int _fail = 0;
 final List<String> _failures = [];
@@ -813,6 +814,54 @@ void _s9Wiring() {
   check('provider 有 followSystem', prov.contains('followSystem'));
   check('持久化 = 档位 + 开关 两个字段',
       prov.contains("'reading_theme'") && prov.contains("'follow_system'"));
+
+  // ⑤-b 🆕 2026-10-13：**手动选档 ⇒ 自动关闭「跟随系统」**（白哥真机实测）
+  //
+  // 🔴 事故：开着「跟随系统」时去点「夜」，**主题色不变**。
+  //    根因：生效判据是 `followSystem ? ThemeMode.system : 按档位`（`app.dart`）
+  //    ⇒ 档位被**静默绕过**（浅色环境下还被 `lightTheme` 回落成「墨」）。
+  //    而字号等其它设置不走这条判据 ⇒ 表现为「字体变了、主题没变」，更显诡异。
+  // ✅ 修法：手动选档 = 一次明确的覆盖意图 ⇒ 顺手关掉开关。
+  // 📌 本例是「**把语义下沉到可断言层**」的收益：`ThemeSettings` 拆到
+  //    `services/theme_settings.dart`（零 Flutter 依赖）后，这条语义才测得动。
+  final defTheme = const ThemeSettings();
+  check('默认 = 墨 + 跟随系统（spec §二）',
+      defTheme.theme == ReadingTheme.ink && defTheme.followSystem);
+
+  // ── ① 手动选档 ⇒ 关掉「跟随系统」（白哥 2026-10-13 定的行为）──
+  final pickedNight = defTheme.manualTheme(ReadingTheme.night);
+  check('🔴 手动选「夜」⇒ 跟随系统**自动关闭**', !pickedNight.followSystem);
+  check('手动选「夜」⇒ 档位就是「夜」', pickedNight.theme == ReadingTheme.night);
+  final pickedInk =
+      const ThemeSettings(theme: ReadingTheme.grid, followSystem: true)
+          .manualTheme(ReadingTheme.ink);
+  check('手动选档与「当前是哪一档」无关（开关一律关）',
+      !pickedInk.followSystem && pickedInk.theme == ReadingTheme.ink);
+
+  // ── ② 生效判据（🔴 正是原 bug 的根源）──
+  check(
+      '✅ 选「夜」+ 跟随已关 ⇒ 生效 = **深色**\n'
+      '       （旧实现这里是 system ⇒ 主题色纹丝不动）',
+      pickedNight.intent == ThemeIntent.dark);
+  check('✅ 选「墨」+ 跟随已关 ⇒ 生效 = 浅色', pickedInk.intent == ThemeIntent.light);
+  check('跟随**开着** ⇒ 交给系统（哪怕档位是夜）',
+      defTheme.copyWith(theme: ReadingTheme.night).intent ==
+          ThemeIntent.followSystem);
+
+  // ── ③ 原有语义不变 ──
+  check('浅色槽不变：档位是「夜」时回落「墨」（供 `MaterialApp.theme`）',
+      defTheme.copyWith(theme: ReadingTheme.night).lightTheme ==
+          ReadingTheme.ink);
+  check('仍可**手动**重新打开跟随系统（开关本身没被锁死）',
+      pickedNight.copyWith(followSystem: true).followSystem);
+
+  // 🔑 接线（防「写了没人用」）——
+  //    ① provider 必须真的调 `manualTheme`
+  //    ② app.dart 必须走 `intent`（否则判据又回到不可测的内联三元式里）
+  check('🔴 `setTheme` 走 `ThemeSettings.manualTheme`（唯一判定点）',
+      prov.contains('state.manualTheme('));
+  check('🔴 `app.dart` 的 themeMode 走 `settings.intent`（判据不内联）',
+      app.contains('settings.intent'));
 
   // ⑥ 设置页：入口跟着换
   final prof = src('screens/profile_screen.dart');

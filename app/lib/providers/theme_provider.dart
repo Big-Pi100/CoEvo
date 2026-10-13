@@ -4,44 +4,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/coevo_tokens.dart';
 
-/// 主题设置。
-///
-/// 🔑 spec §二：**持久化只需两个字段** —— 档位 + 跟随系统开关。
-/// 「跟随系统」是**开关，不是第四个主题**：
-/// - 浅色环境 → 用户选的浅色档（墨 / 格）
-/// - 深色环境 → [ReadingTheme.night]
-///
-/// > 旧实现是 4 值枚举 `{system, light, dark, duolingo}` + 默认 `duolingo`，
-/// > 已被本模型整体取代（2026-09-27）。旧偏好值不做迁移 —— 直接以
-/// > 「墨 + 跟随系统」为默认起点。
-class ThemeSettings {
-  /// 用户选的档位。
-  ///
-  /// ⚠️ 当 [followSystem] 为 true 时，它表达的是「**浅色环境下**用哪一档」——
-  /// 取 [lightTheme] 而不是直接用它。
-  final ReadingTheme theme;
-
-  /// 跟随系统明暗自动切换。
-  final bool followSystem;
-
-  const ThemeSettings({
-    this.theme = ReadingTheme.ink,
-    this.followSystem = true,
-  });
-
-  /// 浅色环境实际生效的档位。
-  ///
-  /// 🔑 「夜」不是浅色档 —— 用户选了夜又开着跟随系统时，白天要回落到「墨」，
-  /// 否则「跟着系统走」在浅色环境下会失效（永远停在深底）。
-  ReadingTheme get lightTheme =>
-      theme == ReadingTheme.night ? ReadingTheme.ink : theme;
-
-  ThemeSettings copyWith({ReadingTheme? theme, bool? followSystem}) =>
-      ThemeSettings(
-        theme: theme ?? this.theme,
-        followSystem: followSystem ?? this.followSystem,
-      );
-}
+// 🔴 2026-10-13：`ThemeSettings`（纯数据 + 纯语义）**已拆到
+//    `services/theme_settings.dart`**。
+//
+//    理由：本文件带 `SharedPreferences` + `StateNotifier` ⇒ 本机跑不了断言；
+//    而「手动选档 ⇒ 关闭跟随系统」这条**语义**必须可验证。
+//    拆过去后零 Flutter 依赖 ⇒ `dart run` 能做完整类型检查 + 行为断言。
+//    📌 判据：**把能验证的尽量下沉**（同 `services/reading_settings.dart` 的模式）。
+import '../services/theme_settings.dart';
 
 /// 主题状态管理器（读写 `SharedPreferences`）。
 class ThemeNotifier extends StateNotifier<ThemeSettings> {
@@ -76,9 +46,17 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
     }
   }
 
+  /// 切档位 —— 🔴 **手动选档会顺手关闭「跟随系统」**（2026-10-13 白哥定）。
+  ///
+  /// 语义与完整理由见 [ThemeSettings.manualTheme]（那是**唯一的判定点**）；
+  /// 这里只负责调它 + 落盘。
+  ///
+  /// ⚠️ 早退条件**不能**只写 `state.theme == theme`：
+  ///    用户点「墨」时若正开着「跟随系统」，也必须把开关关掉
+  ///    （他表达的是「我要墨」）⇒ **两个条件都满足**才无事可做。
   Future<void> setTheme(ReadingTheme theme) async {
-    if (state.theme == theme) return;
-    state = state.copyWith(theme: theme);
+    if (state.theme == theme && !state.followSystem) return;
+    state = state.manualTheme(theme);
     await _persist();
   }
 

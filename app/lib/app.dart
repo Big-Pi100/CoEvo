@@ -10,6 +10,7 @@ import 'theme/coevo_tokens.dart';
 import 'theme/clay.dart';
 import 'theme/tokens_ext.dart';
 import 'theme/theme_builder.dart';
+import 'constants/app_info.dart';
 import 'screens/achievements_screen.dart';
 import 'screens/about_screen.dart';
 import 'screens/aggregate_page_screen.dart';
@@ -30,6 +31,7 @@ import 'providers/sync_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/iap_plan.dart';
 import 'services/iap_service.dart';
+import 'services/theme_settings.dart';
 import 'widgets/achievement_unlock_overlay.dart';
 
 final goRouter = GoRouter(
@@ -925,15 +927,26 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp>
     final darkTheme = buildTheme(nightTokens);
 
     return MaterialApp.router(
-      title: '刻意进化',
+      // 🔴 2026-10-13：原为硬编码 `'刻意进化'`（更早的名字）——
+      //    2026-10-11/10-12 两次改名（→ 记忆之书 → 记住一切）时**漏掉了这里**。
+      //    ⚠️ 它不是死代码：`MaterialApp.title` 是 **Android 最近任务列表**里的
+      //       显示名（iOS 用 `CFBundleDisplayName`，所以真机不容易发现）。
+      //    ⇒ 改走全库唯一事实源 `kCoEvoName`（与「关于」页同一个常量）。
+      //    📌 判据：**「改名」是一组动作** —— 漏一处不会报错，只会静默不一致。
+      title: kCoEvoName,
       debugShowCheckedModeBanner: false,
       theme: lightTheme,
       darkTheme: darkTheme,
-      themeMode: settings.followSystem
-          ? ThemeMode.system
-          : (settings.theme == ReadingTheme.night
-              ? ThemeMode.dark
-              : ThemeMode.light),
+      // 🔑 主题生效判据走**纯逻辑层** `ThemeSettings.intent`（唯一判定点）：
+      //    这样「选夜间就是夜间」这类**语义**能被 `tokens_verify` 断言，
+      //    而不是埋在 Flutter 文件的三元表达式里（本机测不到）。
+      //    ⚠️ 2026-10-13 前这里是一条内联三元式，它正是
+      //      「开着跟随系统时点『夜』主题色不变」那个 bug 的根源判据。
+      themeMode: switch (settings.intent) {
+        ThemeIntent.followSystem => ThemeMode.system,
+        ThemeIntent.dark => ThemeMode.dark,
+        ThemeIntent.light => ThemeMode.light,
+      },
       // 🔑 主题切换动效（spec §3.8）：280ms + `cubic-bezier(.4,0,.2,1)`。
       //    Flutter 默认是 200ms `Curves.linear` —— 比 spec 又短又生硬。
       //    `Curves.fastOutSlowIn` 的定义**正是** `Cubic(0.4, 0.0, 0.2, 1.0)`，
