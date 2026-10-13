@@ -227,6 +227,40 @@ void main() {
       RegExp(r'_alwaysScrollable\(\s*_EmptyState\(').hasMatch(screen),
       '不包 ⇒ 内容挤在顶部，且空态无法下拉刷新（10-10 的需求）');
 
+  // ── ⑧ 🆕 2026-10-13（白哥第二报）：空态「文字有了，但**不居中**」──────────
+  //
+  // # 根因（**不在空态自己身上**）
+  //
+  // `_ShellScaffold` 开了 `extendBody: true` ⇒ 列表区一直延伸到 **tabbar 之后**
+  // ⇒ 空态按「区域高度」居中时，视觉重心落到 tabbar 后面 ⇒ **看起来偏低**。
+  // 📌 不是「没居中」，是**居中在了错的地方**（居中的区域比看得见的区域大）。
+  //
+  // # 🔑 笔记页早就解决过同一个问题
+  //
+  // `highlights_screen` 的空态/错误态用 `Padding(fromLTRB(40, 0, 40, 60))`
+  // 把内容**上移半个补偿量**。白哥原话：「这个问题在笔记页面也出现过」——
+  // 而复习页当时没跟上 ⇒ **同一个问题、两页各写一个数字**，迟早再撞一次。
+  // ⇒ 收成 `CoSpacing.emptyStateBottomInset`（**一处权威**）。
+  //
+  // # 🔴 证伪方式
+  // · 去掉复习页空态的底部补偿 ⇒ ⑧-1 必红
+  // · 把笔记页那份改回硬写的 `60` ⇒ ⑧-3 必红
+  final spacingSrc = _strip(_read('app/lib/theme/co_spacing.dart'));
+  final notesSrc = _strip(_read('app/lib/screens/highlights_screen.dart'));
+  check('⑧-1 🔴 复习页空态必须用 `CoSpacing.emptyStateBottomInset`（否则居中偏低）',
+      screen.contains('CoSpacing.emptyStateBottomInset'),
+      '这是「文字有了但不居中」那次事故的直接防线');
+  check('⑧-2 🔴 该常量**只定义一处**（两个页面都不许再自己定义）',
+      spacingSrc.contains('emptyStateBottomInset') &&
+          !screen.contains('emptyStateBottomInset =') &&
+          !notesSrc.contains('emptyStateBottomInset ='),
+      '在别处再定义一份 ⇒ 两个数字必然漂');
+  check('⑧-3 🔴 笔记页与复习页引用**同一个**常量，且旧字面量不得复活',
+      notesSrc.contains('CoSpacing.emptyStateBottomInset') &&
+          !notesSrc.contains('40, 0, 40, 60') &&
+          !screen.contains('40, 0, 40, 60'),
+      '两页各硬写一个 60 正是这次复发的原因（反向断言，对重构免疫）');
+
   print('');
   print('═' * 74);
   if (_failures.isEmpty) {

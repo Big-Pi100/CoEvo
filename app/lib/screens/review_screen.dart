@@ -1038,12 +1038,29 @@ class _EmptyState extends StatelessWidget {
             ),
           ];
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-          horizontal: CoSpacing.xxl, vertical: CoSpacing.xl),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: children,
+    return Center(
+      child: Padding(
+        // 🔴 2026-10-13（白哥第二报）：**版式照笔记页**（`highlights_screen`
+        //    `_EmptyState`）——`Center` + `Padding(fromLTRB(40, 0, 40, 底部补偿))`
+        //    + `Column(mainAxisSize: min)`。
+        //
+        // # 为什么不能「上下对称 padding + 填满高度的 Column」
+        //
+        // 上一版写成 `Padding(vertical: 20) + Column(mainAxisAlignment: center)`，
+        // 结果是**文字有、但整体偏低**。根因不在本组件，而在**所在区域比看得见的区域大**：
+        // `_ShellScaffold` 开了 `extendBody: true` ⇒ 列表区延伸到 **tabbar 之后**
+        // ⇒ 按区域高度居中 ⇒ 视觉重心落到 tabbar 后面。
+        // 📌 不是「没居中」，是**居中在了错的地方**。
+        //
+        // 🔑 所以要用 [`CoSpacing.emptyStateBottomInset`] 把内容**整体上移半个补偿量**。
+        //    笔记页早就这么干了（白哥原话：「这个问题在笔记页面也出现过」）——
+        //    两页解决的是同一个问题 ⇒ **数字只能有一处权威**，别各写一个。
+        padding: const EdgeInsets.fromLTRB(
+            40, 0, 40, CoSpacing.emptyStateBottomInset),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: children,
+        ),
       ),
     );
   }
@@ -1058,7 +1075,10 @@ class _Unavailable extends StatelessWidget {
     final t = CoEvoTokensExt.of(context);
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        // 与空态同一版式（含底部补偿，见 `CoSpacing.emptyStateBottomInset`）——
+        // 错误态和空态在同一个区域里，不补偿就会同样偏低。
+        padding: const EdgeInsets.fromLTRB(
+            40, 0, 40, CoSpacing.emptyStateBottomInset),
         child: Text(
           '生词暂时读不出来，重启应用可再试。',
           textAlign: TextAlign.center,

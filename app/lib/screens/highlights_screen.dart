@@ -40,6 +40,7 @@ import '../services/highlight_display.dart';
 import '../services/highlight_repository.dart';
 import '../services/highlight_id.dart' show highlightWordId;
 import '../theme/clay.dart';
+import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
 import '../widgets/note_dialog.dart';
@@ -466,7 +467,8 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(40, 0, 40, 60),
+        padding: const EdgeInsets.fromLTRB(
+            40, 0, 40, CoSpacing.emptyStateBottomInset),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -520,7 +522,8 @@ class _Unavailable extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(40, 0, 40, 60),
+        padding: const EdgeInsets.fromLTRB(
+            40, 0, 40, CoSpacing.emptyStateBottomInset),
         child: Text(
           '暂时读不到划线记录。\n若一直这样，请重启 App 再试。',
           textAlign: TextAlign.center,
