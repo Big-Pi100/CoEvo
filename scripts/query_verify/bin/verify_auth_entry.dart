@@ -678,6 +678,95 @@ void main() {
         '入口上不留说明 ⇒ 弹窗里必须有');
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // ⑤ 🆕 2026-10-13：Apple 登录带 `authorizationCode` ↔ 注销时撤销 Apple 授权
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // # 背景（Apple 审核 5.1.1(v)）
+  //
+  // 用过 Sign in with Apple 的账号，**注销时必须同时向 Apple 撤销授权**。
+  // 撤销要 `refresh_token`，而它只能由 `authorizationCode` 换得 ——
+  // 而后者**只在登录那一刻由 Apple 返回**、且**只能用一次**、约 5 分钟过期。
+  //
+  // # 🔴 为什么必须用断言守这条链路
+  //
+  // 这条链有**三段**，跨语言（Dart ↔ Rust）、跨文件，彼此**没有编译期联系**：
+  //   ① 端侧**取并传** `authorizationCode`
+  //   ② 后端登录时**换并存** refresh token
+  //   ③ 注销时**取出并撤销**
+  // 断开任一段都**不报错、不崩**，只表现为「功能看起来做了、实际撤不了」
+  // —— 正是本项目最警惕的**静默失效**。
+  //
+  // ⚠️ 端侧那两处本机验不了（`auth_dialog` 依赖 iOS 插件运行时），
+  //    ⇒ 只能靠**词法断言**锁定「取值 + 传参」这两个形状。
+  // 🔑 证伪：把 `authorizationCode: credential.authorizationCode` 删掉
+  //    ⇒ 「Apple 登录把 authorizationCode 交给 provider」必红。
+  {
+    final dialogCode = stripComments(
+        File('../../app/lib/widgets/auth_dialog.dart').readAsStringSync());
+    final clientCode = stripComments(
+        File('../../app/lib/api/auth_client.dart').readAsStringSync());
+    final routesRs = implOnly(stripComments(
+        File('../../backend/crates/api_server/src/routes.rs').readAsStringSync()));
+    final purgeRs = implOnly(stripComments(
+        File('../../backend/crates/api_server/src/user_purge.rs')
+            .readAsStringSync()));
+    final appleRs = implOnly(stripComments(
+        File('../../backend/crates/api_server/src/apple_auth.rs')
+            .readAsStringSync()));
+
+    print('');
+    print('── ⑤ Apple 登录带 authorizationCode ↔ 注销撤销 Apple 授权 ──');
+
+    // ── ① 端侧：取并传 ──
+    check('🆕 Apple 登录把 `authorizationCode` 一并交给 provider',
+        dialogCode.contains('authorizationCode: credential.authorizationCode'),
+        '不取 ⇒ 那笔 code 直接作废（只能用一次），该用户永久撤不了授权');
+    check('🆕 请求体字段名 `authorization_code`（两端口径必须一致）',
+        clientCode.contains("'authorization_code'"),
+        '字段名写错 ⇒ 后端永远收不到（静默，登录仍成功）');
+    // 🔑 反向：不得把**空串**也塞进 body —— 那会让后端白跑一次换 token 请求。
+    check('🆕 只在真拿到 code 时才带该字段（不塞空串）',
+        clientCode.contains('authorizationCode.isNotEmpty'));
+
+    // ── ② 后端：收下并换 token ──
+    check('🆕 后端 `AppleLoginInput` 收 `authorization_code`',
+        routesRs.contains('authorization_code'));
+    check('🔴 登录成功后**真的去换** refresh token（不只是收下一个字段）',
+        routesRs.contains('exchange_authorization_code'),
+        '收了不换 = 死参数');
+    check('🔴 换到的 token **落库**（否则注销时无从取出）',
+        routesRs.contains('store_refresh_token'));
+
+    // ── ③ 后端：注销时撤销 ──
+    // ⚠️ 用**调用点形状**（含实参）而不是函数名 —— 函数名在定义处也会命中，
+    //    那样「顺序」断言就成了「定义位置 vs 调用位置」，永远为真（假绿）。
+    const revokeCall = 'revoke_apple_authorization_best_effort(&uid).await';
+    check('🔴 注销流程调用撤销（Apple 5.1.1(v)）',
+        purgeRs.contains(revokeCall),
+        '漏了 ⇒ 用户注销后 Apple 侧仍记着这次授权');
+    check('🔴 撤销排在 `purge_user` **之前**（token 随 users 行一起被删）',
+        purgeRs.indexOf(revokeCall) > 0 &&
+            purgeRs.indexOf(revokeCall) < purgeRs.indexOf('purge_user(&conn'),
+        '反了 ⇒ 行已删、取不到 token，永远撤不了');
+
+    // ── 底层能力在位 ──
+    check('🆕 `revoke_refresh_token` 存在且指向 Apple 的 revoke 端点',
+        appleRs.contains('/auth/revoke'));
+    check('🆕 `exchange_authorization_code` 存在且指向 Apple 的 token 端点',
+        appleRs.contains('/auth/token'));
+    // 🔴 这条守「签名格式」：JWS 的 ES256 要求 **P-1363 定长（r+s，64 字节）**。
+    //    误用 ASN.1 DER 版本时**本地不报错**，Apple 一律回 `invalid_client`，
+    //    且**从错误信息里看不出是格式问题**（配 `apple_auth` 的单测一起守）。
+    check('🔴 `client_secret` 用 `ECDSA_P256_SHA256_FIXED_SIGNING`（不得误用 ASN.1 DER）',
+        appleRs.contains('ECDSA_P256_SHA256_FIXED_SIGNING') &&
+            !appleRs.contains('ASN1_SIGNING'),
+        '用 DER 版 ⇒ Apple 回 invalid_client，看不出原因');
+    // 🔴 refresh token 是**长期凭据** ⇒ 必须密文落库（明文 = 拿库就能长期冒充用户）
+    check('🔴 refresh token 密文落库（走 `encryption::encrypt`）',
+        appleRs.contains('encryption::encrypt'));
+  }
+
   _report();
 }
 

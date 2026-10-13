@@ -167,8 +167,12 @@ class _AuthDialogState extends ConsumerState<AuthDialog> {
   ///
   /// 🔑 身份完全由**设备上取得的 `identityToken`** 决定；provider 把它连同
   ///    「当前是否已登录」一起交给后端，由后端决定「绑定」还是「建号/登录」。
-  ///    ⚠️ 本方法**不传** `authorizationCode`（它只为「注销时撤销 Apple 授权」服务，
-  ///       本批不做；详见 `backend/crates/api_server/src/apple_auth.rs` 文件头）。
+  ///
+  /// 🆕 2026-10-13：**同时**把 `authorizationCode` 交给后端。
+  ///    它是一次性的（约 5 分钟过期），后端立刻用它换 `refresh_token` 存库 ——
+  ///    供「**注销时向 Apple 撤销授权**」用（Apple 审核 5.1.1(v)）。
+  ///    🔴 只在登录**这一刻**才有 ⇒ 这里不取，那个用户就**永久**撤不了授权。
+  ///    ⚠️ 它不影响登录本身：后端拿不到也只是记日志，登录照常成功。
   Future<void> _submitApple() async {
     setState(() {
       _isSubmitting = true;
@@ -190,7 +194,10 @@ class _AuthDialogState extends ConsumerState<AuthDialog> {
         if (mounted) setState(() => _isSubmitting = false);
         return;
       }
-      await ref.read(authProvider.notifier).appleLogin(identityToken);
+      await ref.read(authProvider.notifier).appleLogin(
+            identityToken,
+            authorizationCode: credential.authorizationCode,
+          );
       if (mounted) Navigator.of(context).pop(true);
     } on SignInWithAppleAuthorizationException catch (e) {
       // 🔑 用户**主动取消**不是错误 —— 静默收场，不弹「登录失败」

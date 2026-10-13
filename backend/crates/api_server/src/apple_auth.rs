@@ -15,12 +15,39 @@
 //! Verify that the time is earlier than the `exp` value」
 //! → `developer.apple.com/documentation/signinwithapple/verifying-a-user`
 //!
-//! # ⚠️ 本模块**有意不做**的两件事（如实标注）
+//! # 🆕 2026-10-13：注销时撤销 Apple 授权（原「有意不做」的第 2 条，现已实施）
+//!
+//! Apple 审核 5.1.1(v)：用户**删除账号**时，若该账号用过 Sign in with Apple，
+//! **必须同时向 Apple 撤销授权**（`POST https://appleid.apple.com/auth/revoke`）。
+//!
+//! ## 🔴 唯一的时机是「登录那一刻」
+//!
+//! 撤销需要 `refresh_token`，而它**只能由 `authorizationCode` 换得** ——
+//! 而 `authorizationCode` **只在用户登录成功那一刻由 Apple 返回**，事后拿不到、也补不了。
+//! ⇒ 必须在登录时**顺手存下来**（`users.apple_refresh_token`，AES-GCM 加密）。
+//!    **晚一天再补 = 那一天之前登录过的用户永久撤不了。**
+//!
+//! ## 三个动作
+//!
+//! | # | 时机 | 函数 |
+//! |---|---|---|
+//! | ① | 登录成功（客户端带了 code）| [`exchange_authorization_code`] → [`store_refresh_token`] |
+//! | ② | 用户注销 | [`revoke_refresh_token`]（**尽力而为**：失败**不得**阻断注销）|
+//! | ③ | 生成 `client_secret` | [`client_secret`]（`.p8` + Team ID + Key ID 签 ES256 JWT）|
+//!
+//! ## ⚠️ 三个易错点（都会表现为同一种 `invalid_client`，看不出病因）
+//!
+//! | 坑 | 说明 |
+//! |---|---|
+//! | `client_secret` 的签名必须是 **P-1363 的 `r + s`（64 字节）**，不是 ASN.1 DER | 用错格式 ⇒ 签名"成功"但 Apple 一律拒 |
+//! | `.p8` 必须是 **勾了 `Sign in with Apple` 的那把 Key** | 与 ASC API Key（出包上传）/ IAP Key（查购买）**互不通用** |
+//! | `authorizationCode` **只能用一次**、约 5 分钟过期 | ⇒ 「登录时存」是唯一解，不能攒着晚点换 |
+//!
+//! # ⚠️ 本模块**有意不做**的一件事（如实标注）
 //!
 //! | 事项 | 为什么不做 | 何时要补 |
 //! |---|---|---|
 //! | **nonce 校验** | 需要在「发 nonce」与「验 nonce」之间共享状态（防重放）。当前 `identityToken` 有效期仅约 10 分钟、且经 HTTPS 传输 | 若将来接入 Web 端（重放面变大）或出现可疑登录 |
-//! | **authorizationCode → refresh_token** | 它只为「注销时向 Apple 撤销授权」服务；而撤销还要求落库 refresh token + 生成 client_secret（`.p8`） | 若上架审核要求「注销须同时撤销 Apple 授权」——⚠️ **那时必须改本模块**：`authorizationCode` **只在登录那一刻存在**，事后补不了 |
 
 use std::sync::{Mutex, OnceLock};
 
@@ -53,6 +80,245 @@ pub fn apple_client_id() -> String {
         .ok()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_APPLE_CLIENT_ID.to_string())
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 注销撤销 Apple 授权所需：client_secret / 换 token / 撤销
+// ══════════════════════════════════════════════════════════════════════════
+
+/// Apple 的 token 端点（`authorization_code` → refresh token）。
+const APPLE_TOKEN_URL: &str = "https://appleid.apple.com/auth/token";
+/// Apple 的撤销端点。
+const APPLE_REVOKE_URL: &str = "https://appleid.apple.com/auth/revoke";
+
+/// `client_secret` 的有效期 —— Apple **硬上限 6 个月**（≈ 182.5 天）。
+///
+/// ⚠️ 超了 Apple 直接拒（`invalid_client`），而错误信息**不会**告诉你是有效期问题。
+/// 我们每次调用都现签（不缓存），所以这里给到上限即可。
+const CLIENT_SECRET_TTL_SECS: i64 = 15_777_000;
+
+/// 读一个**必需**的环境变量（空串视为未设置）。
+fn env_required(key: &str) -> Result<String, String> {
+    std::env::var(key)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| format!("缺少环境变量 {}（撤销 Apple 授权必需）", key))
+}
+
+/// 把 `.p8`（PKCS#8 PEM）解成 DER。
+///
+/// 🔑 只剥 `-----` 行、忽略空行 —— **不**假设 base64 的换行宽度
+///    （Apple 的 `.p8` 是 64 列，但任何宽度都应能解）。
+fn pem_pkcs8_der(pem: &str) -> Result<Vec<u8>, String> {
+    use base64::engine::general_purpose::STANDARD;
+    let body: String = pem
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with("-----"))
+        .collect();
+    if body.is_empty() {
+        return Err("Apple 私钥 PEM 为空".to_string());
+    }
+    STANDARD
+        .decode(body.as_bytes())
+        .map_err(|e| format!("Apple 私钥 PEM 解析失败: {}", e))
+}
+
+/// 生成 Apple 的 `client_secret`（一个 **ES256** 签名的 JWT）。
+///
+/// # 🔴 为什么必须用 `ECDSA_P256_SHA256_FIXED_SIGNING`
+///
+/// JWS 的 `ES256` 要求签名是 **IEEE P-1363 的 `r + s`（64 字节定长）**。
+/// ring 里另有 `..._ASN1_SIGNING`（DER 包装，长度可变）—— 用它签名**本地不会报错**，
+/// 但 Apple 一律回 `invalid_client`，且**从错误里看不出是格式问题**。
+///
+/// 📌 单测 `test_client_secret_is_verifiable_es256_jwt` 直接断言「签名长度 == 64」
+///    并用公钥真验签 —— 换错算法会立刻红。
+fn build_client_secret(
+    team_id: &str,
+    key_id: &str,
+    client_id: &str,
+    p8_pem: &str,
+    now: i64,
+) -> Result<String, String> {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use ring::rand::SystemRandom;
+    use ring::signature::{EcdsaKeyPair, ECDSA_P256_SHA256_FIXED_SIGNING};
+
+    let der = pem_pkcs8_der(p8_pem)?;
+    let rng = SystemRandom::new();
+    let kp = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &der, &rng)
+        .map_err(|e| format!("Apple 私钥不可用（.p8 格式或曲线不对）: {}", e))?;
+
+    let header = serde_json::json!({"alg": "ES256", "kid": key_id, "typ": "JWT"});
+    let claims = serde_json::json!({
+        "iss": team_id,
+        "iat": now,
+        "exp": now + CLIENT_SECRET_TTL_SECS,
+        // `aud` 对 client_secret 固定是 Apple，**不是** bundle id（别与 identityToken 的 aud 混）
+        "aud": APPLE_ISSUER,
+        "sub": client_id,
+    });
+
+    let h = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header).map_err(|e| e.to_string())?);
+    let p = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).map_err(|e| e.to_string())?);
+    let signing_input = format!("{}.{}", h, p);
+    let sig = kp
+        .sign(&rng, signing_input.as_bytes())
+        .map_err(|e| format!("client_secret 签名失败: {}", e))?;
+
+    Ok(format!(
+        "{}.{}",
+        signing_input,
+        URL_SAFE_NO_PAD.encode(sig.as_ref())
+    ))
+}
+
+/// 从环境读凭据并现签一个 `client_secret`。
+///
+/// 环境变量：`APPLE_TEAM_ID` · `APPLE_KEY_ID` · `APPLE_PRIVATE_KEY`（`.p8` 原文，可多行）。
+/// 🔴 必须是 **`Sign in with Apple` 专用的那把 Key** ——
+///    与 `IAP_*`（查购买）/ CI 的 ASC API Key **不能混用**。
+pub fn client_secret() -> Result<String, String> {
+    let team_id = env_required("APPLE_TEAM_ID")?;
+    let key_id = env_required("APPLE_KEY_ID")?;
+    let pem = env_required("APPLE_PRIVATE_KEY")?;
+    build_client_secret(
+        &team_id,
+        &key_id,
+        &apple_client_id(),
+        &pem,
+        chrono::Utc::now().timestamp(),
+    )
+}
+
+/// Apple token / revoke 端点的响应（只取我们关心的字段）。
+#[derive(Debug, Default, Deserialize)]
+struct AppleTokenResponse {
+    #[serde(default)]
+    refresh_token: Option<String>,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+/// 用 `authorizationCode` 换 `refresh_token`（**只能换一次**）。
+///
+/// ⚠️ code 由客户端在登录那一刻取得 ⇒ 本函数必须在登录请求的**同一条链路**里立刻调用
+///    （Apple 侧约 5 分钟过期）。
+pub async fn exchange_authorization_code(code: &str) -> Result<String, String> {
+    let client_id = apple_client_id();
+    let secret = client_secret()?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
+    let resp = client
+        .post(APPLE_TOKEN_URL)
+        .form(&[
+            ("client_id", client_id.as_str()),
+            ("client_secret", secret.as_str()),
+            ("code", code),
+            ("grant_type", "authorization_code"),
+        ])
+        .send()
+        .await
+        .map_err(|e| format!("换取 Apple refresh token 失败: {}", e))?;
+
+    let status = resp.status();
+    let body: AppleTokenResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("解析 Apple token 响应失败: {}", e))?;
+
+    match body.refresh_token {
+        Some(rt) if !rt.is_empty() => Ok(rt),
+        _ => Err(format!(
+            "Apple 未返回 refresh_token（HTTP {} · error={:?}）",
+            status, body.error
+        )),
+    }
+}
+
+/// 向 Apple 撤销一个 refresh token（注销账号时调用）。
+///
+/// 🔴 **尽力而为**：调用方**不得**因它失败而阻断注销 ——
+///    Apple 5.1.1(v) 要求「删除账号」是用户随时可完成的操作，
+///    而撤销失败只影响「Apple 侧仍记着这次授权」，二者严重性不对等。
+///    ⚠️ 但**必须记日志**，否则运维会以为「撤销成功」。
+pub async fn revoke_refresh_token(refresh_token: &str) -> Result<(), String> {
+    if refresh_token.trim().is_empty() {
+        return Err("refresh token 为空".to_string());
+    }
+    let client_id = apple_client_id();
+    let secret = client_secret()?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
+    let resp = client
+        .post(APPLE_REVOKE_URL)
+        .form(&[
+            ("client_id", client_id.as_str()),
+            ("client_secret", secret.as_str()),
+            ("token", refresh_token),
+            ("token_type_hint", "refresh_token"),
+        ])
+        .send()
+        .await
+        .map_err(|e| format!("撤销 Apple 授权失败: {}", e))?;
+
+    if resp.status().is_success() {
+        return Ok(());
+    }
+    // Apple 的失败响应体里带 `error`（如 `invalid_grant`/`invalid_client`）
+    let body: AppleTokenResponse = resp.json().await.unwrap_or_default();
+    Err(format!("撤销 Apple 授权被拒（error={:?}）", body.error))
+}
+
+/// 把 refresh token **加密**后写进 `users.apple_refresh_token`。
+///
+/// 🔑 复用 `encryption`（AES-256-GCM，密钥来自 `COEVO_PII_KEY`）——
+///    refresh token 是**长期凭据**，明文落库等于「拿库就能长期冒充用户」。
+pub fn store_refresh_token(
+    conn: &rusqlite::Connection,
+    user_id: &str,
+    refresh_token: &str,
+) -> Result<(), String> {
+    let enc = crate::encryption::encrypt(refresh_token);
+    conn.execute(
+        "UPDATE users SET apple_refresh_token = ?1 WHERE id = ?2",
+        rusqlite::params![enc, user_id],
+    )
+    .map_err(|e| format!("保存 Apple refresh token 失败: {}", e))?;
+    Ok(())
+}
+
+/// 取出并解密某账号的 Apple refresh token（无 / 解不出 ⇒ `None`）。
+///
+/// ⚠️ 解密失败返回 `None` 而**不是**空串 —— 调用方据此区分「没绑过 Apple」
+///    与「有记录但解不开（密钥换了）」，前者静默、后者应记日志。
+pub fn refresh_token_of(conn: &rusqlite::Connection, user_id: &str) -> Option<String> {
+    let enc: Option<String> = conn
+        .query_row(
+            "SELECT apple_refresh_token FROM users WHERE id = ?1",
+            rusqlite::params![user_id],
+            |r| r.get(0),
+        )
+        .ok()
+        .flatten();
+    let enc = enc.filter(|s| !s.trim().is_empty())?;
+    let dec = crate::encryption::decrypt(&enc);
+    if dec.is_empty() {
+        tracing::warn!(
+            "apple refresh token 解不开（密钥换过？）uid={} —— 该用户注销时无法撤销 Apple 授权",
+            user_id
+        );
+        return None;
+    }
+    Some(dec)
 }
 
 /// Apple JWKS 里的一个公钥（RSA）。
@@ -734,6 +1000,150 @@ mod tests {
             r.email.as_deref(),
             Some("mine@example.com"),
             "已有 email 不该被 Apple 的转发地址覆盖"
+        );
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 2026-10-13：注销撤销 Apple 授权（client_secret / refresh token 存储）
+    // ══════════════════════════════════════════════════════════════════════
+
+    /// 把 DER 包成 PEM（测试用 —— 生产用的是 Apple 给的 `.p8`）。
+    fn pem_from_der(der: &[u8]) -> String {
+        use base64::engine::general_purpose::STANDARD;
+        let b64 = STANDARD.encode(der);
+        let mut out = String::from("-----BEGIN PRIVATE KEY-----\n");
+        for chunk in b64.as_bytes().chunks(64) {
+            out.push_str(std::str::from_utf8(chunk).unwrap());
+            out.push('\n');
+        }
+        out.push_str("-----END PRIVATE KEY-----\n");
+        out
+    }
+
+    /// 🔴 `client_secret` 必须是**能验签通过的 ES256 JWT**（Apple 的硬要求）。
+    ///
+    /// ⚠️ 本测试**不联网**：造一把 P-256 私钥 → 生成 → 本地验签 + 检查 claims。
+    ///
+    /// # 它守的是最容易错、且**最难从错误里看出来**的那一点
+    ///
+    /// JWS 的 `ES256` 要求签名是 **P-1363（`r + s`，定长 64 字节）**。
+    /// ring 里另有 ASN.1 DER 版本 —— 用它签名**本地一切正常**，
+    /// 但 Apple 一律回 `invalid_client`，且错误信息**完全看不出是格式问题**。
+    /// ⇒ 下面那条「签名长度 == 64」是关键护栏（DER 版会是 70~72 字节）。
+    #[test]
+    fn test_client_secret_is_verifiable_es256_jwt() {
+        use ring::rand::SystemRandom;
+        use ring::signature::{
+            EcdsaKeyPair, KeyPair, ECDSA_P256_SHA256_FIXED, ECDSA_P256_SHA256_FIXED_SIGNING,
+        };
+
+        let rng = SystemRandom::new();
+        let pkcs8 = EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &rng).unwrap();
+        let der = pkcs8.as_ref();
+        let pem = pem_from_der(der);
+
+        let now = 1_800_000_000i64;
+        let jwt = build_client_secret("TEAM43MDWDA", "MTUH2XZUP5", "com.coevo.coevoApp", &pem, now)
+            .unwrap();
+
+        let parts: Vec<&str> = jwt.split('.').collect();
+        assert_eq!(parts.len(), 3, "client_secret 必须是三段 JWT");
+
+        let header: serde_json::Value = serde_json::from_slice(&b64url(parts[0]).unwrap()).unwrap();
+        assert_eq!(header["alg"], "ES256");
+        assert_eq!(header["kid"], "MTUH2XZUP5");
+        assert_eq!(header["typ"], "JWT");
+
+        let claims: serde_json::Value = serde_json::from_slice(&b64url(parts[1]).unwrap()).unwrap();
+        assert_eq!(claims["iss"], "TEAM43MDWDA");
+        assert_eq!(claims["sub"], "com.coevo.coevoApp");
+        // 🔴 `aud` 固定是 Apple —— 与 `identityToken` 的 `aud`（= bundle id）**不是一回事**
+        assert_eq!(claims["aud"], "https://appleid.apple.com");
+        assert_eq!(claims["iat"].as_i64().unwrap(), now);
+        assert_eq!(
+            claims["exp"].as_i64().unwrap() - now,
+            CLIENT_SECRET_TTL_SECS,
+            "有效期必须 <= Apple 的 6 个月硬上限"
+        );
+        assert!(
+            CLIENT_SECRET_TTL_SECS <= 15_777_000,
+            "超过 6 个月 Apple 会拒（invalid_client，且看不出原因）"
+        );
+
+        let sig = b64url(parts[2]).unwrap();
+        assert_eq!(
+            sig.len(),
+            64,
+            "🔴 ES256 签名必须是 64 字节（P-1363 `r+s`）—— 若变成 70~72 就是误用了 ASN.1 DER 版本"
+        );
+
+        // 真验签：证明签名**有效**，不只是长度凑巧对
+        let kp = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, der, &rng).unwrap();
+        let pubkey = ring::signature::UnparsedPublicKey::new(
+            &ECDSA_P256_SHA256_FIXED,
+            kp.public_key().as_ref(),
+        );
+        pubkey
+            .verify(format!("{}.{}", parts[0], parts[1]).as_bytes(), &sig)
+            .expect("client_secret 的签名必须能用自己的公钥验过");
+    }
+
+    /// 私钥不是合法 PEM ⇒ 明确报错（**不许**静默产出一个签不出名的 JWT）。
+    #[test]
+    fn test_client_secret_rejects_bad_pem() {
+        let err = build_client_secret("T", "K", "c", "not-a-pem", 0).unwrap_err();
+        assert!(err.contains("PEM"), "实际：{err}");
+        let err2 = build_client_secret("T", "K", "c", "   \n  ", 0).unwrap_err();
+        assert!(err2.contains("PEM"), "实际：{err2}");
+    }
+
+    /// 🔴 refresh token **必须密文落库** —— 它是长期凭据，明文等于「拿库就能长期冒充用户」。
+    #[test]
+    fn test_refresh_token_stored_encrypted_and_readable() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::schema::init_database(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO users (id, username, email, created_at) VALUES ('u1','u1','u1@e.com',1)",
+            [],
+        )
+        .unwrap();
+
+        assert!(refresh_token_of(&conn, "u1").is_none(), "没绑过 ⇒ None");
+
+        store_refresh_token(&conn, "u1", "RT-SECRET-VALUE").unwrap();
+
+        let raw: String = conn
+            .query_row(
+                "SELECT apple_refresh_token FROM users WHERE id = 'u1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            !raw.contains("RT-SECRET-VALUE"),
+            "refresh token 竟然明文落库: {raw}"
+        );
+        assert_eq!(
+            refresh_token_of(&conn, "u1").as_deref(),
+            Some("RT-SECRET-VALUE"),
+            "存进去的要能原样取回（否则撤销会拿着乱码去请求）"
+        );
+    }
+
+    /// 未绑过 Apple 的账号 ⇒ `None`（注销时不该去撤销一个不存在的授权）。
+    #[test]
+    fn test_refresh_token_of_unbound_is_none() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::schema::init_database(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO users (id, username, email, created_at) VALUES ('u2','u2','u2@e.com',1)",
+            [],
+        )
+        .unwrap();
+        assert!(refresh_token_of(&conn, "u2").is_none());
+        assert!(
+            refresh_token_of(&conn, "不存在").is_none(),
+            "查不到的 id 不该 panic"
         );
     }
 }

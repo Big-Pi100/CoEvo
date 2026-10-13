@@ -549,6 +549,52 @@ fn resolve_uid_from_token(headers: &HeaderMap) -> Result<String, AppError> {
     resolve_uid_by_token(&token)
 }
 
+/// 🆕 2026-10-13：注销前**尽力**向 Apple 撤销授权（Apple 审核 5.1.1(v)）。
+///
+/// # 🔴 为什么必须在 `purge_user` **之前**调用
+///
+/// `refresh_token` 存在 `users` 行里 —— **purge 之后行就没了，再也取不到**。
+/// ⇒ 顺序只能是「先取出并撤销，再注销」。
+///
+/// # 🔴 为什么失败**不得**阻断注销
+///
+/// Apple 5.1.1(v) 的核心是「用户必须能**随时**删除账号」。若因撤销失败就拒绝注销，
+/// 等于**用一个次要问题卡住主要权利**，而且用户无法自救。
+/// ⇒ 失败只记日志（运维可见），注销照常完成。
+///
+/// ⚠️ **已知窗口**（如实记录）：撤销成功但 purge 失败 ⇒ 「账号还在、Apple 授权已撤」。
+///    这个方向**可接受**（用户下次 Apple 登录会重新授权，无实质损失）。
+///    反过来（账号已删、授权还留着）才是 Apple 要罚的，所以**不能反过来做**。
+///
+/// ⚠️ **不可重试**：撤销失败后 `refresh_token` 仍随注销被删 ⇒ 本次失败无法补。
+///    故失败日志等级为 `error`（运维需人工在 Apple 侧确认）。
+pub async fn revoke_apple_authorization_best_effort(uid: &str) {
+    let token = {
+        let conn = crate::db_pool::get_conn();
+        crate::apple_auth::refresh_token_of(&conn, uid)
+    };
+    // 没绑过 Apple / 记录解不开 ⇒ 没有可撤销的东西（解不开的情况已在
+    // `refresh_token_of` 里记过 warn）
+    let Some(rt) = token else { return };
+
+    match crate::apple_auth::revoke_refresh_token(&rt).await {
+        Ok(()) => tracing::info!("注销：已向 Apple 撤销授权 uid={}", uid),
+        // `invalid_grant` = 该 token 本就已失效（用户已在 Apple 侧退订/撤销）
+        // ⇒ 等价于「已撤销」，不是故障。
+        Err(e) if e.contains("invalid_grant") => {
+            tracing::info!(
+                "注销：Apple 侧该授权已失效（invalid_grant），无需撤销 uid={}",
+                uid
+            )
+        }
+        Err(e) => tracing::error!(
+            "注销：撤销 Apple 授权失败 uid={} —— 注销照常完成，但 Apple 侧授权仍在，需人工确认: {}",
+            uid,
+            e
+        ),
+    }
+}
+
 /// `POST /api/user/me/delete` —— 用户自助注销账号。
 ///
 /// # 🔴 为什么用 POST 而不是 DELETE
@@ -572,6 +618,10 @@ pub async fn delete_me_handler(headers: HeaderMap) -> impl IntoResponse {
         Ok(u) => u,
         Err(e) => return e.into_response(),
     };
+
+    // 🆕 2026-10-13：先尽力撤销 Apple 授权（Apple 5.1.1(v)）。
+    // ⚠️ 必须在 purge **之前** —— `refresh_token` 随 users 行一起被删，之后取不到。
+    revoke_apple_authorization_best_effort(&uid).await;
 
     let conn = crate::db_pool::get_conn();
     match purge_user(&conn, &uid, PurgeMode::SelfService, "self") {

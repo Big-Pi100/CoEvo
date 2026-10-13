@@ -31,6 +31,12 @@ CREATE TABLE IF NOT EXISTS users (
     -- ⚠️ 唯一性用**部分索引**表达（见下方 `idx_users_apple_user_id`）——
     --    `NULL` = 非 Apple 账号（绝大多数用户）。
     apple_user_id TEXT DEFAULT NULL,
+    -- 🆕 2026-10-13：注销时向 Apple **撤销授权**所需的 refresh token。
+    --   · 存 **AES-256-GCM 密文**（`encryption::encrypt`，密钥 `COEVO_PII_KEY`）——
+    --     它是长期凭据，明文落库 = 「拿到库就能长期冒充用户」。
+    --   · 🔴 只能由「登录那一刻」的 `authorizationCode` 换得（事后拿不到）
+    --     ⇒ 必须在登录时就顺手存下，详见 `apple_auth` 模块头。
+    apple_refresh_token TEXT DEFAULT NULL,
     deleted_at TEXT DEFAULT NULL,
     subscription_expires TEXT DEFAULT NULL,
     referral_code TEXT UNIQUE,
@@ -1547,6 +1553,12 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         //    否则「用 Apple 登录」会随机落到多个账号上（学习记录分裂）。
         // 📌 用部分索引把「唯一性只约束真实 Apple 账号」写在定义里（同 email 的理由）。
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_apple_user_id ON users(apple_user_id) WHERE apple_user_id IS NOT NULL",
+        // 🆕 2026-10-13：Apple 登录时存下的 refresh token（**密文**），供注销时撤销授权。
+        // ① 先加列（新库走 `SCHEMA_SQL` 已含此列 → 这里报 `duplicate column` → 容错放行）
+        // 🔴 时序硬约束：`authorizationCode` **只在登录那一刻存在**、且只能用一次
+        //    ⇒ 这个列必须在**启用撤销功能之前**就存在于生产库，否则那段时间登录的用户
+        //      永远拿不到 refresh token（事后补不了）。本迁移随本次部署一起上。
+        "ALTER TABLE users ADD COLUMN apple_refresh_token TEXT DEFAULT NULL",
         // ── 🆕 2026-09-29 内容池：抓正文的尝试记录 ──
         // 新库走 `CONTENT_POOL_SQL` 已含此列 → 这里对它们报 `duplicate column` → 容错放行。
         // 🔴 对**已存在的库**（本地开发库 / 将来的生产库）这是**唯一**的补列途径 ——

@@ -710,15 +710,26 @@ async fn auth_change_email(
 
 /// Sign in with Apple 的请求体（`POST /api/auth/apple`）。
 ///
-/// 🔑 只有 `identity_token`：
-///    · **不需要** `.p8` / Key ID（那是 `client_secret` 的事，本模块不做）
-///    · ⚠️ 也**不收** `authorization_code` —— 它的唯一用途是换 refresh token
-///      以支持「注销时向 Apple 撤销授权」。既然本批不做撤销，收下一个**无法使用**
-///      （短时效）的字段就是**死参数**。将来启用撤销时，客户端与服务端一起改。
+/// 🔑 `identity_token` 决定「**你是谁**」—— 服务端用 Apple 公钥验签，**不需要** `.p8`。
+///
+/// 🆕 2026-10-13 `authorization_code` —— 「注销时向 Apple **撤销授权**」用。
+///
+/// | 字段 | 必需？ | 用途 |
+/// |---|---|---|
+/// | `identity_token` | ✅ | 验签 → 建号 / 登录 / 绑定 |
+/// | `authorization_code` | ⭕ 建议带 | 换 `refresh_token` 存库；**缺了 ⇒ 该用户日后注销时撤不了授权** |
+///
+/// 🔴 为什么必须**在登录这一刻**收：Apple 的 `authorizationCode` **只能用一次**、
+///    约 5 分钟过期，事后无法补发 ⇒ 现在不收，那个用户就**永久**撤不了。
+/// ⚠️ 但**不做强制**（老版本 App 不带该字段）：缺了只影响「将来能否撤销」，
+///    不影响登录本身 —— 不能为了合规把登录路径打断。
 #[derive(Deserialize)]
 pub struct AppleLoginInput {
     /// Apple 返回的 `identityToken`（JWS，RS256）。
     pub identity_token: String,
+    /// Apple 返回的 `authorizationCode`（一次性，用于换 refresh token）。
+    #[serde(default)]
+    pub authorization_code: Option<String>,
 }
 
 /// POST /api/auth/apple — Sign in with Apple
@@ -773,6 +784,49 @@ async fn auth_apple(
 
     match result {
         Ok(resp) => {
+            // ── ④ 存 refresh token（供「注销时撤销 Apple 授权」）──
+            //
+            // 🔴 **尽力而为**：失败只记日志，**绝不影响登录结果** ——
+            //    用户身份已经验签通过，不该因为「Apple 那边没换成 token」而登不进来。
+            // ⚠️ 代价（如实记录）：这一格失败 ⇒ 该用户日后注销时**撤不了**授权。
+            //    但两条路都不通时，「登不进去」比「将来撤不了」严重得多。
+            //
+            // 📌 必须在 `json!(resp)` **之前**做 —— 那一步会 move 掉 `resp`。
+            match input
+                .authorization_code
+                .as_deref()
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+            {
+                Some(code) => match crate::apple_auth::exchange_authorization_code(code).await {
+                    Ok(rt) => {
+                        let conn = crate::db_pool::get_conn();
+                        if let Err(e) =
+                            crate::apple_auth::store_refresh_token(&conn, &resp.user_id, &rt)
+                        {
+                            tracing::error!(
+                                "auth_apple: 保存 Apple refresh token 失败 uid={} —— 该用户注销时将无法撤销授权: {}",
+                                resp.user_id,
+                                e
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "auth_apple: 换取 Apple refresh token 失败 uid={} —— 该用户注销时将无法撤销授权: {}",
+                            resp.user_id,
+                            e
+                        );
+                    }
+                },
+                None => {
+                    tracing::info!(
+                        "auth_apple: 客户端未提供 authorization_code uid={} ⇒ 该用户注销时无法撤销 Apple 授权",
+                        resp.user_id
+                    );
+                }
+            }
+
             tracing::info!("auth_apple: 成功（user_id={}）", resp.user_id);
             Json(serde_json::json!(resp)).into_response()
         }

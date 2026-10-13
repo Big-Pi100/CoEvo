@@ -334,12 +334,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
   ///   （**认领**语义：该账号已有的学习记录**不丢**）
   /// · 未登录 ⇒ 后端建号或按 `apple_user_id` / email 找到既有账号登录
   ///
+  /// 🆕 2026-10-13 [authorizationCode]：同一次授权里由插件返回的**一次性** code，
+  ///    原样转交后端换 `refresh_token`（供「注销时撤销 Apple 授权」）。
+  ///    ⚠️ 只能用一次、约 5 分钟过期 ⇒ **必须在这同一次登录里传**；
+  ///    缺了不阻断登录（老流程照常），只是该用户日后注销时撤不了授权。
+  ///
   /// ⚠️ 这与后端 `/api/auth/apple` 的「一个端点覆盖两种情况」是同一设计，见其 handler 注释。
-  Future<void> appleLogin(String identityToken) async {
+  Future<void> appleLogin(
+    String identityToken, {
+    String? authorizationCode,
+  }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final result = await _client.appleLogin(
         identityToken: identityToken,
+        authorizationCode: authorizationCode,
         token: state.token, // 已登录 ⇒ 绑定；未登录 ⇒ null
       );
       final uid = result['user_id'] as String?;

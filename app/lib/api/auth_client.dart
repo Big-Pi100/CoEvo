@@ -257,26 +257,33 @@ class AuthClient {
   /// Sign in with Apple（`POST /api/auth/apple`）。
   ///
   /// · [identityToken] 由 `sign_in_with_apple` 插件在**设备上**取得（JWS）
+  /// · 🆕 2026-10-13 [authorizationCode] 同一次授权里由插件一并返回的**一次性** code：
+  ///   后端用它换 `refresh_token` 存库，供「**注销时向 Apple 撤销授权**」用
+  ///   （Apple 审核 5.1.1(v)）。⚠️ 它**只能用一次、约 5 分钟过期** ⇒
+  ///   必须在登录这**一次**请求里就带上，事后无法补 —— 不带 ⇒ 该用户日后撤不了授权。
   /// · [token] 传当前会话 token ⇒ 把 Apple 身份**绑到该账号**（认领语义：
   ///   保留已有学习记录）；传 `null` ⇒ 建号 / 登录
   ///
   /// 返回体与 [login] **同形**（`user_id` / `token` / `email`）——
   /// 所以 `AuthProvider` 可以走与登录取值完全相同的落库路径。
-  ///
-  /// ⚠️ 后端**不接收** `authorizationCode`（它只为「注销时撤销 Apple 授权」服务，
-  ///    本批不做；详见 `backend/crates/api_server/src/apple_auth.rs` 文件头）。
   Future<Map<String, dynamic>> appleLogin({
     required String identityToken,
+    String? authorizationCode,
     String? token,
   }) async {
     final headers = <String, String>{'Content-Type': 'application/json'};
     if (token != null && token.isNotEmpty) {
       headers['Authorization'] = 'Bearer $token';
     }
+    // 🔑 只在真拿到 code 时才带这个字段 —— 带一个空串反而会让后端多一次无用的换 token 请求。
+    final body = <String, dynamic>{'identity_token': identityToken};
+    if (authorizationCode != null && authorizationCode.isNotEmpty) {
+      body['authorization_code'] = authorizationCode;
+    }
     final resp = await http.post(
       Uri.parse('${ApiConfig.baseUrl}/api/auth/apple'),
       headers: headers,
-      body: jsonEncode({'identity_token': identityToken}),
+      body: jsonEncode(body),
     ).timeout(ApiConfig.requestTimeout);
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     if (resp.statusCode != 200 || data.containsKey('error')) {
