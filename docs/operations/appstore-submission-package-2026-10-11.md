@@ -382,9 +382,35 @@ ASC → *Users and Access* → **Sandbox** → *Testers* → 新建。
 「Apple 接不接受 client_secret」——都是**分段**的。这一行才是「**真的有一个用户的 token 落进去了、
 且内容合法**」。判据：**「谁在做 X」要跟到消费点**，落到库里的那一行才算数。
 
-⚠️ **仍未验证的唯一一格**：**注销动作真的触发 revoke 的端到端**（点注销 ⇒ 调 Apple `/auth/revoke` ⇒ 账号删除）。
-- 已验：`revoke_refresh_token` 用**假 token** 打真 Apple 得 `Ok(())`（`#[ignore]` 测试）；撤销顺序有断言守（`verify_auth_entry` ⑤ 组）
-- 未验：真 token + 真注销流程走一遍。**需要注销一个账号（破坏性）**，待白哥定。
+### 10.2c ✅✅ 完整端到端实测（2026-10-13 21:45 · 方案 B：真注销一个账号）
+
+白哥选 **B** ⇒ 注销 `mr.bigpi@foxmail.com`（`145f2f18…`，有真实沙盒年订阅交易）。
+**前置**：在线备份 `coevo.db.bak-predeletion-20261013`（22.5 MB · 600）。
+
+请求：`POST /api/user/me/delete`（**生产同一条路径**，UI 调的也是它）→ `HTTP 200 {"status":"deleted"}`
+
+| # | 验证项 | 结果 |
+|---|---|---|
+| ① | `users` 行 | ✅ 已删（0） |
+| ② | 个人数据（`tokens` 2 / `password_reset` 2 / `email_change` 1 / `sync_setting` 1）| ✅ **逐表核对** 删前→删后 全 0 |
+| ③ | 日志「删除 7 行」与我的计数 | ✅ **吻合**：6 行个人数据 + **1 行 `users.id` 本身**（`DELETE_TARGETS` 共 **20** 项，末项是 `("users","id")` —— 我曾漏看它）|
+| ④ | 支付记录**匿名化**（不是删除）| ✅ `iap_transactions` / `payment_orders` 的 `user_id` → **同一个** `deleted:16a26a32…`（同一匿名 id 是设计要点，便于日后对账）|
+| ⑤ | 审计留痕 | ✅ `admin_audit_log`：`action=self_delete_user`，`target_user_id=` **匿名 id**（不是原 uid ⇒ 审计表本身不泄露身份）|
+| ⑥ | 🔴 **反向检查：零残留** | ✅ 原 uid 在 **全部 20 张删除表 + 10 项匿名化列**里**一处都查不到** |
+| ⑦ | 撤销日志 | ✅ `INFO user_purge: 注销：已向 Apple 撤销授权 uid=145f2f18…`（= `Ok(())` 分支）|
+| ⑧ | 🔴🔴 **外部铁证** | ✅ 拿那个 Apple refresh token 去换 access_token ⇒ **`HTTP 400 invalid_grant`：`The token has expired or has been revoked.`** |
+
+**⑧ 才是真正的「已撤销」证据** —— 前七项都只证明「我们的代码按设计跑了」，只有 Apple 亲口回
+`has been revoked` 才证明**外部系统状态真的变了**。手法：解密 token（注销前）→ 自签 ES256
+`client_secret` 打 `/auth/token`（**Python `utils.decode_dss_signature` 做 DER→P-1363 转换**，
+即 Rust 侧用 `FIXED_SIGNING` 的同一原因）。
+
+📌 **判据（本轮两条）**：
+1. **「数字对上」≠「成员对上」** —— 先只数到 6 行，与日志的 7 不符 ⇒ **逐表核对**才发现漏了
+   `users.id` 这一项。若只对数就收手，会漏掉「用户行本身」这个最关键的删除。
+2. **分段验证 ≠ 端到端** —— 前七项都在我们自己这半边；只有 ⑧ 跨越到 Apple 侧。
+
+⚠️ **不可回滚的部分**：Apple 授权已撤销（**不可逆**，用户需重新授权）；数据理论可从备份恢复。
 
 ### 10.3 🔴 时效性与边界（如实记录）
 
