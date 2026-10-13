@@ -10,7 +10,8 @@
 // **核心逻辑**（幂等 / 合并口径 / 多用户隔离）。
 // 但 **handler 层**（`sync_push` / `sync_pull`）需要 HTTP + 全局连接池 ⇒ **单测不了**：
 //   · 鉴权是否真的做了（漏了 ⇒ 任何人能读别人数据）
-//   · 订阅校验是否真的做了（漏了 ⇒ 决策③ 落空 = 免费同步）
+//   · **订阅校验是否只加在 push 上**（加漏 ⇒ 决策③ 落空 = 免费同步；
+//     加过头 ⇒ 订阅一停，**云端数据取不回**，用户以为全丢了 —— 2026-10-13 实测）
 //   · 未订阅是否回 **403**（回 401 会让端侧**把用户登出**）
 // ⇒ 这些**只能靠源码断言**守。📌 判据：**盲区要配不依赖它的兜底判据**。
 //
@@ -22,6 +23,8 @@
 // | `user_purge.rs` 删掉一张 sync 表 | 「注销清单覆盖 5 张」 |
 // | `sync_handlers.rs` 某个 handler 去掉鉴权调用 | 「两处都调」 |
 // | `sync_handlers.rs` 把 `Forbidden` 改成 `Unauthorized` | 「未订阅回 403」 |
+// | `sync_handlers.rs` 的 `push` 改用登录版（漏掉订阅校验）| 「push 走订阅版」 |
+// | `sync_handlers.rs` 的 `pull` 改回订阅版 | 「pull 走登录版」 |
 // | `routes.rs` 删掉一条 sync 路由 | 「路由已注册」 |
 //
 // # ⚠️ 口径（如实标注）
@@ -171,7 +174,7 @@ void main() {
   }
 
   // ══════════════════════════════════════════════════════════════════
-  print('\n[③] 鉴权 + 订阅校验（决策③ —— 单测覆盖不到，必须在这里守）');
+  print('\n[③] 鉴权（push 走订阅 · pull 走登录）—— 单测覆盖不到，必须在这里守');
   // ══════════════════════════════════════════════════════════════════
   check('🔴 「鉴权+订阅」只定义一处（`authorize_with_subscription`）',
       countOf(sync, 'fn authorize_with_subscription') == 1,
@@ -179,9 +182,24 @@ void main() {
 
   // 🔑 锁**实参**而非函数名 —— 判据「子串断言锁不到接线」
   //    （换成别的函数名仍会通过 ⇒ 必须锁「调用形态」本身）
-  check('🔴 两个 handler 都调它（push + pull）',
-      countOf(sync, 'authorize_with_subscription(&headers)?') == 2,
-      '调了 ${countOf(sync, 'authorize_with_subscription(&headers)?')} 次');
+  //
+  // 🔴 2026-10-13 **修正口径**（白哥定案 B）：
+  //    旧断言是「**两个 handler 都调** `authorize_with_subscription`」——
+  //    那是「pull 也要求订阅」时代的形状，而它**违背了同一个函数的判据表**：
+  //    > 「付费买的是存储，不是访问权 —— **限制入口可以，限制出口不行**」
+  //    pull 是**出口** ⇒ 只需登录。
+  //
+  //    ⚠️ 这不是理论问题，是实测到的：订阅被清空后，云端 **258 行**学习数据
+  //      完好无损却一律 403 ⇒ 用户看到「**数据全没了**」。
+  //    ⇒ 断言从「两处都调订阅版」改成「**push 订阅版 / pull 登录版**」，
+  //      并把「不许再把 pull 接回订阅版」也锁住。
+  check('🔴 `push` 走**订阅版**鉴权（写入侧 = 入口）',
+      countOf(sync, 'authorize_with_subscription(&headers)?') == 1,
+      '调了 ${countOf(sync, 'authorize_with_subscription(&headers)?')} 次'
+      '（多于 1 ⇒ 有人把 pull 也接回订阅版了）');
+  check('🔴 `pull` 走**登录版**鉴权（读取侧 = 出口，无订阅也必须能取回数据）',
+      countOf(sync, 'authorize_login_only(&headers)?') == 1,
+      '调了 ${countOf(sync, 'authorize_login_only(&headers)?')} 次');
 
   check('🔴 订阅判定用既有权威实现（subscription::is_subscription_active）',
       sync.contains('crate::subscription::is_subscription_active'));

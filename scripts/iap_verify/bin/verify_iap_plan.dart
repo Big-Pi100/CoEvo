@@ -1565,6 +1565,29 @@ void main() {
             'restoreOutcomeMessage('.allMatches(profUi).length;
     check('🔴 订阅页与「我的」页都走唯一文案函数（各写一份必然漂）',
         usedRestoreMsg >= 2, '共 $usedRestoreMsg 处');
+
+    // ── ⑤ 🆕 2026-10-13：到期后的**同步口径**（后端 pull 已放行）──
+    //
+    // 🔴 后端白哥定案 B：`sync_pull` 改为「**只需登录**」⇒ 免费 / 到期用户
+    //    **仍能把云端数据拉回本机**，只是不能再上传。
+    //    文案若不跟着改，就会写成「同步**停止**」= **方向相反的错** ——
+    //    用户以为云端数据取不回来（2026-10-13 实测正是这个误解吓到了白哥：
+    //    258 行数据完好却全 403，他看到的是「数据全没了」）。
+    //    📌 判据：**降级文案不能比实际更吓人**；且**后端口径变了，
+    //       面向用户的表述必须同步** —— 否则迟早漂成假陈述。
+    final expiryText = SubscriptionLegalText.afterExpiry.join(' | ');
+    check('🔴 到期清单不得说「同步停止」（实际只停上传）',
+        !expiryText.contains('同步停止'),
+        '实际是 pull 放行、push 403 ⇒「停止」会误导用户以为数据取不回');
+    check('🔴 到期清单要明说「云端数据仍可下载」',
+        expiryText.contains('仍可下载'));
+    final syncRow = SubscriptionLegalText.comparison
+        .firstWhere((r) => r.label.contains('同步'));
+    check('🔴 权益表里同步的「免费版」不得是「—」（可下载、只是不能上传）',
+        syncRow.free != '—', '当前值：${syncRow.free}');
+    check('权益表里同步的「订阅版」要说清是「双向」',
+        syncRow.sub.contains('双向'), '当前值：${syncRow.sub}');
+    check('🔴 降级说明也要提「云端可下载」', downgradeNotice().contains('下载'));
   }
 
   _report();
