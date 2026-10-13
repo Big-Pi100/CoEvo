@@ -304,3 +304,39 @@ HTTP 409 · {"error":"该交易已归属其他账号，无法重复开通"}
 🔴 **证伪 ×2 精确命中**：
 - B2' 退回旧行为 ⇒ Rust **只** `test_upsert_transaction_reclaims_orphan_owner` 红
 - 删掉 B1' 的一处 `account_id_exists` 调用 ⇒ ⑲-1 红（「实际 2 次」）
+
+---
+
+## 十一、✅✅ 端到端验证通过（2026-10-13 23:20 · 第二次部署后）
+
+```
+① 上报前: 7ccd6274.subscription_expires = None
+          iap_transactions.user_id      = deleted:04c3769a-…
+
+② POST /api/iap/verify → ✅ HTTP 200
+   {"expiresAt":"2026-10-14T13:57:30Z","isActive":true,
+    "originalTransactionId":"2000001249787368","productId":"com.coevo.coevoApp.pro.monthly"}
+
+③ 上报后: 7ccd6274.subscription_expires = 2026-10-14T13:57:30Z
+          iap_transactions.user_id      = 7ccd6274-e2bd-49d5-9ebd-299f16917a13
+```
+
+### 🔑 日志本身复现了「只修一处」的中间状态（很有价值）
+
+| 时间 | 二进制 | 出现的日志 |
+|---|---|---|
+| `15:06:15` | **只有 B1'** | 仅 `IAP 孤儿绑定…允许重新认领`（B1' 放行）→ 但**仍被 B2 拦回 409** |
+| `15:20:05` | **B1' + B2'** | **两条都有**：`IAP 孤儿绑定…` + `IAP 孤儿归属…` → `ownership=Claimed active=true` |
+
+⇒ 这份时间差把「**补丁 ≠ 修法**」这条判据**变成了可观测的事实**：
+   第一版二进制**确实**只放行了第一层。
+
+### 部署核对
+
+二进制 sha256 `99628434ac722b3b…` 与构建产物一致 · health OK · 回滚点 `.prev` 已留 ·
+无 ERROR（仅 html5ever 的无关 WARN）。
+
+### ⏳ 剩余（不阻塞）
+
+端侧 `judgeRestoreOutcome`（⑱ 组）随 **build 12** 出包 —— 它修的是「提示与界面不同源」
+这一处**次要**问题；**权益本身已由服务端修复解决**（服务端认领后 UI 走 `backendActive` 即变绿）。
