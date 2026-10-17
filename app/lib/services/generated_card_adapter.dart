@@ -190,6 +190,40 @@ const _emptyContent = (
   sections: <Map<String, Object?>>[],
 );
 
+/// 从 `sections` 里取**首义中文** —— `type == 'definition'` 中 `order` 最小那条的 `zh`。
+///
+/// # 🔑 为什么单独抽出来（2026-10-17 真机 bug）
+///
+/// 原先 `WordQueryService._firstDefinitionZh` **自己又写了一份 JSON 解析**
+/// （先 `jsonDecode` → 找 `sections` → 找 `definition`），
+/// 而 `cardById` 的注释明明白白写着「**别在这里另写一份 JSON 解析**」。
+///
+/// 更要命的是：**两份实现里只有一份跟上了 `ext:` 这个新来源** ——
+/// 于是复习列表里 LLM 生成的词（`ext:<spelling>`）**没有释义**，而词库词有。
+///
+/// 📌 判据：**同一件事的口径只能有一处权威**。
+///    ⇒ 现在：解析只有 [parseCardContent] 一处，**取首义只有本函数一处**；
+///      `cardById`（卡片页 / 复习会话）与 `firstDefinitionsOf`（复习列表）**共用**。
+///
+/// ⚠️ 缺段 / 缺字段 / 类型不对一律返回 `null`（**不是空串**）——
+///    让调用方能区分「没有释义」与「释义是空的」。
+String? firstDefinitionZhOf(List<Map<String, Object?>> sections) {
+  Map<String, Object?>? best;
+  var bestOrder = 1 << 30;
+  for (final s in sections) {
+    if (s['type'] != 'definition') continue;
+    final o = (s['order'] as int?) ?? 0;
+    if (o < bestOrder) {
+      bestOrder = o;
+      best = s;
+    }
+  }
+  final zh = best?['zh'];
+  if (zh is! String) return null;
+  final trimmed = zh.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
 // ─────────────────────────────────────────────────────────────
 // 内部取值助手 —— 一律**宽容读取、不抛错**
 // ─────────────────────────────────────────────────────────────

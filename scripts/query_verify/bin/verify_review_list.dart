@@ -15,13 +15,17 @@
 //   · `spelling` NOT NULL 约束（冗余列不能忘写）
 //   · 性能
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../../app/lib/services/fsrs_service.dart';
+import '../../../app/lib/services/generated_card_adapter.dart'
+    show firstDefinitionZhOf;
 import '../../../app/lib/services/review_list_query.dart';
 import '../../../app/lib/services/user_db.dart';
+import '../../../app/lib/services/word_query_service.dart';
 import '_repo_paths.dart';
 
 var _pass = 0;
@@ -570,6 +574,136 @@ Future<void> main(List<String> args) async {
     try {
       tmpDir.deleteSync(recursive: true);
     } catch (_) {}
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ⑨ 🔴 复习列表取释义：**LLM 生成的词（`ext:`）必须也能取到**
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // 2026-10-17 真机 bug：`weighin` / `papacy` 在复习列表**没有中文释义**，
+  // 而 `rest` / `lung` 有。
+  //
+  // 根因：`firstDefinitionsOf` 原先**只查 `word.db.card`**，而 `ext:<spelling>` 的
+  // 卡片内容存在 **`user.db.external_word_cache`** ——
+  // `cardById`（卡片页 / 复习会话走它）**早就有** `ext:` 回落，这个方法漏了
+  // ⇒ **同一件事两个实现，只跟上一遍**。
+  //
+  // 🔴 证伪方式
+  // · 删掉 `readExternalContent` 分支 ⇒ **⑨-2 必红**
+  // · 把 `firstDefinitionZhOf` 改成「取数组第一条 definition」⇒ **⑨-1 必红**
+  // · 把 provider 的回调删掉 ⇒ **⑨-9 必红**
+  {
+    final dir = await Directory.systemTemp.createTemp('coevo_defs_');
+    final path = '${dir.path}${Platform.pathSeparator}word_min.db';
+
+    // 造**最小 word.db** —— `firstDefinitionsOf` 只查 `card` 表
+    String cardJson(String zh) => jsonEncode({
+          'front': 'x',
+          'ipa': '',
+          'entry_type': '',
+          'sections': [
+            // 🔴 三条 definition 的**数组顺序与 order 故意全不一致**，让三种可能的
+            //    「错误实现」各自拿到不同的错值 ⇒ 只有「真的按 order 取最小」才会绿：
+            //      · 取**数组第一条** ⇒ 「A-误1」
+            //      · 取**数组最后一条** ⇒ 「A-误2」
+            //      · 正确的 `order: 1` 夹在**中间** ⇒ 只有按 order 比较才拿得到
+            //    ⚠️ 首版没这么设计（order 最小的恰在最后一条）⇒ 证伪时**没红**，
+            //       是「断言太松 = 假绿」的实例。判据：**证伪必须真能红**。
+            {'type': 'definition', 'order': 3, 'zh': '$zh-误1'},
+            {'type': 'definition', 'order': 1, 'zh': zh},
+            {'type': 'definition', 'order': 2, 'zh': '$zh-误2'},
+            {'type': 'etymology', 'order': 0, 'text': '词源'},
+          ],
+        });
+
+    final wdb = await factory.openDatabase(path);
+    await wdb.execute(
+        'CREATE TABLE card (word_id TEXT PRIMARY KEY, content TEXT)');
+    await wdb.insert('card', {'word_id': 'w000001', 'content': cardJson('休息')});
+    await wdb.close();
+
+    // 模拟 `user.db.external_word_cache`（key = 归一化拼写）
+    final extCache = <String, String>{'weighin': cardJson('称重')};
+
+    final svc = await WordQueryService.open(
+      databaseFactoryFfi,
+      path,
+      externalCardLoader: (sp) async => extCache[sp],
+    );
+    final defs = await svc.firstDefinitionsOf(
+      ['w000001', 'ext:weighin', 'ext:nocache'],
+      readExternalContent: (sp) async => extCache[sp],
+    );
+    await svc.close();
+
+    check('⑨-1 词库词取到**首义**（`order` 最小的那条，不是数组第一条）',
+        defs['w000001'] == '休息', '实际 ${defs['w000001']}');
+    check(
+        '⑨-2 🔴 LLM 生成的词（`ext:`）也能取到释义',
+        defs['ext:weighin'] == '称重',
+        '实际 ${defs['ext:weighin']} —— null 说明 ext 回落没生效（本次修复的核心）');
+    check('⑨-3 缓存里也没有的词 ⇒ **不出现**（不是空串占位）',
+        !defs.containsKey('ext:nocache'));
+    check('⑨-4 加了 ext 分支后，词库词照旧能取到', defs.containsKey('w000001'));
+
+    // ── 渐进语义：不传回调 ⇒ 只有词库词（与修复前一致）──
+    final svc2 = await WordQueryService.open(databaseFactoryFfi, path);
+    final defs2 = await svc2.firstDefinitionsOf(['w000001', 'ext:weighin']);
+    await svc2.close();
+    check('⑨-5 不传 `readExternalContent` ⇒ ext 词不出现（渐进语义）',
+        defs2['w000001'] == '休息' && !defs2.containsKey('ext:weighin'));
+
+    try {
+      dir.deleteSync(recursive: true);
+    } catch (_) {}
+  }
+
+  // ── ⑩ 纯函数真值表 + 接线/反向断言 ──
+  {
+    check('⑩-1 无 `definition` 段 ⇒ null',
+        firstDefinitionZhOf([
+          {'type': 'etymology', 'order': 0, 'text': 'x'}
+        ]) ==
+            null);
+    check(
+        '⑩-2 `zh` 为空串/纯空白 ⇒ null（不是空串，让调用方能区分）',
+        firstDefinitionZhOf([
+              {'type': 'definition', 'order': 1, 'zh': '   '}
+            ]) ==
+            null);
+    check(
+        '⑩-3 `zh` 类型不对 ⇒ null（不抛）',
+        firstDefinitionZhOf([
+              {'type': 'definition', 'order': 1, 'zh': 42}
+            ]) ==
+            null);
+    check(
+        '⑩-4 正常值 trim 后返回',
+        firstDefinitionZhOf([
+              {'type': 'definition', 'order': 1, 'zh': '  休息  '}
+            ]) ==
+            '休息');
+
+    String readSrc(String rel) {
+      final f = File(repoPath(rel));
+      return f.existsSync() ? f.readAsStringSync() : '';
+    }
+
+    final svcSrc = readSrc('app/lib/services/word_query_service.dart');
+    check('⑩-5 `firstDefinitionsOf` 有 `readExternalContent` 参数',
+        svcSrc.contains('readExternalContent'));
+    check(
+        '⑩-6 🔴 走**共用**解析 `firstDefinitionZhOf`（不再自己 jsonDecode 取 sections）',
+        svcSrc.contains('firstDefinitionZhOf('));
+    check('⑩-7 🔴 旧的 `_firstDefinitionZh` **不得复活**（反向断言）',
+        !svcSrc.contains('static String? _firstDefinitionZh'),
+        '复活 ⇒ 又出现两份 JSON 解析，迟早再漏一个来源');
+
+    final prov = readSrc('app/lib/providers/review_list_provider.dart');
+    check(
+        '⑩-8 🔴 provider 真的注入了外部缓存读取器（防「代码写了没人接」）',
+        prov.contains('readExternalContent:') &&
+            prov.contains('ExternalWordCacheRepository'));
   }
 
   print('\n${'=' * 68}');

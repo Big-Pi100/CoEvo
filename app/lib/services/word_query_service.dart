@@ -501,56 +501,75 @@ class WordQueryService {
   /// `wordId → 中文释义`。**没有释义的词不出现在 Map 里** ——
   /// 故意**不用空串占位**：空串会让「有词条但无释义」与「词条不存在」
   /// 在调用方混成一种情况，而两者该有不同处理。
-  Future<Map<String, String>> firstDefinitionsOf(List<String> wordIds) async {
+  Future<Map<String, String>> firstDefinitionsOf(
+    List<String> wordIds, {
+    /// 🆕 2026-10-17：**词库外词**（`ext:<spelling>`）的卡片内容读取器。
+    ///
+    /// 由 provider 注入 —— 本层只持有 `word.db`，拿不到 `user.db` 的 `external_word_cache`。
+    /// 传 `null` ⇒ 只返回词库词的释义（= 修复前的行为，便于渐进）。
+    Future<String?> Function(String spelling)? readExternalContent,
+  }) async {
     if (wordIds.isEmpty) return const {};
-    // ⚠️ 占位符个数 = 列表长度（本方法只服务分页后的列表，≤200，远低于
-    //    SQLite 的变量上限；若将来要传几千个，须分批）
-    final ph = List.filled(wordIds.length, '?').join(',');
-    final rows = await _db.rawQuery(
-      'SELECT word_id, content FROM card WHERE word_id IN ($ph)',
-      wordIds,
-    );
     final out = <String, String>{};
-    for (final r in rows) {
-      final raw = r['content'] as String?;
-      if (raw == null) continue;
-      final zh = _firstDefinitionZh(raw);
-      if (zh != null && zh.isNotEmpty) {
-        out[r['word_id']! as String] = zh;
+
+    // ── ① 词库词（`w…`）→ word.db.card ──
+    final libIds = wordIds.where((id) => !isExternalWordId(id)).toList();
+    if (libIds.isNotEmpty) {
+      // ⚠️ 占位符个数 = 列表长度（本方法只服务分页后的列表，≤200，远低于
+      //    SQLite 的变量上限；若将来要传几千个，须分批）
+      final ph = List.filled(libIds.length, '?').join(',');
+      final rows = await _db.rawQuery(
+        'SELECT word_id, content FROM card WHERE word_id IN ($ph)',
+        libIds,
+      );
+      for (final r in rows) {
+        final raw = r['content'] as String?;
+        if (raw == null) continue;
+        // 🔑 复用 `parseCardContent` + `firstDefinitionZhOf` —— **不再另写 JSON 解析**
+        //    （旧的私有 `_firstDefinitionZh` 已删，它与 `cardById` 各写了一份）
+        final zh = firstDefinitionZhOf(parseCardContent(raw).sections);
+        if (zh != null) out[r['word_id']! as String] = zh;
+      }
+    }
+
+    // ── ② 词库外词（`ext:<spelling>`）→ 注入的读取器（user.db.external_word_cache）──
+    //
+    // 🔴 2026-10-17 真机 bug：复习列表里 **LLM 生成的词没有中文释义**
+    //    （`weighin` / `papacy`），而词库词（`rest`）有。
+    //    根因：`cardById`（卡片页 / 复习会话走它）**早就有** `ext:` 回落，
+    //    而本方法原先只查 `word.db.card` ⇒ 漏了这一个来源。
+    //    两处 `content` 形状**刻意一致**（`toCardContent` 按 `card.content` 构造）
+    //    ⇒ 只差「换个数据源」。
+    //    📌 判据：**同一件事的口径只能有一处权威** ——「取释义」曾被实现两遍，只跟上一遍。
+    if (readExternalContent != null) {
+      for (final id in wordIds.where(isExternalWordId)) {
+        final sp = externalSpellingOf(id);
+        if (sp == null) continue;
+        try {
+          final raw = await readExternalContent(sp);
+          if (raw == null || raw.isEmpty) continue;
+          final zh = firstDefinitionZhOf(parseCardContent(raw).sections);
+          if (zh != null) out[id] = zh;
+        } catch (e) {
+          // 🔑 单条失败**不影响其它词**（同「少一行释义 ≠ 列表不可用」的既定容错）。
+          // ⚠️ 本文件是**纯 Dart**（零 flutter 依赖）⇒ 用 `print` 而非 `debugPrint`。
+          print('[defs] 词库外词取释义失败 id=$id: $e');
+        }
       }
     }
     return out;
   }
 
-  /// 从 `card.content` 的 JSON 里取出**首义**（`order` 最小的 `definition.zh`）。
+  /// ~~`_firstDefinitionZh`~~ —— 🗑 2026-10-17 已删除。
   ///
-  /// ⚠️ 坏 JSON / 缺段 / 缺字段一律返回 `null` **而不是抛**：
-  ///    列表里一条坏数据不该炸掉整页（同「库级只回答可不可以」的容错取向）。
-  ///    🔑 代价是「静默跳过」—— 所以返回值用 `null` 而非空串，
-  ///      让调用方**能区分**「没释义」与「取到了空」。
-  static String? _firstDefinitionZh(String contentJson) {
-    Object? decoded;
-    try {
-      decoded = jsonDecode(contentJson);
-    } catch (_) {
-      return null;
-    }
-    if (decoded is! Map) return null;
-    final secs = decoded['sections'];
-    if (secs is! List) return null;
-
-    Map<String, Object?>? best;
-    var bestOrder = 1 << 30;
-    for (final s in secs.whereType<Map>()) {
-      if (s['type'] != 'definition') continue;
-      final o = (s['order'] as int?) ?? 0;
-      if (o < bestOrder) {
-        bestOrder = o;
-        best = s.cast<String, Object?>();
-      }
-    }
-    return (best?['zh'] as String?)?.trim();
-  }
+  /// 它是 `cardById` 之外**第二份** JSON 解析（`jsonDecode` → 找 `sections` → 找 `definition`），
+  /// 而 `cardById` 的注释早就写着「**别在这里另写一份 JSON 解析**」。
+  ///
+  /// 两份实现只跟上了「词库词」这一个来源 ⇒ `ext:` 的词在复习列表里**双双取不到释义**。
+  /// 现统一为：解析走 [parseCardContent]、取首义走
+  /// [`firstDefinitionZhOf`]（`generated_card_adapter.dart`，纯函数、可断言）。
+  ///
+  /// 📌 判据：**同一件事的口径只能有一处权威**。
 
   Future<List<MorphPart>> _morphologyOf(String wordId) async {
     final rows = await _db.rawQuery(

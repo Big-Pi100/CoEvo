@@ -1,7 +1,7 @@
-# 【调查报告 · 未修】复习列表里 LLM 生成的词没有中文释义
+# 【调查报告】复习列表里 LLM 生成的词没有中文释义
 
 *2026-10-17 · 白哥真机截图（`weighin` / `papacy` 无释义，而 `rest` / `lung` / `prognosis` 有）*
-*依赖：读端侧代码（未改任何文件）· ⭐ 等白哥审批*
+*依赖：读端侧代码 · ✅ 2026-10-17 已实施并验证（见 §六）*
 
 ---
 
@@ -104,3 +104,79 @@ final zh = _firstDefinitionZh(raw);     // ← 另一份 JSON 解析
 2. 顺手确认 `hl:`（划线卡）在复习列表里**有没有同样问题** —— 要我把这条也查到底吗？
 
 **未改任何代码。** 批准后我实施 + 补断言（正反两例：`ext:` 词能取到、词库词不受影响）+ 证伪。
+
+---
+
+## 六、✅ 实施记录（2026-10-17 · 白哥批「同意（A+B）」+「hl: 也查」）
+
+### 6.1 `hl:`（划线卡）的排查结论：**不属于同一个洞，无需修**
+
+依据三条（都是查到的，不是推断）：
+
+| 证据 | 内容 |
+|---|---|
+| `Highlight` 模型字段 | `id / sourceType / sourceId / chapterIdx / startOffset / endOffset / **text** / note / createdAt` —— **没有 definition / 释义字段** |
+| 复习会话的 `HighlightCardBundle` | 只带 `Highlight` ⇒ 划线卡的**卡面内容 = 原文片段**，复习时是「回忆那段话」 |
+| `review_list_query` 的 JOIN | `LEFT JOIN highlight h` 只为拿 `h.deleted` / `h.paused` **两个可见性判据**，不取内容 |
+
+⇒ 划线卡**本来就没有「释义」这个概念**，列表不显示释义是**正常**，不是缺失。
+📌 这与 `ext:` 的洞**性质不同**：`ext:` 是「**该有却没有**」，`hl:` 是「**本来就没有**」——
+   别为了「看起来一致」给划线卡硬塞一个释义。
+
+### 6.2 B：首义解析下沉为纯函数
+
+`generated_card_adapter.dart`（纯 Dart，零 flutter）新增：
+
+```dart
+String? firstDefinitionZhOf(List<Map<String, Object?>> sections)
+```
+
+- 取 `type == 'definition'` 中 **`order` 最小**那条的 `zh`（不是数组第一条）
+- 缺段 / 缺字段 / 类型不对 / 空串 ⇒ **`null`**（让调用方能区分「没有」与「空」）
+- 🔴 `WordQueryService._firstDefinitionZh` **已删** —— 它是与 `cardById` 并行的**第二份 JSON 解析**
+  （而 `cardById` 的注释早就写着「别在这里另写一份 JSON 解析」）
+- 现在：**解析只有 `parseCardContent` 一处，取首义只有 `firstDefinitionZhOf` 一处**
+
+### 6.3 A：`firstDefinitionsOf` 补 `ext:` 回落
+
+```dart
+Future<Map<String,String>> firstDefinitionsOf(
+  List<String> wordIds, {
+  Future<String?> Function(String spelling)? readExternalContent,   // 🆕
+})
+```
+
+- ① 词库词（`w…`）→ `word.db.card`（原逻辑）
+- ② 词库外词（`ext:<spelling>`）→ **注入的读取器**（`user.db.external_word_cache`）
+- 单条失败**不影响其它词**；传 `null` ⇒ 退回修复前行为（渐进）
+- `review_list_provider` 注入：
+  `readExternalContent: (sp) => ExternalWordCacheRepository(db).contentOf(sp)`
+
+### 6.4 验证
+
+| 项 | 结果 |
+|---|---|
+| `analyze_inproc` | **error=0 / warning=0** |
+| `verify_review_list` | **84 项**（71 → +13，新增 ⑨ 行为断言 + ⑩ 真值表/接线）|
+| `verify_generated_card_adapter` | 75 项 |
+| `verify_external_word_card` | 79 项 |
+| `verify_word_query` | ✅ |
+| `tokens_verify` | ✅ |
+
+**⑨ 组是行为断言**（不是源码断言）：造**真实最小 `word.db`**（`card` 表）+ 注入假 `external_word_cache`，
+用 `WordQueryService.open(factoryFfi, path, externalCardLoader: …)` 真跑一遍：
+- ⑨-1 词库词取到**首义**（按 `order` 最小）
+- ⑨-2 🔴 `ext:` 词也能取到（本次修复的核心）
+- ⑨-3 缓存里没有的词 ⇒ 不出现（不是空串）
+- ⑨-5 不传回调 ⇒ 退回修复前行为
+
+🔴 **证伪 ×3，全部精确命中**：
+- 砍掉 `ext:` 分支 ⇒ ⑨-2 红
+- 首义判定改成「取数组最后一条」⇒ ⑨-1/2/5 红
+- provider 不注入读取器 ⇒ ⑩-8 红
+
+⚠️ **证伪第一次跑时 B「没红」** —— 因为我的测试数据里「order 最小的那条」恰好也是**数组最后一条**
+⇒ 「取最后一条」这个错误实现**也能拿到正确值**。是真·假绿。
+已改成**三条 definition 的顺序与 order 全不一致**（正确值夹中间），
+使「取第一条」「取最后一条」各自拿到不同错值 ⇒ 只有真按 `order` 比较才绿。
+📌 判据：**证伪必须真能红** —— 不红时先怀疑「测试数据的区分度」，而不是「顺手放过」。

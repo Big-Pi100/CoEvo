@@ -19,6 +19,7 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/external_word_cache_repository.dart';
 import '../services/review_list_query.dart';
 import 'user_db_provider.dart';
 import 'word_db_provider.dart';
@@ -187,8 +188,16 @@ final reviewListProvider =
     final load = ref.watch(wordQueryProvider).valueOrNull;
     if (load is WordDbReady) {
       try {
-        defs = await load.service
-            .firstDefinitionsOf(items.map((e) => e.wordId).toList());
+        defs = await load.service.firstDefinitionsOf(
+          items.map((e) => e.wordId).toList(),
+          // 🆕 2026-10-17：**LLM 生成的词**（`ext:<spelling>`）的卡片存在
+          //    `user.db.external_word_cache`，**不在** `word.db.card`
+          //    ⇒ 必须注入读取器，否则这些词在列表里**没有释义**
+          //      （真机 bug：`weighin`/`papacy` 无释义，词库词正常）。
+          //    🔑 与 `cardById` 的 `ext:` 回落**同一判据、同一数据源**。
+          readExternalContent: (sp) =>
+              ExternalWordCacheRepository(db).contentOf(sp),
+        );
       } catch (e) {
         // 🔑 只记日志 —— 见类文档：少一行释义 ≠ 列表不可用
         debugPrint('[review] 取释义失败（列表照常显示）：$e');
