@@ -1609,6 +1609,52 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         drop_column_if_exists(conn, "content_pool", col)?;
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // 🆕 2026-10-21：`users.subscription_expires` 格式统一（方案 A 的数据侧）
+    // ══════════════════════════════════════════════════════════════════
+    //
+    // # 契约
+    //
+    // 该列**只允许存 RFC3339**（`YYYY-MM-DDTHH:MM:SSZ`，UTC、秒级）。
+    // 代码侧已由 `subscription::set_expires*` 在写入时规范化（见那里）；
+    // 本条负责把**历史遗留值**也拉齐。
+    //
+    // # 历史值长什么样
+    //
+    // | 来源 | 形态 |
+    // |---|---|
+    // | IAP（唯一活跃路径） | `2026-10-21T14:04:22Z` ✅ 已是目标形态 |
+    // | `extend_subscription` 旧写法 | `2026-10-21`（纯日期）← **本迁移要处理的就是它** |
+    //
+    // 📌 实测（2026-10-21）：生产库纯日期 **0 行**（`extend_subscription` 零调用点）。
+    //    ⇒ 本迁移在生产上**影响 0 行**，属于"把契约落到数据层"，不是修数据。
+    //
+    // # 🔑 为什么这样写（比"只匹配 10 字符纯日期"更稳）
+    //
+    // 目标是「把**任何形态**拉成 RFC3339」，而不是「只修纯日期」。所以：
+    // 1. `datetime(x) IS NOT NULL` —— 只有**可被 SQLite 解析**的值才动
+    //    （脏值留给人看，静默改写更糟）
+    // 2. `strftime('%Y-%m-%dT%H:%M:%SZ', x)` —— SQLite 自己完成归一
+    //    · `2026-10-21`          → `2026-10-21T00:00:00Z`（纯日期按当日 00:00）
+    //    · `2026-10-21 14:04:22` → `2026-10-21T14:04:22Z`（空格分隔）
+    // 3. `x <> 上面那个结果` —— **已经是目标形态就不写**
+    //    ⇒ 天然幂等（第二遍 0 行），也不会产生无意义的写放大
+    //
+    // 📌 我第一版写的是 `length(trim(x)) = 10`（只认纯日期），
+    //    预演时发现**空格形态会被漏掉** —— 「只处理我想到的那一种」正是本项目的典型失效模式。
+    //    改成"能解析就归一"才符合契约本意。
+    conn.execute(
+        "UPDATE users SET subscription_expires = \
+             strftime('%Y-%m-%dT%H:%M:%SZ', subscription_expires) \
+         WHERE subscription_expires IS NOT NULL \
+           AND trim(subscription_expires) <> '' \
+           AND datetime(subscription_expires) IS NOT NULL \
+           AND subscription_expires <> \
+               strftime('%Y-%m-%dT%H:%M:%SZ', subscription_expires)",
+        [],
+    )
+    .map_err(|e| format!("normalize subscription_expires: {}", e))?;
+
     Ok(())
 }
 

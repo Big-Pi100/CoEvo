@@ -1803,5 +1803,54 @@ void main() {
         '实际 $clayButtons 个 —— 少一个说明有按钮退回了 Material');
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // ㉑ `subscription_expires` 格式收口（2026-10-21 方案 A）
+  //
+  // 📄 docs/design/subscription-expires-format-unification-2026-10-21.md
+  // 事故背景：同一字段有**三种规避手法并存**（手写补 T00:00:00Z / SQL datetime() /
+  // substr 取前 10 位），任何新读法忘记归一就会**静默算错**。
+  // 方案 A 把「解析」和「写入」各收口到一处。
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    final subFile = File('../../backend/crates/api_server/src/subscription.rs');
+    final subSrc = subFile.existsSync() ? subFile.readAsStringSync() : '';
+    final schemaFile = File('../../backend/crates/api_server/src/schema.rs');
+    final schemaSrc = schemaFile.existsSync() ? schemaFile.readAsStringSync() : '';
+
+    check('㉑-1 存在唯一解析入口 `parse_expires`',
+        subSrc.contains('pub fn parse_expires('),
+        '没有它 ⇒ 每个读点都要自己归一');
+
+    check('㉑-2 🔴 `is_subscription_active` 走统一解析（`parsed_expires`）',
+        subSrc.contains('parsed_expires(conn, user_id)'),
+        '自己手写归一 ⇒ 遇到 `+08:00` 之类会静默判「未订阅」');
+
+    check('㉑-3 🔴 不得再手写 `T00:00:00Z` 补纯日期（反向断言）',
+        !subSrc.contains('format!("{}T00:00:00Z", expires)'),
+        '那是旧实现的归一手法，已被 parse_expires 取代');
+
+    // 两处调用都是 `let canonical = canonicalize_expires(expires).ok_or_else(...)`
+    final canonCalls = '= canonicalize_expires(expires)'.allMatches(subSrc).length;
+    check('㉑-4 两个写入口（`set_expires` / `_if_later`）都规范化',
+        canonCalls >= 2,
+        '实际 $canonCalls 处 —— 少一处说明有写入口仍会存下第二种形态');
+
+    check('㉑-5 🔴 `extend_subscription` 不得再输出纯日期（反向断言）',
+        !subSrc.contains('new_date.format("%Y-%m-%d")'),
+        '旧写法既产纯日期、又配套了「字符串比较 + 解析失败退今天」的丢权益 bug');
+
+    check('㉑-6 🔴 不得再「解析失败就静默用今天」（反向断言）',
+        !subSrc.contains('unwrap_or_else(|_| chrono::Utc::now().date_naive())'),
+        '那会把用户已付费的剩余天数清零');
+
+    check('㉑-7 schema 有幂等的格式迁移（**任何**可解析形态都拉成 RFC3339）',
+        schemaSrc.contains("strftime('%Y-%m-%dT%H:%M:%SZ', subscription_expires)"),
+        '只认纯日期会漏掉 `2026-10-21 14:04:22` 这种空格形态（预演时抓到的）');
+
+    check('㉑-8 错名 `activate_subscription` 零命中',
+        !subSrc.contains('activate_subscription'),
+        '函数真名是 `extend_subscription`（错名会让排查时搜不到）');
+  }
+
   _report();
 }

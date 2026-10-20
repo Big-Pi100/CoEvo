@@ -171,3 +171,101 @@
 
 - 前置事故：`docs/review/iap-expiry-rollback-2026-10-20.md`（到期日被旧交易回退，已修）
 - 同族判据：**「同一件事的口径只能有一处权威」** —— 本次立项就是给这个字段建那一处
+
+---
+
+## 十、✅ 实施记录（2026-10-21 00:5x · 白哥批「按 A 方案修复」）
+
+### 10.1 代码改动
+
+`subscription.rs`
+- 🆕 `parse_expires(&str) -> Option<DateTime<Utc>>` —— **纯函数、全库唯一解析入口**
+  接受：RFC3339（含 `+08:00` 偏移）· 纯日期（当日 00:00 UTC）· SQLite 空格分隔
+- 🆕 `parsed_expires(conn, user_id)` —— 读库 + 解析（比较/计算一律走它）
+- 🆕 `canonicalize_expires(&str) -> Option<String>` —— 落库前的唯一形态
+- `is_subscription_active` → 改走 `parsed_expires`（**删掉手写的 `len==10` 补 `T00:00:00Z`**）
+- `set_expires` / `set_expires_if_later` → **写入时规范化**：
+  能理解的值一律收敛成 RFC3339；**无法解析的返回 Err**（不再静默不写）
+
+`schema.rs`（迁移，启动时跑）
+```sql
+UPDATE users SET subscription_expires = strftime('%Y-%m-%dT%H:%M:%SZ', subscription_expires)
+ WHERE subscription_expires IS NOT NULL
+   AND trim(subscription_expires) <> ''
+   AND datetime(subscription_expires) IS NOT NULL
+   AND subscription_expires <> strftime('%Y-%m-%dT%H:%M:%SZ', subscription_expires)
+```
+
+### 10.2 🔴 实施中发现并修掉一个**隐藏的数据丢失 bug**
+
+`extend_subscription` 旧实现：
+
+```rust
+let base = match &old_expires {
+    Some(d) if d.as_str() >= today.as_str() => d.clone(),   // ① 字符串比较
+    _ => today.clone(),
+};
+let base_date = NaiveDate::parse_from_str(&base, "%Y-%m-%d")
+    .unwrap_or_else(|_| Utc::now().date_naive());           // ② 失败 ⇒ 静默用今天
+```
+
+对 IAP 用户（值是 RFC3339）：
+
+| 步 | 结果 |
+|---|---|
+| ① `"2026-10-21T…Z" >= "2026-10-21"` | **true**（前缀相同、更长）|
+| ② `parse_from_str("%Y-%m-%d")` | **失败**（尾部有多余字符）|
+| ③ `unwrap_or_else(今天)` | **静默退回今天** |
+| ④ `new = 今天 + days` | 🔴 **用户已付费的剩余时长被清零** |
+
+⇒ 一旦有人启用「后台赠送 / 补偿 / 手动延期」，对 IAP 用户操作就是**扣掉他的剩余权益**。
+
+**修法**：`base` 改用 `parse_expires`（比较 `DateTime`），输出 RFC3339。
+**单测**：`test_extend_subscription_preserves_remaining_days`。
+**证伪实测**（把旧写法放回）：`got=2026-11-19 00:00` vs 期望 `2026-11-20 14:04` —— 差 **1 天 14 小时**，正好是「今日本地 00:00 起算」的偏移。
+
+### 10.3 🔴 迁移第一版有漏（预演抓到的）
+
+第一版写成 `length(trim(x)) = 10`（只认纯日期）—— 预演时发现 **`2026-10-21 14:04:22` 这种空格形态会被漏掉**。
+📌 「只处理我想到的那一种」正是本项目的典型失效模式。
+改成 `datetime(x) IS NOT NULL + strftime` ⇒ **能解析就归一**，覆盖所有历史形态，且天然幂等。
+
+**副本预演结果**（生产库副本，未触碰真实数据）：
+
+| 场景 | 结果 |
+|---|---|
+| 生产现状（3 个 RFC3339）| 首次 **0 行** · 复跑 **0 行** |
+| 造 `2026-10-21`（纯日期）| → `2026-10-21T00:00:00Z` ✅ |
+| 造 `2026-10-21 14:04:22`（空格）| → `2026-10-21T14:04:22Z` ✅ |
+| 造 `2026-10-21T14:04:22Z`（已是目标）| **不动** ✅ |
+| 造 `garbage-value`（脏值）| **不动** ✅（留给上层报错，不静默改写）|
+
+### 10.4 验证
+
+| 项 | 结果 |
+|---|---|
+| `cargo test` | **321 passed**（314 → **+7**）|
+| `cargo fmt --check` / clippy `--workspace -- -D warnings` | ✅ / **exit 0** |
+| `iap_verify` | **289 项**（281 → +8，新增 ㉑ 组）|
+| 迁移副本预演 | 见 10.3 ✅ |
+
+🔴 **证伪 ×3，全部精确命中**：
+
+| 注入 | 红的条目 |
+|---|---|
+| `extend_subscription` 用回旧 base 计算 | `test_extend_subscription_preserves_remaining_days`（含具体丢多少）|
+| `set_expires` 不规范化 | `test_set_expires_normalizes_to_rfc3339` + `test_set_expires_rejects_garbage`（恰好 2 条）|
+| `parse_expires` 拒绝带偏移 | `test_parse_expires_accepts_all_legacy_shapes` + `test_is_active_handles_legacy_shapes`（恰好 2 条）|
+
+### 10.5 落地后的契约
+
+| 层 | 约束 | 由谁保证 |
+|---|---|---|
+| 写入 | 只能落 RFC3339 | `set_expires*` 内部 `canonicalize_expires` |
+| 存量 | 任何可解析形态都被拉齐 | `schema.rs` 迁移（幂等）|
+| 读取 | 只有一个入口返回已解析值 | `parsed_expires` |
+| 断言 | 上述三条都不许退化 | ㉑ 组 8 条 |
+
+### 10.6 ⏳ 待部署
+
+纯后端改动 ⇒ **只部署后端**，**端侧无需出包**。
