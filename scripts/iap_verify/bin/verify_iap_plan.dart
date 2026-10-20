@@ -1720,5 +1720,88 @@ void main() {
         '删了它 ⇒ 任何账号都能抢别人的交易');
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // ⑳ 到期日「只向前推进」+ 到期弹窗不得退回手搓白板（2026-10-20）
+  //
+  // 🔴 事故：StoreKit **乱序重放 9 笔**历史交易 ⇒ 一笔旧的（10-18）把 10-21
+  //    **回退**掉 ⇒ 服务端判「未订阅」⇒ 同步 403 + 误弹「订阅已到期」，
+  //    而端侧 StoreKit 仍有效到 10-21 ⇒ 用户看到「订阅中 · 同步失败」。
+  // 📌 判据：**幂等写入 ≠ 可以乱序到达**（顺序不该由客户端保证）。
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    final handlers = File('../../backend/crates/api_server/src/iap_handlers.rs');
+    final rs = handlers.existsSync() ? handlers.readAsStringSync() : '';
+    final sub = File('../../backend/crates/api_server/src/subscription.rs');
+    final subSrc = sub.existsSync() ? sub.readAsStringSync() : '';
+    final appSrc = codeOnly(readApp('app.dart'));
+
+    check(
+        '⑳-1 🔴 IAP 上报用 `set_expires_if_later`（只向前推进）',
+        rs.contains('subscription::set_expires_if_later('),
+        '用无条件版 ⇒ 乱序重放时到期日被旧交易回退');
+
+    check(
+        '⑳-2 🔴 无条件版 `set_expires(` **不得**再出现在 IAP handler（反向断言）',
+        !rs.contains('subscription::set_expires('),
+        '它保留给退款/管理端；IAP 用它 ⇒ 事故复发');
+
+    check(
+        '⑳-3 单调条件必须在 **SQL 里**（不在 Rust 里读-改-写，避免并发窗口）',
+        RegExp(r'datetime\(subscription_expires\)\s*<\s*datetime\(\?1\)')
+            .hasMatch(subSrc),
+        '缺这个 WHERE 条件 ⇒ 等于没改');
+
+    check(
+        '⑳-4 响应 `expiresAt` 必须是**库里生效值**（不是本次交易值）',
+        rs.contains('"expiresAt": effective_expires'),
+        '乱序时两者不同 ⇒ 客户端会把权益判错');
+
+    check(
+        '⑳-5 无条件版仍保留（退款 / 人工撤销依赖它，别"顺手也改成单调"）',
+        subSrc.contains('pub fn set_expires('),
+        '删了它 ⇒ 退款无法收回权益');
+
+    check(
+        '⑳-6 🔴 `unknown` 不得触发到期判定（只认 `unavailable`）',
+        appSrc.contains('iap.availability == IapAvailability.unavailable'),
+        'unknown = 还没查；拿服务端值冒充 ⇒ 启动瞬间误弹');
+
+    check(
+        '⑳-7 🔴 不得再用 `!= available` 做回退判据（反向断言）',
+        !appSrc.contains('iap.availability != IapAvailability.available'),
+        '它把 unknown 也算成「端侧不行」');
+
+    // 切出 `_buildSubExpiredOverlay` 的方法体 —— 只对这一段断言，
+    // 避免「app.dart 全文件不得有 Colors.white」那种**假红**（别处合法使用）。
+    final start = appSrc.indexOf('Widget _buildSubExpiredOverlay()');
+    final end = start < 0 ? -1 : appSrc.indexOf('\n  @override', start);
+    final overlay =
+        (start >= 0 && end > start) ? appSrc.substring(start, end) : '';
+
+    // 🔑 先证明切片有效 —— 否则下面几条会因为 `overlay` 是空串而**假绿**
+    check(
+        '⑳-8 能切出「订阅已到期」覆盖层的方法体（切片失败会让 ⑳-9~11 假绿）',
+        overlay.isNotEmpty,
+        '找不到 `Widget _buildSubExpiredOverlay()` 或方法边界变了');
+
+    check(
+        '⑳-9 🔴 弹窗必须复用 `CoDialogSurface`（外观只有一处定义）',
+        overlay.contains('CoDialogSurface('),
+        '手搓一套 ⇒ 深色主题变成白板（白哥：「丑陋的很，不符合设计规范」）');
+
+    check(
+        '⑳-10 🔴 不得退回硬编码白底 / Material 控件（反向断言）',
+        !overlay.contains('Colors.white') &&
+            !overlay.contains('Icons.lock') &&
+            !overlay.contains('FilledButton'),
+        '这些在三档主题（墨/格/夜）里必然失控');
+
+    final clayButtons = 'ClayButton('.allMatches(overlay).length;
+    check(
+        '⑳-11 两个按钮都是粘土按钮（主 + 次）',
+        clayButtons >= 2,
+        '实际 $clayButtons 个 —— 少一个说明有按钮退回了 Material');
+  }
+
   _report();
 }

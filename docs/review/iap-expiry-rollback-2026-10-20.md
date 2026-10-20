@@ -316,3 +316,105 @@ enum IapAvailability { unknown /* 还没查 */, available, unavailable /* 真不
 
 > 📌 **「显示订阅中 + 同步失败」不是矛盾，是两层各自说了真话。**
 > 这一类"看起来自相矛盾"的现象，正确切法是**分层列出每层的值**，而不是找"哪个界面写错了"。
+
+---
+
+## 八、✅ 实施记录（2026-10-20 23:2x · 白哥批「1、2、3 都做」）
+
+### 8.1 ① 后端：到期日**只向前推进**
+
+`subscription.rs`
+- 🆕 `set_expires_if_later(conn, user_id, expires) -> Result<bool>`
+  ```sql
+  UPDATE users SET subscription_expires = ?1
+   WHERE id = ?2
+     AND (subscription_expires IS NULL
+          OR datetime(subscription_expires) < datetime(?1))
+  ```
+  返回 `Ok(false)` = 本次比库里旧、**已忽略**（不是错误）
+- 🔴 **`set_expires` 原封不动保留** —— 退款 / 人工撤销**需要**能回退
+- 🆕 单测 **6 条**（`subscription::tests`）：
+  空值写入 · 正序推进 · **乱序不回退** · 相等不动 · **两种日期格式混用** · **反向对照（无条件版仍能回退）**
+
+`iap_handlers.rs`
+- 调用点改 `set_expires_if_later`；**入口先校验 RFC3339**（格式坏 ⇒ 500 + error，
+  而不是被 SQL 静默忽略 —— 那是「静默失效」的入口）
+- 未推进时打 INFO（不是 WARN：每次重放都会出现，WARN 会淹没真问题）
+- 🔴 响应 `expiresAt` / `isActive` 改为**库里实际生效值**（`effective_expires`），
+  不再是本次交易值 —— 乱序时两者不同，客户端拿错会把权益判错
+- 日志增加 `expires(本次)` / `expires(生效)` 两个字段
+
+### 8.2 ② 端侧：`unknown` 不再触发到期判定
+
+`app.dart` `_checkSubscription` 的回退判据：
+
+```diff
+- if (iap.availability != IapAvailability.available) {   // unknown 也算「端侧不行」
++ if (iap.availability == IapAvailability.unavailable) { // 只有「真不可用」才退回服务端
+```
+
+`unknown`（还没查）⇒ 本轮跳过。端侧就绪后 `iap` 变化会触发 rebuild ⇒
+`build()` 里的 microtask 立刻补判，**不会漏判**。
+
+### 8.3 🎨「订阅已到期」弹窗重做（白哥：「丑陋的很，不符合设计规范」）
+
+**根因**：它不能用 `showDialog`（上下文在 Navigator 之上），于是当年**手搓了一整套外观** ——
+`Colors.white` 硬编码 + `Icons.lock` + `FilledButton`/`TextButton`
+⇒ 三档主题（墨/格/夜）里它**永远是白板**，与粘土/朱砂体系完全脱节。
+
+**修法（不是"再手搓一版更好看的"）**：
+- 🆕 从 `CoDialog` **抽出 `CoDialogSurface`** —— 弹层的**内容外壳**（card 底 + 圆角 20 + 外阴影 + `title` + `actions` 行）
+- `CoDialog` 改为 `Dialog(child: CoDialogSurface(...))`（行为不变）
+- 覆盖层改为 `Center → CoDialogSurface(...)` —— **两条路径共用同一处外观定义**
+- 内容：标题「订阅已到期」（20px/w600，同其它弹窗）+ 正文走 **`downgradeNotice()`**（唯一文案源）
+- 按钮：`ClayButton` 主（查看订阅）+ 次（稍后再说），`expanded: true`
+- 遮罩沿用 `showDialog` 默认的 54% 黑（不另发明浓度）
+
+📌 判据：**「不能用 Dialog 路由」≠「可以另写一套外观」** —— 该拆的是**外壳**，不是让它分叉。
+
+### 8.4 ③ 数据修复（生产库）
+
+| 项 | 值 |
+|---|---|
+| 备份 | `coevo.db.bak-expiryfix-20261020`（31.7 MB · 600）|
+| 反写来源 | `MAX(iap_transactions.expires_date)` = `2000001254482343` → `2026-10-21T14:04:22Z` |
+| UPDATE | `10-18 → 10-21`（**1 行**，与后端新逻辑同口径：`WHERE datetime(...) < datetime(?)`）|
+| 审计 | `data_repair_iap_expiry_rollback`（含 from/to/evidence）|
+| 🔴 **同步验证** | `POST /api/sync/push` → **200**（修复前 403）· `GET /pull` → 200 · 21844 bytes |
+| 全库复扫 | ✅ 无残留（`b5b3a29d` 的 `NULL` 是 10-13 主动清的串号数据，且其交易已过期，**不修**）|
+
+### 8.5 断言（`verify_iap_plan` ⑳ 组 +11，共 **281 项**）
+
+| # | 守什么 |
+|---|---|
+| ⑳-1/2 | IAP 必须用 `set_expires_if_later`；**无条件版不得再出现在 handler**（反向）|
+| ⑳-3 | 单调条件必须在 **SQL 里**（不在 Rust 里读-改-写，避免并发窗口）|
+| ⑳-4 | 响应 `expiresAt` 必须是**库里生效值** |
+| ⑳-5 | 无条件版**仍须存在**（退款依赖它 —— 防"顺手也改成单调"）|
+| ⑳-6/7 | `unknown` 不得触发判定；`!= available` 反向断言 |
+| ⑳-8 | **先证明切片有效**（否则 ⑳-9~11 会因空串**假绿**）|
+| ⑳-9/10/11 | 弹窗必须用 `CoDialogSurface`；不得出现 `Colors.white`/`Icons.lock`/`FilledButton`；按钮 ≥2 个 `ClayButton` |
+
+### 8.6 验证（全绿）
+
+| 项 | 结果 |
+|---|---|
+| `cargo test` | **314 passed**（308 → +6）|
+| `cargo fmt --check` / clippy `--workspace -- -D warnings` | ✅ / **exit 0** |
+| `analyze_inproc` | **error=0 / warning=0** |
+| `iap_verify` | **281 项**（270 → +11）|
+| verify_auth_entry / review_pause / local_owner / sync | 118 / 49 / 59 / 221 |
+| tokens_verify / ebook reading_tab | 732 / 99(fail=0) |
+
+🔴 **证伪 ×3，全部精确命中**：
+- 后端去掉 SQL 单调条件 ⇒ **恰好** `test_if_later_ignores_older` + `test_if_later_equal_is_noop` 红
+- 端侧判据退回 `!= available` ⇒ **恰好** ⑳-6、⑳-7 红
+- 弹窗还原成旧的手搓白板（`git show HEAD` 的原文）⇒ **恰好** ⑳-9、⑳-10、⑳-11 红
+
+### 8.7 ⏳ 遗留（本次未做，如实记录）
+
+1. **`subscription_expires` 格式混用仍在**（IAP 写 RFC3339 / `activate_subscription` 写纯日期）
+   —— 本次用 `datetime()` 规避了比较问题，但**没统一格式**。建议后续单独立项。
+2. **后端需重新构建部署**（新逻辑才生效）；**端侧需出 build 13**（弹窗 + 判据）。
+3. 其它账号若也被回退过，本次不批量修（扫描已证明目前只有 1 个）；
+   ① 上线后不会再产生新的回退。

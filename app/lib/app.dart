@@ -33,6 +33,8 @@ import 'services/iap_plan.dart';
 import 'services/iap_service.dart';
 import 'services/theme_settings.dart';
 import 'widgets/achievement_unlock_overlay.dart';
+import 'widgets/clay_button.dart';
+import 'widgets/co_dialog.dart';
 
 final goRouter = GoRouter(
   initialLocation: '/',
@@ -757,7 +759,21 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp>
     if (auth.isAuthenticated && auth.userId != null) {
       ref.fetchSubscription().then((_) {
         // ⚠️ 回退路径必须用**刚拉回来的**值判定（不能沿用旧值）
-        if (iap.availability != IapAvailability.available) {
+        //
+        // 🔴🔴 2026-10-20：判据由 `!= available` 改为 **`== unavailable`**。
+        //
+        // # 为什么（真机事故：误弹「订阅已到期」，同时界面显示「订阅中」）
+        //
+        // `IapAvailability` 有三态：`unknown`（**还没查**）/ `available` / `unavailable`（真没有）。
+        // 原判据 `!= available` 把「**还没查**」也当成「端侧不行」⇒ 拿服务端值冒充端侧权威。
+        // 而 `_checkSubscription` **启动后 3 秒就首跑**，那时 StoreKit 通常还没就绪（`unknown`），
+        // 服务端值一旦滞后（新购未上报 / 到期日被旧交易回退），**启动瞬间就误弹**。
+        //
+        // 📌 判据：**`unknown` ≠ `unavailable`** ——
+        //    「不知道」应该**等**，不该拿另一层的数据顶上。
+        //    端侧就绪后 `iap` 变化会触发 rebuild ⇒ `build()` 里的 microtask 会立刻补判，
+        //    所以这里"跳过"不会漏判（代价只是最长 5 分钟的显示延迟，远好于误弹）。
+        if (iap.availability == IapAvailability.unavailable) {
           _applyExpired(
             expired: ref.read(subscriptionProvider).isExpired,
             isAnonymous: isAnonymous,
@@ -800,10 +816,35 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp>
     }
   }
 
+  /// 「订阅已到期」覆盖层。
+  ///
+  /// # 为什么是**覆盖层**而不是 `showDialog`（历史原因，别改回去）
+  ///
+  /// 它挂在 `MaterialApp.router` 的 `builder:` 里 —— 那个 `context` 在 **Navigator 之上**，
+  /// `showDialog` / `context.push` 在那里都查不到（见按钮里的完整根因记录）。
+  ///
+  /// # 🔴 外观必须复用 `CoDialogSurface`（2026-10-20 白哥：「丑陋的很，不符合设计规范」）
+  ///
+  /// 原先自己手搓 `Container(color: Colors.white) + Icons.lock + FilledButton`
+  /// ⇒ **深色主题下是一块白板**，与粘土 / 朱砂体系完全脱节。
+  /// 现在：外壳走 `CoDialogSurface`、按钮走 `ClayButton`、文字走 `CoFonts` + tokens
+  /// ⇒ 与全应用其它弹窗**共用同一处外观定义**。
+  ///
+  /// 📌 判据：**「不能用 Dialog 路由」≠「可以另写一套外观」** —— 该拆的是外壳，不是让它分叉。
   Widget _buildSubExpiredOverlay() {
     if (!_showSubExpired) return const SizedBox.shrink();
+
+    void dismiss() {
+      _lastDismissed = DateTime.now();
+      _dismissCount++;
+      setState(() => _showSubExpired = false);
+    }
+
+    final t = CoEvoTokensExt.of(context);
+
     return Stack(
       children: [
+        // 遮罩：沿用 `showDialog` 默认的 54% 黑（不另发明一个浓度）
         Positioned.fill(
           child: GestureDetector(
             onTap: () {},
@@ -813,70 +854,53 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp>
         Center(
           child: Material(
             color: Colors.transparent,
-            child: Container(
-              margin: const EdgeInsets.all(32),
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.lock, size: 20),
-                      SizedBox(width: 8),
-                      Text('订阅已到期',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  // 🔴 2026-10-04：原为内嵌的 `SubscribePanel`（380px 弹层）。
-                  //    订阅界面已改为**独立页** ⇒ 这里改为跳转按钮（覆盖层本身保留：
-                  //    它承担的是「到期提示」的职责，与订阅页是两件事）。
-                  FilledButton(
-                    onPressed: () {
-                      _lastDismissed = DateTime.now();
-                      _dismissCount++;
-                      setState(() => _showSubExpired = false);
-                      // 🔴 2026-10-09 修复：**不能用 `context.push`**（白哥真机报
+            child: Padding(
+              // 与 `CoDialog` 的 `_insetPadding` 同一数值
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+              child: CoDialogSurface(
+                title: '订阅已到期',
+                actions: [
+                  ClayButton(
+                    label: '查看订阅',
+                    expanded: true,
+                    onTap: () {
+                      dismiss();
+                      // 🔴 不能用 `context.push`（白哥 2026-10-09 真机报
                       //    「点击查看订阅只是关闭弹窗，并没有跳转到订阅页面」）。
                       //
                       // 根因：本覆盖层挂在 `MaterialApp.router` 的 `builder:` 里，
-                      //    而那个 `context` 在 **Navigator 之上** ——
+                      //    那个 `context` 在 **Navigator 之上** ——
                       //      · Flutter SDK `widgets/app.dart`：`builder(context, routing)`，
                       //        `routing` 就是 Router 本身 ⇒ 上下文在 Router **上面**
-                      //      · go_router 14.8.1 `src/router.dart` 的 `builderWithNav`
-                      //        把 `InheritedGoRouter` 包在 **Navigator 周围** ⇒ 在
-                      //        builder 上下文里**查不到**
-                      //    ⇒ `context.push`（= `GoRouter.of(context).push`）抛
-                      //      「No GoRouter found in context」；release 下 assert 被剥掉，
-                      //      变成「空值崩溃」。
-                      //    ⇒ 症状：`setState` 在它**之前**已执行 ⇒ 弹窗关掉了，
-                      //      而导航**从未发生**。
-                      //
-                      // ✅ 正解：直调**同文件顶层的 `goRouter` 实例** —— 不经 context，
-                      //    不受「上下文在 Navigator 之上」影响。
+                      //      · go_router 14.8.1 的 `builderWithNav` 把
+                      //        `InheritedGoRouter` 包在 **Navigator 周围** ⇒ builder 里查不到
+                      //    ⇒ `context.push` 抛「No GoRouter found in context」；
+                      //      release 下 assert 被剥掉 ⇒ 空值崩溃；而 `setState` 在它**之前**
+                      //      已执行 ⇒ **弹窗关掉了，导航从未发生**。
+                      // ✅ 正解：直调**同文件顶层的 `goRouter` 实例**（不经 context）。
                       // 📌 判据：**`MaterialApp.builder` 的上下文在 Navigator 之上** ——
-                      //    那里只能放不需要 Navigator / GoRouter 的东西；
-                      //    要导航必须**持实例**（`goRouter` / `navigatorKey`）。
+                      //    那里只能放不需要 Navigator / GoRouter 的东西；要导航必须**持实例**。
                       goRouter.push('/subscribe');
                     },
-                    child: const Text('查看订阅'),
                   ),
-                  const SizedBox(height: 4),
-                  TextButton(
-                    onPressed: () {
-                      _lastDismissed = DateTime.now();
-                      _dismissCount++;
-                      setState(() => _showSubExpired = false);
-                    },
-                    child: const Text('稍后再说'),
+                  ClayButton(
+                    label: '稍后再说',
+                    expanded: true,
+                    variant: ClayButtonVariant.secondary,
+                    onTap: dismiss,
                   ),
                 ],
+                // 文案走 `downgradeNotice()` —— **唯一文案源**（已被断言守着），
+                // 不在这里另写一份「到期后会失去什么」（两处口径必然漂）。
+                child: Text(
+                  downgradeNotice(),
+                  style: TextStyle(
+                    fontFamily: CoFonts.uiSans,
+                    fontSize: 14,
+                    height: 1.7,
+                    color: Color(t.ink2.argb32),
+                  ),
+                ),
               ),
             ),
           ),

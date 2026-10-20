@@ -822,19 +822,61 @@ pub async fn iap_verify_handler(
     }
 
     // ── 6. 更新订阅到期日（🔴 直接写 Apple 的值，不是「加 N 天」）──
+    //
+    // 🆕 2026-10-20：改为**只向前推进**（`set_expires_if_later`）。
+    //
+    // 🔴 事故：StoreKit 重放历史交易**不保证顺序**（一次投递 9 笔），
+    //    端侧按投递顺序逐笔上报，而这里原先是**无条件覆盖** ⇒ 最后那笔说了算
+    //    ⇒ 一笔旧的（10-18）把 10-21 **回退**掉 ⇒ 服务端判「未订阅」
+    //    ⇒ 同步 403 + 误弹「订阅已到期」，而端侧 StoreKit 明明还有效。
+    //    📌 判据：**幂等写入 ≠ 可以乱序到达**；顺序不该由客户端保证。
     let expires_at = tx.expires_date.and_then(millis_to_rfc3339);
     if let Some(ref exp) = expires_at {
-        if let Err(e) = crate::subscription::set_expires(&conn, &body.user_id, exp) {
-            tracing::error!("更新 subscription_expires 失败: {}", e);
+        // 🔑 先校验格式：`set_expires_if_later` 的 SQL 用 `datetime()` 比较，
+        //    格式非法会**静默不写**（变成"永远不更新"的静默失效）。
+        //    在入口挡掉 ⇒ 立刻 500 + error 日志，而不是悄悄丢。
+        if chrono::DateTime::parse_from_rfc3339(exp).is_err() {
+            tracing::error!(
+                "到期日格式非法（拒绝写入）: tx={} expires={}",
+                tx.transaction_id,
+                exp
+            );
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                json!({"error": format!("更新订阅状态失败: {}", e)}).to_string(),
+                json!({"error": "到期日格式非法"}).to_string(),
             )
                 .into_response();
         }
+        match crate::subscription::set_expires_if_later(&conn, &body.user_id, exp) {
+            Ok(advanced) => {
+                if !advanced {
+                    // ⚠️ **不是错误** —— 乱序上报的正常结果（这笔比库里已有的旧）。
+                    //    用 INFO 而不是 WARN：它每个用户每次重放都会出现，WARN 会淹没真问题。
+                    tracing::info!(
+                        "iap_verify: 到期日未推进（本次比库里旧，已忽略）tx={} 本次={}",
+                        tx.transaction_id,
+                        exp
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::error!("更新 subscription_expires 失败: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    json!({"error": format!("更新订阅状态失败: {}", e)}).to_string(),
+                )
+                    .into_response();
+            }
+        }
     }
 
-    let is_active = expires_at
+    // 🔑 响应里的 `expiresAt` / `isActive` 必须是**库里实际生效的值**，
+    //    不是本次这笔交易的值 —— 乱序时两者不同，客户端拿错就会把权益判错。
+    let effective_expires = crate::subscription::get_current_expires(&conn, &body.user_id)
+        .ok()
+        .flatten();
+
+    let is_active = effective_expires
         .as_deref()
         .map(|_| crate::subscription::is_subscription_active(&conn, &body.user_id))
         .unwrap_or(false);
@@ -846,12 +888,13 @@ pub async fn iap_verify_handler(
     // 成功路径**一条都没有**。而失败/冲突路径本来就有日志，不缺这里的曝光度。
     // ⇒ 一次 INFO 的成本可以忽略，缺了它排查成本极高。
     tracing::info!(
-        "iap_verify: tx={} user={} product={} env={} expires={} ownership={:?} active={}",
+        "iap_verify: tx={} user={} product={} env={} expires(本次)={} expires(生效)={} ownership={:?} active={}",
         tx.transaction_id,
         body.user_id,
         tx.product_id,
         tx.environment,
         expires_at.as_deref().unwrap_or("(无)"),
+        effective_expires.as_deref().unwrap_or("(无)"),
         ownership,
         is_active
     );
@@ -860,7 +903,7 @@ pub async fn iap_verify_handler(
         StatusCode::OK,
         json!({
             "isActive": is_active,
-            "expiresAt": expires_at,
+            "expiresAt": effective_expires,
             "productId": tx.product_id,
             "originalTransactionId": tx.original_transaction_id,
         })
