@@ -163,10 +163,15 @@ pub fn set_expires(conn: &Connection, user_id: &str, expires: &str) -> Result<()
 ///
 /// # 为什么用 `datetime()` 而不是字符串比较
 ///
-/// `subscription_expires` 目前**格式混用**：IAP 写 RFC3339（`…T13:57:39Z`），
-/// 而 `activate_subscription` 写纯日期（`2026-10-18`）。
+/// `subscription_expires` 目前**两种写法并存**：IAP 写 RFC3339（`…T13:57:39Z`），
+/// 而 `extend_subscription` 写纯日期（`2026-10-18`）。
 /// 字符串比较 `'2026-10-18' < '2026-10-18T13:57:39Z'` 恰好返回 true（短的在前）——
 /// **看起来对纯属巧合**，跨格式时错向不定。`datetime()` 能同时解析两者。
+///
+/// ⚠️ 实测现状（2026-10-21）：生产库**全是 RFC3339**，纯日期 0 个 ——
+///    因为 `extend_subscription` 目前**零调用点（死代码）**。
+///    ⇒ 本函数用 `datetime()` 是**预防性**的，不是已经发生的数据混用。
+///    📄 收口方案：`docs/design/subscription-expires-format-unification-2026-10-21.md`
 ///
 /// # 返回
 ///
@@ -375,9 +380,10 @@ mod tests {
         assert_eq!(expires_of(&conn).as_deref(), Some("2026-10-21T14:04:22Z"));
     }
 
-    /// `subscription_expires` **格式混用**（`activate_subscription` 写纯日期）。
+    /// `subscription_expires` **两种写法并存**（`extend_subscription` 写纯日期）。
     /// 若用字符串比较，`"2026-10-18" < "2026-10-18T23:00:00Z"` 恰好为 true ——
     /// **看起来对纯属巧合**。`datetime()` 归一后语义才确定。
+    /// ⚠️ 生产库目前全是 RFC3339（`extend_subscription` 零调用点）⇒ 本测试是**预防性**的。
     #[test]
     fn test_if_later_handles_mixed_formats() {
         let conn = db();

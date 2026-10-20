@@ -149,9 +149,15 @@ pub const BLOB_RETENTION_DAYS_AFTER_EXPIRY: i64 = 30;
 /// 🔑 筛选条件里带 `EXISTS (… blob_size > 0)` 是**性能**考虑，不是正确性 ——
 ///    否则每 5 分钟要对**所有**历史到期用户各扫一次目录。
 ///
-/// ⚠️ `subscription_expires` 有**两种格式**（正常订阅 `YYYY-MM-DD` / 试用遗留带时刻）
-///    ⇒ 一律 `substr(x,1,10)` 取日期部分；**解析不出来时 `date()` 返回 NULL**，
+/// ⚠️ `subscription_expires` **两种写法并存**：
+///    · **IAP（唯一活跃路径）** → RFC3339 `2026-10-21T14:04:22Z`
+///    · `extend_subscription`（**当前零调用点**）→ 纯日期 `2026-10-21`
+///    ⇒ 一律 `substr(x,1,10)` 取日期部分（对两种都有效）；**解析不出来时 `date()` 返回 NULL**，
 ///    比较结果为 NULL（假）⇒ 那一行**不会被删** —— 这是安全的一侧（宁可不删）。
+///
+/// 📌 2026-10-21 更正：本段注释原先写反了（说「正常订阅 YYYY-MM-DD」）——
+///    照错的方向写代码会引入 bug。收口方案见
+///    `docs/design/subscription-expires-format-unification-2026-10-21.md`。
 pub fn purge_expired_blobs(
     conn: &rusqlite::Connection,
     store: &dyn crate::book_storage::BlobStore,
