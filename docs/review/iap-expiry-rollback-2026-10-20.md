@@ -104,6 +104,19 @@ Apple 沙盒月度订阅**自动续期**（约每 5 分钟一个周期），已�
 | **数据副作用** | `subscription_expires` **格式混用**（见下），使"字符串比较"这一常见写法**静默出错** |
 | 免费用户 | 无影响 |
 
+### 生产库全量扫描（只读，2026-10-20 23:0x）
+
+判据：`users.subscription_expires < 他自己的 MAX(iap_transactions.expires_date)` ⇒ 被回退过
+
+| 账号 | 当前值 | 交易最新值 | 判定 |
+|---|---|---|---|
+| `62731265` mr.bigpi | 10-18T13:57:39Z | **10-21T14:04:22Z** | 🔴 **被回退（本次）** |
+| `b5b3a29d` 690861018 | `NULL` | 10-13T10:37:35Z | 🟡 非回退 —— 是 **10-13 我们主动清掉的串号脏数据**，且那笔已过期，不影响权益 |
+
+⇒ **实际受影响只有你 1 个账号**（目前）。原因是这个 bug 需要"续期多笔 + 乱序投递"才触发，
+而真实用户大多只有 1–2 笔交易。
+⚠️ 但**上线后用户会积累交易**（每月续期一笔），触发概率随时间上升 ⇒ 仍必须修。
+
 ### ⚠️ 附带的第二处隐患：格式混用
 
 | 写入方 | 格式 |
@@ -164,11 +177,11 @@ pub fn set_expires_if_later(conn, user_id, expires) -> Result<bool> {
 
 ---
 
-## 六、需要你批的两件事
+## 六、需要你批的三件事
 
-### ① 代码修复（方案 A）
+### ① 后端修复（方案 A —— 治「到期日被回退」）
 
-改动清单（预估）：
+改动清单：
 | 文件 | 改动 |
 |---|---|
 | `subscription.rs` | 新增 `set_expires_if_later`（含单测：正序/乱序/空值/两格式）|
@@ -176,7 +189,20 @@ pub fn set_expires_if_later(conn, user_id, expires) -> Result<bool> {
 | `verify_iap_plan.dart` | 断言：IAP 路径**不得**再调无条件版 `set_expires`（反向断言）|
 | 无需出包 | 纯后端改动 ⇒ **只部署后端**，端侧不动 |
 
-### ② 数据修复（一条 SQL，需你点头才动生产）
+### ② 端侧修复（治「误弹窗」—— 独立缺陷，与 A 互补）
+
+改动清单：
+| 文件 | 改动 |
+|---|---|
+| `app.dart` `_applyExpired` 的调用点 | `availability != available` → **`availability == unavailable`**（`unknown` 不判定）|
+| `verify_*` 断言 | 锁住「`unknown` 不得触发到期判定」+ 反向断言 |
+| ⚠️ **需要出包** | 端侧改动 ⇒ 走 build 13 |
+
+> 🔑 为何两个都要：A 让**服务端不再错**；② 让**服务端暂时没对上时也不误伤**。
+> 只做 A：续费刚发生、服务端还没收到的那几秒仍可能误弹。
+> 只做 ②：同步仍会 403（服务端真的过期了）。**必须两个都做。**
+
+### ③ 数据修复（一条 SQL，需你点头才动生产）
 
 把当前账号的到期日修正回真实最新值：
 
@@ -188,16 +214,96 @@ WHERE id = '62731265-edca-4fc9-8110-1877499e18fe';
 - 更稳的做法：**从 `iap_transactions` 取该用户所有交易的 MAX(expires_date)** 反写
   （避免我手工填错，也能顺手核对其他账号有没有同样被回退）
 - 会先备份（`coevo.db.bak-expiryfix-20261020`）
+- 📌 这条**只影响当前这个账号**；其他用户要等 A 上线后才不会再被回退
+  （可以先跑一次全量扫描：谁的 `users.subscription_expires` < 他自己的
+  `MAX(iap_transactions.expires_date)` ⇒ 就是受害者）
 
-### ③ 一个待你确认的点
+### ③ ✅ 弹窗已定位（白哥给了线索：两个按钮 · 跳转订阅 + 取消 · 从 CoEvo 时代就有）
 
-你说的**「订阅提醒弹窗」**——我按关键词（订阅提醒 / 即将到期 / renew）在 `app/lib` 里
-**没有找到对应的自动弹窗实现**。要准确定位，麻烦说一下它的**文案**或**出现时机**
-（冷启动就有？还是进「我的」页才弹？）。
+**就是 `app.dart:803 _buildSubExpiredOverlay()`** —— 标题「**订阅已到期**」的全局覆盖层
+（挂在 `MaterialApp.builder` 顶层 Stack，任何页面都会盖住）。
 
-⚠️ 但要说明：**弹窗不是根因**。根因（服务端到期日被回退）修好后，
-所有"服务端侧不认订阅"的下游表现（含弹窗、同步失败）都会一起消失。
-弹窗这条我只需要它来确认"有没有第三处口径"。
+> 我上一轮搜不到是因为按「订阅提醒 / 即将到期 / renew」搜文案，
+> 而它的标题是「**订阅已到期**」、按钮走 `FilledButton` + `goRouter` 跳转
+> —— **关键词选错了对象**。📌 判据：查 UI 组件要按**它自己的文案**搜，不是按我脑内的命名。
+
+#### 🔴🔴 而它的值来自**服务端** —— 这就是第三处口径
+
+```dart
+// app.dart:786-799  _applyExpired
+if (iap.availability == IapAvailability.available) {
+  // ② 端侧权威：用 StoreKit 的 entitlement
+  _applyExpired(expired: iap.entitlement == IapEntitlementStatus.expired, ...);
+}
+
+// ⚠️ 回退路径：`availability != available` ⇒ 用**服务端** isExpired
+if (iap.availability != IapAvailability.available) {
+  _applyExpired(expired: ref.read(subscriptionProvider).isExpired, ...);
+}
+```
+
+而 `_checkSubscription()` 的**首次执行是启动后 3 秒**（`app.dart:674`）：
+
+```dart
+Future.delayed(const Duration(seconds: 3), _checkSubscription);
+_subTimer = Timer.periodic(const Duration(minutes: 5), (_) => _checkSubscription());
+```
+
+`IapAvailability` 的初值是 **`unknown`**（`iap_service.dart:114`）：
+```dart
+enum IapAvailability { unknown /* 还没查 */, available, unavailable /* 真不可用 */ }
+```
+
+⇒ **启动 3 秒时 StoreKit 往往还没就绪 ⇒ `unknown` ⇒ 走服务端分支 ⇒
+读到被回退的 10-18 ⇒ `isExpired = true` ⇒ 弹「订阅已到期」**
+⇒ 而屏幕上 StoreKit 已给出 10-21 ⇒「订阅中」⇒ **自相矛盾正是这么来的**。
+
+---
+
+## 六·补、🔴 第二处独立缺陷：`unknown` 被当成 `unavailable`
+
+| 状态 | 语义 | 应该怎么做 |
+|---|---|---|
+| `unknown` | **还没查** | ⏳ **等**（不要拿另一层的数据冒充） |
+| `unavailable` | 端侧**真没有**这个能力 | ✅ 退回服务端才是对的 |
+| `available` | 已就绪 | 用端侧 |
+
+现在的判据 `availability != available` 把前两者混成一类 ⇒
+**"端侧还没就绪"被当成了"端侧不可用"** ⇒ 服务端一旦滞后（新购未上报 / 被回退 / 对账未完成），
+启动瞬间就会**误弹「订阅已到期」**。
+
+⚠️ 注意：这条**独立于回退 bug**。即使到期日永远不被回退，
+只要「用户刚续费、服务端还没收到」那几秒被 `_checkSubscription` 撞上，同样会误弹。
+
+### 修法（建议与 A 同批）
+
+1. **`unknown` 不判定**：只在 `unavailable` 时用服务端值；
+   `unknown` ⇒ 本轮跳过（5 分钟后的轮询会补上，端侧就绪后也会立刻判）
+2. 或者：`unknown` 时若服务端说"已过期"，**再等 5 秒**重取端侧状态，仍 unknown 才用服务端
+3. 断言：`_applyExpired` 的两个分支条件必须显式区分 `unknown` / `unavailable`
+   （现在是 `!= available`，改成 `== unavailable` 即可，一行）
+
+📌 修好后行为：**服务端被回退时不再误弹窗**（同步仍会 403，那由方案 A 治）。
+两者互补，缺一个都还会看到"界面矛盾"。
+
+---
+
+## 六·补2、弹窗全清单（白哥问「有哪些弹窗」）
+
+全应用只有 **8 处**弹层，其中**自动弹的只有 2 个**：
+
+| # | 弹层 | 位置 | 何时出现 | 自动？ |
+|---|---|---|---|---|
+| **1** | **「订阅已到期」覆盖层** | `app.dart:803` | 订阅判定为 expired（**本次问题**）| 🔴 自动 |
+| **2** | 成就解锁 | `widgets/achievement_unlock_overlay.dart` | 达成成就 | 🔴 自动 |
+| 3 | 同步进度转圈 | `widgets/sync_progress_dialog.dart` | 手动/触发同步时 | 用户动作 |
+| 4 | 通用确认框 `CoDialog` | `widgets/co_dialog.dart` | 各处确认/危险操作 | 用户动作 |
+| 5 | 分享图预览 | `widgets/share_card_preview.dart` | 点「分享」后 | 用户动作 |
+| 6 | 电子书导入流程 | `services/ebook/book_import_flow.dart` | 选文件后 | 用户动作 |
+| 7 | 划词生成等待（转圈）| `services/word_lookup.dart` | 查词触发 LLM 生成 | 用户动作 |
+| 8 | 登录对话框 | `widgets/auth_dialog.dart` | 需登录的操作 | 用户动作 |
+
+⇒ 你的判断对：**没几个**。而且「自动弹」的只有 #1 和 #2，所以这次要查的必然是 #1 —— 确实就是它。
 
 ---
 
