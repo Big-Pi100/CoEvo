@@ -462,3 +462,98 @@ skill 说 `.gitattributes` **不覆盖也不追加** —— 也就是**非破坏
 4. `doctor` 报 `not configured` 时**不必理会**（skill 已说明那是"看不见"不是"没配"）
 
 **P0 一旦解决**（`repo` 成为工具参数），就能一条 MCP 服务两个仓库，无需改配置重启。
+
+---
+
+## 十二、一个 MCP 服务不了两个项目时怎么办（隔离性实测）
+
+### 12.1 🔑 先回答「会不会互相影响」：**数据和进程层面不会**
+
+实测依据：
+
+| 检查 | 结果 |
+|---|---|
+| `~/.aoci` | ❌ 不存在 |
+| `~/.config/aoci` | ❌ 不存在 |
+| `%LOCALAPPDATA%\aoci` | ❌ 不存在 |
+| `%APPDATA%\aoci` | ❌ 不存在 |
+| `doctor` 的 AI 增强层 | `disabled (fully offline and deterministic)`，**无 endpoint** |
+
+⇒ **AOCI 没有全局状态目录，所有状态都在项目内**：
+
+| 资产 | 位置 | 进 git？ |
+|---|---|---|
+| `aoci.txt` / `aoci.meta.txt` / `aoci.code.txt` | 项目根 | ✅ |
+| `.aoci/baseline.json` / `config.json` / `.gitignore` | 项目内 | ✅ |
+| `.aoci/ledger.jsonl` / `transactions/` / `drafts/` | 项目内 | ❌（运行时，被 `.aoci/.gitignore` 挡住）|
+
+⇒ **两个仓库各有一套完全独立的资产**，物理隔离。
+再加上 MCP 是 **stdio 独立子进程**、`--repo` 在启动时固定 ⇒ **两个 server 之间不会串数据**。
+
+### 12.2 ⚠️ 唯一的真实风险：**操作了错的项目**（不是数据串，是意图串）
+
+两个 server 会暴露两套同名工具：
+
+```
+mcp__aoci__aoci_maintain          → --repo E:/vibedollar
+mcp__aoci-coevo__aoci_maintain    → --repo E:/CoEvo
+```
+
+技术上**前缀不同、不会串**。但 agent（我）**可能选错 server** —— 后果不是"改坏文件"，
+而是**以为在改 CoEvo，其实改了 vibedollar**。
+
+📌 这比数据串更难发现，因为两边都是合法操作、都返回成功。
+
+### 12.3 三个方案
+
+| 方案 | 做法 | 适合 | 代价 |
+|---|---|---|---|
+| **A：单条 + 切换** | 只留一条，切项目时改 `--repo` | 一段时间只做一个项目 | 每次切换**改配置 + 重连/重启会话** |
+| **B：两条并存** ⭐ | 加 `aoci-coevo`，server 名带项目后缀 | **频繁来回切**（我们的实际情况）| 模型可能选错项目；多一个进程 |
+| **C：等 P0** | `repo` 成为工具参数，一条服务多仓 | 终极解 | 等 release |
+
+**我推荐 B**，理由：CoEvo 是主线、vibedollar 也在推进，**每天都会切**；
+而方案 A 每次切换要重启会话，成本太高（这个项目的工作节奏是连续推进）。
+
+### 12.4 方案 B 的配置与风险缓解
+
+```jsonc
+// ~/.workbuddy/mcp.json
+"aoci-coevo": {
+  "command": "E:/AOCI-CODE/build/aoci.exe",
+  "args": ["mcp", "--repo", "E:/CoEvo"]
+},
+"aoci": {                       // 保持原名，vibedollar 的既有条目不动的
+  "command": "E:/AOCI-CODE/build/aoci.exe",
+  "args": ["mcp", "--repo", "E:/vibedollar"]
+}
+```
+
+**四条缓解措施**（针对"选错项目"）：
+
+1. **server 名必须带项目名**（`aoci-coevo` / `aoci` 这样仍歧义，建议同时把 vibedollar 那条也改名成 `aoci-vibedollar`）
+2. **每次 `maintain` / `update_entry` 之后核对返回体里的仓库路径** —— 不一致就是选错了
+3. **同一时间只对当前项目做 `aoci_overview`**：vibedollar 的 overview 是 12.6K tokens，
+   两个都加载会直接挤爆 context
+4. 如果一个项目暂时不动，**把它的条目注释掉**（而不是留着让 agent 有机会选错）
+
+### 12.5 还有一个前置：CoEvo 还没 init
+
+```
+$ aoci --repo E:/CoEvo doctor
+[✗] Index file: could not read aoci.txt (the project may not be initialized)
+[✗] Baseline file: missing; run aoci scan
+Error: Doctor found a problem (exit code 1)
+```
+
+⇒ 顺序是：**先 `init`（省略 `--agent`）→ 再配 MCP → 再 `scan`**。
+
+📌 附一个实测细节（skill 没写）：`doctor` 的退出码是 **1**（"发现问题"），
+而 `init` 未知 agent / `guide` 未初始化是 **3**（"用法/状态错误"）—— **有分级**，
+所以脚本里不能只判"非 0 即失败"，得看码。
+
+### 12.6 结论
+
+- **技术上安全**：无全局状态、独立进程、独立资产 ⇒ 两个项目可以并存
+- **风险在"选错"而不是"串数据"** ⇒ 用命名区分 + 事后核对路径来兜
+- **P0 落地后**这两个 server 可以合成一条，风险自然消失
