@@ -646,3 +646,99 @@ skill 新增：
   批删被拦导致 parse 直接失败），属于典型的**沉默失败**
 - 我之前三次提议「重建」，**都没提这两个前置** ⇒ 感谢这两节，否则真会白跑一轮
 - **可以开始 Step 1 了**，但顺序必须按 13.5，且要接受「停 MCP → 工具暂不可用」这个代价
+
+---
+
+## 十四、✅ Step 1 已执行：gitnexus 索引重建（2026-10-21 16:08–16:19）
+
+### 14.1 执行过程（600 秒）
+
+```bash
+# ① 备份 meta.json（记录旧 indexedAt 用于验收）
+cp .gitnexus/meta.json .gitnexus/meta.json.pre-rebuild
+# ② 移走障碍（mv，不是删 —— 可回滚）
+mv .gitnexus/lbug .gitnexus/lbug.bak            # 190 MB
+mv .gitnexus/parse-cache .gitnexus/parse-cache.bak
+# ③ 重建
+node .../gitnexus/dist/cli/index.js analyze --force --index-only
+```
+
+**✅ 关键实测结论：不需要停 MCP 进程。**
+
+- 先用 `open(..., 'r+b')` 试写 `lbug` ⇒ **可写，未被独占**
+- `mv` 走的是**路径**而非删除 ⇒ 绕开了「文件被占用」这条
+- MCP 进程虽然还持着旧句柄，但**下次查询时会重新打开新文件**（实测 MCP 工具立刻返回新索引结果）
+
+⇒ skill §三 的「先停 MCP」是**保守建议**；在「`mv` 移走 + 不停进程」这条路上不必要。
+（停 MCP 的代价是 `mcp__gitnexus__*` 立即可用不了 —— 能避免就避免。）
+
+### 14.2 🎯 验收：三条判据全过
+
+| 判据 | 结果 |
+|---|---|
+| `meta.json` 的 `indexedAt` 是刚才 | ✅ `2026-10-21T08:19:14Z`（旧值 `2026-06-26T04:33:37Z`）|
+| `lastCommit` = 当前 HEAD | ✅ `a5292eae…` = `git rev-parse HEAD` |
+| 实查一个符号能返回正确结果 | ✅ 见 14.3 |
+
+### 14.3 🔴 新旧索引的**决定性对比**（同一个符号）
+
+查 `is_subscription_active`：
+
+| 项 | 旧索引（6 月）| 新索引 |
+|---|---|---|
+| `startLine` | 116（旧代码位置）| **200**（当前代码）|
+| `epistemic` | **`lower-bound`** | **`exact`** ✅ |
+| `incoming.calls` | **`{}` 空** | **5 个**：`authorize_blob_write` · `iap_verify_handler` · `authorize_with_subscription` · `consume_quota_on_conn` · `translate_text_inner` ✅ |
+| `outgoing.calls` | `get_current_expires`（旧）| **`parsed_expires`**（今天刚加的）✅ |
+| `processes` | `[]` | **6 条执行流**（`sync_push` / `translate_text_inner` / `upload_blob_handler`）✅ |
+| 规模 | 22,269 nodes / 32,470 edges / 300 flows | 21,329 / 31,673 / **400** flows |
+
+**这直接证实了 skill §三 那条「空集合 ≠ 安全」**：
+旧索引说「没人调用」，实际有 **5 个**；而且它连今天的改动（`parsed_expires`）都看不见。
+
+⇒ 如果我们基于旧索引做过任何「这个函数没人用，可以删/改」的判断，**全是错的**。
+
+### 14.4 ⚠️ 索引自身的三条局限（analyze 日志里的 warning，必须记）
+
+| # | 日志 | 含义 |
+|---|---|---|
+| 1 | `[scope-resolution] 274 property read/write site(s) name a field that IS defined in this workspace, but only in another language … Queries for these fields return an empty result that does NOT mean "unused"` | **Dart/Rust 跨语言字段解析有盲区** —— 查 `code` / `message` / `path` / `style` 这类同名属性会拿到空结果，**那不是"未使用"** |
+| 2 | `[processes] 400 flows reported, but MISSING: 1429 of 1629 candidate entry point(s) never ranked in` | **process 覆盖只有 ~12%**（1629 个候选入口只排进 200 个）⇒ 「没有这条 flow」≠「这条路不存在」|
+| 3 | `name-fallback resolution: 65 call sites, 41 refused as impossible (rust 50/41, dart 13/0)` | **Rust 名称解析失败 41/50（82%）**；Dart 0/13 全成功 |
+| 4 | `Warning: could not save parse cache ([safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":311,"threshold":50,...}); continuing.` | 🔴 **解析缓存没能保存** —— 结束时要删 311 个文件，超沙箱阈值 50 ⇒ **下次 analyze 无法复用缓存**（只能全量重解析）|
+
+📌 #4 就是 skill §三 第二条说的那个坑，**首次重建就撞上了**：
+`parse-cache` 从原来 **3 个文件** 变成 **262 个** ⇒ 清理超阈值。
+
+**后果**：下次 analyze 一定又是 600 秒（无缓存可复用）。
+**缓解**：重建前手动 `mv .gitnexus/parse-cache .gitnexus/parse-cache.bak-<日期>`（而不是靠它自己清）。
+
+### 14.5 🆕 顺带发现：gitnexus **有全局 registry**（与 AOCI 不同）
+
+stderr 里出现：
+
+```json
+{"name":"pi-mono","storagePath":"D://pi-mono//.gitnexus","state":"owned",
+ "hasCodeIndexDB":false,"msg":"Skipping registry entry during validation..."}
+```
+
+⇒ gitnexus 在 `~/.gitnexus/registry.json` 维护**全局的「名字 → 路径」注册表**。
+这与 AOCI（**无全局状态**，全在项目内）是**不同的设计**。
+
+| 工具 | 全局状态 | 影响 |
+|---|---|---|
+| AOCI | ❌ 无（`.aoci/` + `aoci.*.txt` 全在项目内）| 多项目天然隔离 |
+| **gitnexus** | ✅ **有** `~/.gitnexus/registry.json` | 多个 repo 条目共存（`list_repos` 返回 2 个），只要**不同名**就不冲突；同名需 `--allow-duplicate-name` |
+
+### 14.6 当前状态
+
+| 项 | 值 |
+|---|---|
+| `lbug` | **291 MB**（新，旧 190 MB）；`.gitnexus/` 总计约 **480 MB**（含 `.bak`）|
+| 备份 | `.gitnexus/lbug.bak`（190 MB）· `parse-cache.bak` · `meta.json.pre-rebuild` |
+| MCP 工具 | ✅ **已生效**（无需重连，`context` 直接返回新索引结果）|
+| AGENTS.md / skills | ✅ **未生成**（用了 `--index-only`），仓库里没多出任何文件 |
+| 仓库 | `git status` 干净（`.gitnexus/` 被 `.gitignore` 忽略）|
+
+**备份何时删**：`lbug.bak` 建议留到**下一次重建成功**再删（回滚点是它）；
+`parse-cache.bak`（3 个小文件）可以随时删。
