@@ -1734,6 +1734,44 @@ void main() {
     // 白哥 2026-10-22 真机：支付一次后又弹第二次支付，取消时报
     // `storekit_duplicate_product_object`。根因是 `buy()` 无防重入，
     // 只靠 UI 把按钮变灰（`_emit` → 重建 → 变灰，中间隔一帧）。
+    // ── ㉓ 到期日：必须格式化、且取「较晚」的那个（2026-10-22 两个显示 bug）──
+    //
+    // bug A：端侧无权益时退回服务端原串 ⇒ 页面上出现
+    //        「到期日 2026-11-20T14:47:31Z」这种 ISO 串（白哥截图）。
+    // bug B：端侧有值就直接用它 ⇒ 显示 10-23 而实际 11-20 还能用（OR 语义没贯彻）。
+    final iapSoon = DateTime.utc(2026, 10, 23, 0, 4);
+    final iapLate = DateTime.utc(2026, 11, 20, 14, 47);
+    check(
+        '㉓-1 只有端侧值 ⇒ 输出 yyyy-MM-dd（不含 T / Z）',
+        subscriptionExpiryLabel(
+                iapExpiresAtUtc: iapSoon, backendExpiresAt: null) ==
+            '2026-10-23',
+        '${subscriptionExpiryLabel(iapExpiresAtUtc: iapSoon, backendExpiresAt: null)}');
+    check(
+        '㉓-2 🔴 只有服务端值 ⇒ 也必须格式化（**不许**原样吐 ISO 串）',
+        subscriptionExpiryLabel(
+                iapExpiresAtUtc: null,
+                backendExpiresAt: '2026-11-20T14:47:31Z') ==
+            '2026-11-20',
+        '${subscriptionExpiryLabel(iapExpiresAtUtc: null, backendExpiresAt: '2026-11-20T14:47:31Z')}');
+    check(
+        '㉓-3 🔴 两侧都有 ⇒ 取**较晚**（与 subscriptionActiveNow 的 OR 语义一致）',
+        subscriptionExpiryLabel(
+                iapExpiresAtUtc: iapSoon,
+                backendExpiresAt: '2026-11-20T14:47:31Z') ==
+            '2026-11-20',
+        '取端侧会出现「显示 10-23、实际 11-20 还能用」的自相矛盾');
+    check(
+        '㉓-4 服务端是脏数据 + 端侧有值 ⇒ 用端侧（脏值不参与比较）',
+        subscriptionExpiryLabel(
+                iapExpiresAtUtc: iapLate, backendExpiresAt: '不是日期') ==
+            '2026-11-20');
+    check(
+        '㉓-5 两侧都拿不到 ⇒ 退回原始串（宁可不好看也别空着）',
+        subscriptionExpiryLabel(
+                iapExpiresAtUtc: null, backendExpiresAt: '不是日期') ==
+            '不是日期');
+
     check(
         '㉒-1 🔴 `buy()` 必须有基于 purchasing 的防重入 guard',
         iapSvcSrc.contains('if (_snapshot.purchasing)'),

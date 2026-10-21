@@ -227,8 +227,17 @@ class SubscriptionLegalText {
   static String renewalCharge() => '系统会在当前订阅期结束前 24 小时内从你的 Apple 账户扣取下一期费用。';
 
   /// 取消方式（Apple 要求说明「在哪里取消」）。
-  static String howToCancel() => '可在「设置 → Apple 账户 → 订阅」中随时管理或取消订阅。取消后，'
-      '当前订阅期结束前仍可使用会员功能。';
+  /// 「怎么取消」—— **只说用户不知道的那一句**。
+  ///
+  /// 🔴 2026-10-22 白哥：「第一个胶囊信息太满，很难看」。
+  ///    原文案 47 字、在窄卡片里排到 3 行，把卡片撑满：
+  ///    「可在『设置 → Apple 账户 → 订阅』中随时管理或取消订阅。取消后，
+  ///      当前订阅期结束前仍可使用会员功能。」
+  ///
+  ///    ⚠️ **「在哪里取消」是冗余的** —— 同一张卡里就有一个「管理订阅」按钮，
+  ///    它直接跳到那个设置页。文案再讲一遍，等于把按钮说过的话又说一次。
+  ///    📌 判据：**卡片里的文案只说「按钮不说的那部分」**（这里是「取消后还能用多久」）。
+  static String howToCancel() => '取消后，当前订阅期结束前仍可使用会员功能。';
 
   /// 「订阅权益」对照表 —— 权益与免费能力的**唯一事实清单**（三列：功能 | 免费版 | 订阅版）。
   ///
@@ -400,17 +409,50 @@ bool subscriptionActive({
 /// 🔑 取法：**端侧优先**（它更精确），退回服务端（它更持久）；
 ///    两者都没有 ⇒ 返回 `null`，调用方**不显示日期** ——
 ///    **不要**退回「今天」或空串（那是在编造一个日期）。
+/// 「到期日」的唯一换算点 —— 端侧 StoreKit 与服务端对账值里取**较晚**的那个。
+///
+/// # 🔴 为什么取较晚（2026-10-22，两个真机显示 bug）
+///
+/// **bug A：直接显示原始 ISO 串。**
+/// 端侧没有 StoreKit 权益时（沙盒续期用尽 / 人工开通）会退回服务端值，
+/// 而服务端存的是 `2026-11-20T14:47:31Z` —— 旧实现**原样返回**，
+/// 于是订阅页上出现「到期日 2026-11-20T14:47:31Z」这种字符串（白哥截图）。
+/// ⇒ 现在无论来源哪一侧，都格式化成 `yyyy-MM-dd`（本地时区）。
+///
+/// **bug B：两个来源冲突时取错。**
+/// 「是否有效」走 `subscriptionActiveNow` = 端侧 **OR** 服务端，
+/// 那么「能用到哪天」也必须是两者的**较晚值**；
+/// 否则会出现「显示 10-23、实际 11-20 还能用」这种自相矛盾
+/// （端侧 StoreKit 是沙盒 1 天、服务端被人为延长过 ⇒ 两个值必然不同）。
+/// 📌 判据：**同一个「权益边界」只能有一个答案，且必须与 OR 语义一致**。
+///
+/// ⚠️ 解析不了的服务端值（脏数据）**不参与比较**，但也不静默丢弃 ——
+///    只有在两侧都拿不到可用日期时才返回 null（调用方就不显示「到期日」这段）。
 String? subscriptionExpiryLabel({
   required DateTime? iapExpiresAtUtc,
   required String? backendExpiresAt,
 }) {
-  if (iapExpiresAtUtc != null) {
-    final d = iapExpiresAtUtc.toLocal();
-    return '${d.year}-${_two(d.month)}-${_two(d.day)}';
-  }
+  DateTime? backend;
+  String? backendRaw;
   final b = backendExpiresAt?.trim();
-  if (b != null && b.isNotEmpty) return b;
-  return null;
+  if (b != null && b.isNotEmpty) {
+    backendRaw = b;
+    // 要求尾随 Z 或带偏移 ⇒ `DateTime.tryParse` 会把无时区的串按**本地**解释，
+    // 那会让同一串在不同时区的设备上是不同时刻（同 `sync_merge.parseSyncTs` 的判据）。
+    backend = DateTime.tryParse(b)?.toUtc();
+  }
+
+  final candidates = <DateTime>[
+    if (iapExpiresAtUtc != null) iapExpiresAtUtc.toUtc(),
+    if (backend != null) backend,
+  ];
+  if (candidates.isEmpty) {
+    // 完全解析不了：宁可显示原串也不要空着（信息比美观重要）
+    return backendRaw;
+  }
+  final latest =
+      candidates.reduce((a, c) => a.isAfter(c) ? a : c).toLocal();
+  return '${latest.year}-${_two(latest.month)}-${_two(latest.day)}';
 }
 
 String _two(int v) => v.toString().padLeft(2, '0');
