@@ -850,3 +850,80 @@ E scale: 0 of 5 Code Entries carry a scale letter the source line count contradi
 
 **建议的后续节奏**：**不追求写满 171 条**，而是「**改到哪个文件，就补哪个文件的条目**」——
 这符合 skill 的维护闭环（改完 → `maintain` → 更新），也避免一次性投入 29K tokens。
+
+---
+
+## 十六、✅ 全量构建完成（2026-10-21 17:0x–18:2x）
+
+### 16.1 决策变更：§15.6 的「不追求写满」已作废
+
+白哥裁定：**「还是要全量构建，不然对项目的整体性会差很多，这本来就是要整体才有效」**。
+⇒ §15.6 那条「改到哪补到哪」的增量策略**不再执行**，改为一次写满。
+本节记录执行结果与过程中踩到的硬约束。
+
+### 16.2 最终结果
+
+| 项 | 值 |
+|---|---|
+| 索引条目 | **166 条**（覆盖全部可读 index 文件）|
+| index 范围 | 171 ⇒ 166 条 + **2 个超限跳过** + **3 个卷文件不许有条目** |
+| `aoci verify` | ✅ `Volumes v1 candidate structure is valid`；E 档 **0/166 不符** |
+| `aoci check` | ✅ **✓ ready to commit**（Entries 漂移 / 策展 / 字典 / 格式 / 草稿 五净）|
+| `index agent guide` | ✅ `stage=aligned complete=true next_action=none` |
+| S 覆盖率 | **C7+ 110/110 全有 S**（C8 45/45、C9 21/21）|
+| 卷体积 | **37,880 tokens / 上限 400,000**（target 200,000）⇒ `budget healthy` |
+| 产物大小 | `aoci.code.txt` 112 KB |
+
+**3 个卷文件不许有条目**（我一开始给它们写了，被 guide 判 `code_orphan` / `volume_ownership_conflict`，已用 `remove-entry` 撤掉）：
+`aoci.txt`（root 卷）· `aoci.meta.txt`（meta 卷）· `aoci.code.txt`（code 卷自身）。
+🔑 **认知卷不能给自己或兄弟卷写条目** —— 卷的归属由 manifest 决定，不由「这个文件也在仓库里」决定。
+
+**2 个超限跳过**：`backend/cefr_catalog.json`（11.8 MB）· `backend/gen_hash.pdb`（1.3 MB）。
+`check`/`guide` 会各报一条 `code_skipped`（**非阻塞**，`stage` 仍 aligned）。有意保留这条可见告警，
+不做 scope 排除——排除了就再也不会有人提醒「这两个文件没有被认知层覆盖」。
+
+### 16.3 🔴🔴 最重要的发现：AOCI 的 S 配额是 **token**，不是字数
+
+`aoci.meta.txt` 里写的是 `#S配额: C9-8≤600 C7-4≤200 C3-1≤50`（看似「字」），
+但**实际校验器按 token 计**，实测（用 `update-entry --preview` 二分探测出来的）：
+
+| C | R 上限 | S 上限 | 折成中文字数（≈×1.35）|
+|---|---|---|---|
+| 9 | 180 tok | **200 tok** | S ≤ 270 字 |
+| 8 | 140 tok | **140 tok** | S ≤ 190 字 |
+| 7 / 6 / 5 | 90 tok | **80 tok** | S ≤ 108 字 |
+| 4 / 3 / 2 / 1 | 50 tok | **40 tok** | S ≤ 54 字 |
+
+F 栏：160 字能过、200 字必拒 ⇒ **≤180 字**。A 栏很宽松（400 字实测能过）。
+
+**踩坑经过**：按 meta 的「600 字」写的 164 条里，**94 条被拒**（`entry_field_budget_exceeded`），
+错误信息给的是 `{"field":"S","importance":8,"actual_tokens":251,"max_tokens":140}` ——
+**`importance` 就是 tag 里的 C 位**，`max_tokens` 才是真上限。
+🔑 修法不是截断（校验器明确写着 *do not truncate or retag it programmatically*），
+而是**整句重写**：把最要命的一条放最前，其余果断取舍。
+
+⇒ **给 meta 文件本身的问题反馈**：`#S配额` 那行应写明单位是 token，并给出 C 分档表；
+否则任何按字面理解的作者都会一次性写出一大批必被拒的条目（我这次 57% 命中率）。
+
+### 16.4 执行方式（下次照抄）
+
+1. `aoci baseline.json` 里每个 index 文件都带 `sha256` ⇒ **写条目根本不需要 MCP**，
+   `update-entry --source-sha256 <baseline 里的 sha>` 就够（`--preview` 也需要 sha，help 没说）。
+2. 分 9 批并行写（后端 2 批 · 端侧 services 4 批 · providers+api 2 批 · 配置/根 1 批），
+   每批产出 `{path: entry}` 的 JSON。
+3. **两道机械校验**（都必须过）：
+   - 自写的 `_validate_entries.py`：格式 / tag 字典 / E 档与行数一致 / A 锚点能 grep 到 / R 路径存在 / 项数上限；
+   - **真实校验器** `_check_only.py`：逐条跑 `update-entry --preview`，按 token 判超限。
+4. 超限条目回给原批次作者**重写 S**，再复检。
+5. 批量写入（`_apply_entries.py`）。
+6. `remove-entry` 清掉 3 个卷文件条目 → `verify` → `check` → `guide`。
+
+### 16.5 又踩了一次「收据未结清」
+
+批量写入时有一条（`aoci.code.txt` 自身）写成功但报 `Baseline is incomplete`，
+留下 `.aoci/transactions/entries-*.json` 未完成收据，**之后所有写命令被拒**：
+`An unfinished MCP write receipt or a foreign file exists under .aoci/transactions`。
+
+判据：看收据里的 `post_index_sha256` **是否等于当前卷文件的 sha** ——
+相等就说明**写已生效、只是收尾没跑完**，把该文件 `mv` 到 `.aoci/transactions/history/` 即可（guide 允许「by hand」）。
+🔑 **不要删它、也不要重放**：重放会真的重复写一次。
