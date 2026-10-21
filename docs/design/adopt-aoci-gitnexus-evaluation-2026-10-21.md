@@ -557,3 +557,92 @@ Error: Doctor found a problem (exit code 1)
 - **技术上安全**：无全局状态、独立进程、独立资产 ⇒ 两个项目可以并存
 - **风险在"选错"而不是"串数据"** ⇒ 用命名区分 + 事后核对路径来兜
 - **P0 落地后**这两个 server 可以合成一条，风险自然消失
+
+---
+
+## 十三、skill 第四次更新：补上了「重建索引」的两个前置（正好是我漏的）
+
+`SKILL.md`：**22,424 B / 337 行 → 25,850 B / 406 行**（+69 行，15:59 修改）
+
+### 13.1 三处变化
+
+| 位置 | 新增 |
+|---|---|
+| §三 | 🆕 **`重建索引前：先停掉用它的 MCP 进程`** |
+| §三 | 🆕 **`解析缓存也可能拦住重建`** |
+| §九 | 🆕 **`退出码有分级`**：`doctor` → **1**（发现问题）· `init` 未知 agent / `guide` 未初始化 → **3**（用法/状态）|
+
+第三条是我上一轮报的发现（`doctor` 退出码 1 而非 3），已采纳。
+
+### 13.2 🔴 前两条正好打中我三次建议里的漏洞
+
+我在前几轮反复说「要不要现在就做 Step 1 重建 gitnexus」，**一次都没有想到 MCP 进程会占着索引**。
+
+skill 补的事实：
+
+> `lbug`（图数据库文件）被占用时，`analyze` 会**重试 5 次后放弃** ——
+> **图重建了但换不上，旧索引继续生效**（`indexedAt` 不变，而输出里只留一句 warning）。
+> gitnexus 自己的提示（"stop any GitNexus MCP or serve process using this repository"）
+> **只在失败之后才打印**，等你看到它已经白跑了一轮。
+> ⇒ **先停 MCP 进程，再 analyze。**
+
+**实测 CoEvo 的真实状态**（所以我按原计划做会踩）：
+
+| 障碍 | 实测 |
+|---|---|
+| `lbug` 被占用 | 🔴 **确实存在** —— 查到 **2 个** gitnexus 进程（PID `11496` / `760`），`lbug` **190 MB**、整个 `.gitnexus/` **204 MB** |
+| `parse-cache` 批删超阈值（>50 文件）| 🟢 **当前不适用** —— CoEvo 的 `parse-cache` 只有 **3 个文件** |
+
+⇒ 障碍 1 是真的；如果我不查进程直接 `analyze`，大概率是「重试 5 次 → 放弃 → 一句 warning → 我误以为重建成功」。
+
+### 13.3 第二条（解析缓存）在这个环境里也值得防
+
+> `analyze` 每次都会清 `.gitnexus/parsedfile-store`。若宿主沙箱限制批量删除
+> （例如 `SAFE_DELETE_BULK_CONFIRM_REQUIRED`，阈值 50 文件），清理会被拦，parse 阶段直接失败。
+> **而且是死循环**：重建缓存几百文件 → 下次又要清 → 又超阈值。
+> 稳妥做法：**重建前把障碍移走（`mv` 而不是删）**。
+
+📌 我们的沙箱**确实有这层批量删除确认**（本会话里就触发过）。
+虽然 CoEvo 现在只有 3 个缓存文件，但 **analyze 之后会变成几百个** ⇒ 第二次重建就会撞上。
+
+### 13.4 🎯 顺带一条最有价值的验收判据
+
+skill 新增：
+
+> **验收不能只看 "success"**：要核对 `meta.json` 的 `indexedAt` 变成刚才、
+> `lastCommit` 等于当前 HEAD，再用 `gitnexus impact <symbol>` 或 `context <symbol>` 实查一次
+> —— 否则可能只是"**跑完了但没换上**"。
+
+📌 这与项目既有判据**同族**：
+「产物看着是新的、其实是旧件」·「`Upload succeeded` ≠ ASC 处理完成」·
+「`gitpush` 成功 ≠ 部署成功」。**"命令成功"永远不等于"效果达成"。**
+
+### 13.5 Step 1 的正确执行顺序（按新 skill 修订）
+
+```
+1. 查进程：Get-CimInstance Win32_Process → 找 gitnexus（本次查到 2 个：11496 / 760）
+2. 停掉它们          ⚠️ 代价：mcp__gitnexus__* 工具立刻不可用，重建完要重连 connector
+3. mv .gitnexus/lbug .gitnexus/lbug.bak
+   mv .gitnexus/parsedfile-store .gitnexus/parsedfile-store.bak   （若存在）
+4. gitnexus analyze
+5. 🔴 验收（不能只看 success）：
+   · meta.json 的 indexedAt = 刚才、lastCommit = 当前 HEAD
+   · 再实查一个符号能返回结果
+6. 重连 gitnexus connector（或重启会话）
+7. 确认无误后才删 .bak
+```
+
+⚠️ **第 2 步的代价要提前知道**：停掉 MCP 后本会话就没有 `mcp__gitnexus__*` 工具了，
+而**重建必须在"没有工具可用"的状态下完成** —— 这是个"自锁"结构：
+要用工具重建，就得先停掉工具。
+
+⇒ 所以更稳的做法：**`gitnexus analyze` 走 CLI（`node .gitnexus/run.cjs analyze`），
+不依赖 MCP** —— CLI 和 MCP 都只是客户端，真正独占 `lbug` 的是 MCP 进程。
+停 MCP → CLI 重建 → 重连 MCP，整条链不需要"边用工具边重建"。
+
+### 13.6 结论
+
+- skill 这次补的两节**都是"失败后才知道"的坑**（gitnexus 失败后才打印提示；
+  批删被拦导致 parse 直接失败），属于典型的**沉默失败**
+- 我之前三次提议「重建」，**都没提这两个前置** ⇒ 感谢这两节，否则真会白跑一轮
+- **可以开始 Step 1 了**，但顺序必须按 13.5，且要接受「停 MCP → 工具暂不可用」这个代价
