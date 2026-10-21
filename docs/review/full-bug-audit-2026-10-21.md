@@ -342,3 +342,82 @@ AOCI 条目标注「无写入方是有意的」—— 请确认这个「有意�
 - **B3**（`/api/user/{id}/subscription` 无鉴权）：没动。修之前必须先确认「登录态下 token 一定非空」，否则加鉴权会引入 401。
 - **B4**（4 处 `pub mod` 掩盖的死代码）、**B5**（通知零写入方）：需要产品判断（保留还是删），不阻塞。
 - **B6**：已顺手修掉（下载加 `Content-Length` 上限），因为 B1 把上限抬到 50 MB 后它从 P3 变成「必须一起处理」。
+
+---
+
+## 十一、✅ 上线记录（2026-10-21 19:40–20:1x）
+
+### 11.1 后端：路径 B（推 tag 走 CI）—— 而不是路径 A（WSL 本地构建）
+
+**为什么不用文档的默认路径 A**：`wsl.exe` 被本机**安全策略硬封禁**
+（`PROGRAM BLOCKED BY SECURITY POLICY`，且明确写着「不可从当前命令批准或绕过」）。
+⇒ 改用路径 B：`v0.1.7` tag → `backend-release`（ubuntu + Rust 1.98.0）→ `backend-deploy`。
+
+⚠️ **踩到两件事，都记在这里**：
+
+1. **`git push origin v0.1.7` 没有创建任何 run** —— 正是 §1.1 描述的「没反应」现象。
+   排查顺序（可复用）：
+   - 先证「Actions 本身可用」：`gh workflow run ci.yml --ref main` ⇒ 立刻起 run ✅
+     ⇒ **不是额度、不是 Actions 被禁**，是 tag 事件没触发。
+   - 删除 tag 重推 ⇒ 仍然没有 run。
+   - ✅ **可行解**：`gh workflow run ci.yml --ref v0.1.7`
+     —— `workflow_dispatch` 允许指定 **tag ref**，此时 `github.ref = refs/tags/v0.1.7`，
+     那三个 `startsWith(github.ref,'refs/tags/v')` 的 job 条件**照样成立** ⇒ 完整跑 release + deploy。
+   🔑 判据：**`on.push.tags` 不灵时，用「在 tag ref 上手动 dispatch」等效触发**，
+      不必去删 tag / 改 workflow。
+
+2. **CI 部署 job 自己不依赖门禁**（文档 §2.2 已记）—— 本次门禁全绿，但那是**核对了**，不是**保证**。
+
+### 11.2 后端上线验证（实测）
+
+| 项 | 结果 |
+|---|---|
+| 二进制 | `/opt/coevo/bin/coevo_backend` 13,371,424 B · mtime **19:50**（新）|
+| 回滚点 | `.prev` 13,448,424 B · mtime 00:53（上一版）✅ |
+| 服务 | `systemctl is-active coevo` = **active** · `NRestarts=0` |
+| 健康 | `curl /health` = `记住一切 API — OK` |
+| 日志 | 重启后 8 分钟内 **无 error / panic** |
+| **新代码真的在包里** | `grep -a "建临时文件失败"` 与 `"flush 临时文件失败"` 各命中 **1** —— 这两句只在本次的流式上传路径里 |
+| **B2 线上生效** | `GET /api/user/<不存在uuid>/subscription` ⇒ `{"expired":true,"expires_at":null,"state":"none"}`，127.0.0.1 与 `https://api.keyievolution.fun` **两处一致** |
+
+🔑 `state:"none"` + `expired:true` 并存，正是 §10.2 设计的样子：
+**新字段给新客户端区分「从未订阅」，旧字段语义不变**（旧 App 行为不动）。
+
+⚠️ 线上**没有**带 `subscription_expires` 的真实用户（`select … where subscription_expires is not null` 返回空，
+与「零真实用户」一致）⇒ `state=active/expired` 只有单测覆盖，没有线上样本。
+
+### 11.3 App：build 14
+
+- `app/pubspec.yaml` `1.0.0+13` → **`1.0.0+14`**（全仓仅此一处版本号，已 grep 确认）
+- 触发：`gh workflow run ios-archive.yml --ref main -f upload=true -f method=app-store`
+- 结果见 §11.4（等 CI）
+
+### 11.4 iOS 出包结果（build 14）
+
+| 项 | 值 |
+|---|---|
+| run | `39595777419` · **success**（9m53s）|
+| 构建来源 commit | **`bec50dc`**（= tag `v0.1.7` 指向的同一个 commit ⇒ **端与服同源**）|
+| 版本 | `1.0.0+14` |
+| 上传 | `xcodebuild`：**Upload succeeded** + `EXPORT SUCCEEDED` ⇒ 已进 App Store Connect（TestFlight 处理中）|
+| 仓库可见性 | 已恢复 **PRIVATE** ✅ |
+
+⚠️ 构建期一条**非阻塞**警告（记下来，别等它咬人）：
+> `Deployment target too low. Your app targets iOS 13.0. Starting in April 2027,
+>  iOS apps must target 15.0 or later to be uploaded to App Store Connect.`
+
+⇒ **2027 年 4 月前必须把最低部署版本提到 iOS 15.0**，否则连上传都会被拒。现在不影响。
+
+### 11.5 上线后的状态
+
+| 层 | 状态 |
+|---|---|
+| 后端 | ✅ 新版在跑（`state` 四态线上可见、流式上传代码在包里）|
+| App | ✅ build 14 已上传 TestFlight，**待白哥在 TestFlight 上装真机验证** |
+| 回滚点 | 后端 `/opt/coevo/bin/coevo_backend.prev`（00:53 版）；App 无（TestFlight 可回退到 build 13）|
+| 仓库 | ✅ 已恢复 private |
+
+🔑 **真机验证要看的三件事**（build 14 才有的变化）：
+1. 一本 **32 MB 以上**的书能否导入并**成功上云**（B1 的核心；旧版会在上传时被打回）。
+2. 书架里同时有一本大书和几本小书时，**小书照常上传**（不再被大书拖停）。
+3. 免费账号（注册但没订阅）在「我的」页显示**未订阅**而不是「已到期」；点开订阅页不出现「已到期」弹窗。
