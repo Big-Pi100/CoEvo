@@ -302,6 +302,25 @@ class IapService {
       return;
     }
 
+    // 🔴 2026-10-22：**防重入**（白哥真机报 `storekit_duplicate_product_object`）。
+    //
+    // 现场：他支付了一次，然后又弹出**第二次**支付；取消后报
+    //   `storekit_duplicate_product_object`（StoreKit：同一 product 对象重复购买）。
+    //
+    // 根因：本方法**没有任何防重入**，只靠 UI 把按钮变灰
+    //   （`purchaseButtonState(busy: snapshot.purchasing)`）。
+    //   而 `_emit` → 订阅者重建 → 按钮真的变灰，中间要过**一帧**；
+    //   这一帧里再触发一次（连点 / 两个入口 / 状态回调误触发）就会调用两次
+    //   `buyNonConsumable` ⇒ StoreKit 认为是在重复购买同一个产品。
+    //
+    // 📌 判据：**「按钮变灰」是 UI 的礼貌，不是不变量** ——
+    //   与上面 `_reporterAccountKey` 那条同族：**关键不变量必须在服务层兜住**。
+    //   重复购买会真实弹两次付款框（用户会以为被扣两次），代价远高于一行 guard。
+    if (_snapshot.purchasing) {
+      debugPrint('[IAP] buy 忽略：已有购买进行中（防 storekit_duplicate_product_object）');
+      return;
+    }
+
     _emit(_snapshot.copyWith(purchasing: true, clearError: true));
 
     try {

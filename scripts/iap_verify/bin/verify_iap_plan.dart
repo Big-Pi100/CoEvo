@@ -1729,6 +1729,16 @@ void main() {
     check('⑳-4 alreadyActive 的文案要说清「已是订阅」，不能只说「失败/未找到」',
         alreadyMsg.contains('已是订阅'), alreadyMsg);
 
+    // ── ㉒ 购买必须防重入（storekit_duplicate_product_object）──
+    //
+    // 白哥 2026-10-22 真机：支付一次后又弹第二次支付，取消时报
+    // `storekit_duplicate_product_object`。根因是 `buy()` 无防重入，
+    // 只靠 UI 把按钮变灰（`_emit` → 重建 → 变灰，中间隔一帧）。
+    check(
+        '㉒-1 🔴 `buy()` 必须有基于 purchasing 的防重入 guard',
+        iapSvcSrc.contains('if (_snapshot.purchasing)'),
+        '没有 ⇒ 一帧内二次触发就调两次 buyNonConsumable ⇒ StoreKit 报 duplicate');
+
     check(
         '⑳-5 🔴 两个入口都要把 alreadyActive 传进去（改一处漏一处就会一真一假）',
         codeOnly(readApp('screens/profile_screen.dart'))
