@@ -334,7 +334,16 @@ class IapService {
       // ⚠️ 到这里**还没结束** —— 结果从 `purchaseStream` 回来（见 `_onPurchases`）。
       //    ⇒ 不要在 await 之后立刻 emit「成功」。
     } catch (e) {
-      _emit(_snapshot.copyWith(purchasing: false, lastError: '购买失败，请重试'));
+      // 🔴 2026-10-21：把**真错误**写进 `lastError`（此前只 `debugPrint`，
+      //    UI 永远是「购买失败，请重试」⇒ 用户无助、我们无解）。
+      //
+      // ⚠️ 这里抛出的多半是 StoreKit 的**同步拒绝**（`alreadySubscribed` /
+      //    `paymentNotAllowed` / `storeProductNotAvailable`），
+      //    它们处置完全不同：前两个要改 Apple/系统设置，第三个要改 ASC 配置。
+      _emit(_snapshot.copyWith(
+        purchasing: false,
+        lastError: '购买失败（${_shortErrorCode(e)}）',
+      ));
       debugPrint('[IAP] buy 异常: $e');
     }
   }
@@ -626,10 +635,35 @@ class IapService {
   }
 
   String _humanizeError(IAPError? err) {
-    final code = err?.code ?? '';
+    final code = (err?.code ?? '').trim();
     // 🔴 用户主动取消在 iOS 上是 `paymentCancelled` —— 别报错
     if (code.contains('cancel')) return '';
-    return '购买未完成，请稍后重试';
+    // 🔴 2026-10-21：**必须把 code 带出来**。
+    //
+    // 原先这里只有一句固定文案 ⇒ 2026-10-21 真机「购买失败」时，
+    // 现场**什么线索都没有**：UI 说「请重试」、后端日志零请求，
+    // 只能靠翻生产库反推（`alreadySubscribed` / `paymentNotAllowed` /
+    // `invalidAppAccountToken` 三者的处置**完全不同**）。
+    //
+    // 📌 判据：**「用户看得懂」与「我们查得动」不冲突** ——
+    //    主句给用户，括号里的短码给我们。别为了"文案干净"把唯一线索删掉。
+    if (code.isEmpty) return '购买未完成，请稍后重试';
+    return '购买未完成（$code）';
+  }
+
+  /// 从异常里抠出**短码**（诊断用，不进产品文案）。
+  ///
+  /// `PlatformException.toString()` 形如
+  /// `PlatformException(alreadySubscribed, …)` ⇒ 取第一个逗号前的标识符。
+  /// 不 `import flutter/services.dart` 只为一个类型（本文件已依赖 Flutter 插件，
+  /// 但少一个 import 就少一处平台耦合）。
+  static String _shortErrorCode(Object e) {
+    final s = e.toString().replaceAll('\n', ' ').trim();
+    final m = RegExp(r'PlatformException\(([^,)]+)').firstMatch(s);
+    final code = m?.group(1)?.trim() ?? '';
+    if (code.isNotEmpty) return code;
+    // 非 PlatformException：用类型名（比整段堆栈短且稳定）
+    return e.runtimeType.toString();
   }
 
   Future<void> dispose() async {
