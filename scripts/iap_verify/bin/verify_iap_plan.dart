@@ -506,7 +506,11 @@ void main() {
     );
 
     // ── §4.4.3 恢复购买（Apple 强制）──
-    check('🔴 订阅页有恢复购买调用', subscribeCode.contains('.restore()'));
+    // 🔴 2026-10-21：判据从 `.restore()` 放宽到 `.restore(`——
+    //    `restore` 现在带命名参数（`restore(alreadyActive: …)`），
+    //    精确匹配 `()` 会**假红**。
+    //    📌 判据：**断言锁「意图」（调了恢复），不锁「拼写」（括号里有什么）**。
+    check('🔴 订阅页有恢复购买调用', subscribeCode.contains('.restore('));
 
     // 🔴 2026-10-12 晚**修正断言目标**（同 2026-10-04 抽 `LegalLinkRow` 那次）。
     //
@@ -1689,6 +1693,49 @@ void main() {
         !iapSvcSrc.contains(
             'return _snapshot.entitlement == IapEntitlementStatus.active'),
         '复活 ⇒ 「提示已恢复 + 显示未订阅」会再次出现');
+
+    // ── ⑳ 已订阅时点「恢复购买」不能否认事实（2026-10-21 真机）──
+    //
+    // 现场：页面顶部「订阅中 · 到期日 2026-11-20」，点恢复却弹
+    // 「当前账号未找到订阅」。根因是两者口径不同：
+    //   状态 = `subscriptionActiveNow`（端侧 OR 服务端）
+    //   恢复 = 只看端侧 `currentEntitlements`
+    // ⇒ 服务端有效、端侧查不到（Apple 沙盒续期用尽 / 人工开通）时必然矛盾。
+    check(
+        '⑳-1 已有效(idle) ⇒ alreadyActive（**不许**再报 notFound）',
+        judgeRestoreOutcome(
+              entitlement: IapEntitlementStatus.expired,
+              ownerUserId: null,
+              currentUserId: me,
+              alreadyActive: true,
+            ) ==
+            RestoreOutcome.alreadyActive,
+        '这条红 ⇒ 已订阅用户点恢复又会被说「未找到订阅」');
+
+    check(
+        '⑳-2 🔴 反向：未有效时**不得**谎报 alreadyActive（别把漏洞开成默认）',
+        judgeRestoreOutcome(
+              entitlement: IapEntitlementStatus.expired,
+              ownerUserId: null,
+              currentUserId: me,
+              alreadyActive: false,
+            ) ==
+            RestoreOutcome.notFound,
+        '反向断言：放松判据时最容易顺手把所有情况都放行');
+
+    final alreadyMsg = restoreOutcomeMessage(RestoreOutcome.alreadyActive);
+    check('⑳-3 alreadyActive 的文案不得与 notFound 相同',
+        alreadyMsg != restoreOutcomeMessage(RestoreOutcome.notFound));
+    check('⑳-4 alreadyActive 的文案要说清「已是订阅」，不能只说「失败/未找到」',
+        alreadyMsg.contains('已是订阅'), alreadyMsg);
+
+    check(
+        '⑳-5 🔴 两个入口都要把 alreadyActive 传进去（改一处漏一处就会一真一假）',
+        codeOnly(readApp('screens/profile_screen.dart'))
+                .contains('restore(alreadyActive: alreadyActive)') &&
+            codeOnly(readApp('screens/subscribe_screen.dart'))
+                .contains('restore(alreadyActive: alreadyActive)'),
+        '「我的」页与订阅页必须同一套行为（项目既有判据）');
   }
 
   // ══════════════════════════════════════════════════════════════════════

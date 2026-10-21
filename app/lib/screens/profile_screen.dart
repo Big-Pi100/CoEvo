@@ -1876,7 +1876,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       if (ok != true || !ref.read(authProvider).isAuthenticated) return;
     }
-    final outcome = await ref.read(iapServiceProvider).restore();
+    // 🆕 2026-10-21：把「本账号是否已有效」传进去。
+    //
+    // 🔴 否则会出现**自相矛盾**：上面那行写着「订阅中 · 到期日 …」，
+    //    点恢复却弹「当前账号未找到订阅」（白哥 2026-10-21 真机实测）。
+    //    根因是两者口径不同：状态用 `subscriptionActiveNow`（端侧 OR 服务端），
+    //    而恢复只看端侧 `currentEntitlements`。
+    //
+    // ⚠️ 用 `ref.read` 而不是 `subscriptionActiveNow(ref)` ——
+    //    后者内部 `ref.watch`，只能在 build 期间调用；这里是点击回调。
+    //    口径仍然对齐：服务端 `isActive` 正是那个 OR 里的服务端一腿。
+    final alreadyActive = ref.read(subscriptionProvider).isActive;
+    final outcome =
+        await ref.read(iapServiceProvider).restore(alreadyActive: alreadyActive);
     if (!mounted) return;
     // 🔴 2026-10-12：文案改走**全库唯一事实源** `restoreOutcomeMessage`
     //    （原先这里与订阅页各写了一份同样的 switch ⇒ 必然漂）。

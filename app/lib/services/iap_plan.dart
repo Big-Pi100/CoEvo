@@ -686,6 +686,26 @@ enum RestoreOutcome {
 
   /// 商店不可用（没连上 / 设备不支持）
   unavailable,
+
+  /// 🆕 2026-10-21：**本账号当前已是订阅状态**（由服务端记录确认）⇒ 不需要恢复。
+  ///
+  /// # 🔴 为什么必须单独一态（白哥 2026-10-21 真机实测）
+  ///
+  /// 页面顶部明明写着「订阅中 · 到期日 2026-11-20」，点「恢复购买」却弹
+  /// **「当前账号未找到订阅」** —— 两句话自相矛盾。
+  ///
+  /// 根因：**「有没有订阅」与「StoreKit 恢复到了什么」是两件不同的事**。
+  /// · 页面用 `subscriptionActiveNow`（端侧 **OR** 服务端）
+  /// · 恢复只看端侧 `currentEntitlements`（**服务端不算**）
+  ///
+  /// 而本项目确实存在「服务端有效、端侧查不到」的合法情形：
+  /// Apple 沙盒订阅的自动续期**最多 6 次**，用尽后 StoreKit 里就没有有效项了，
+  /// 但服务端记录仍然是 active（人工开通 / 后台调整同理）。
+  ///
+  /// 📌 判据：**给用户的结论不能互相打脸**。
+  ///    「恢复购买」是给**没有权益**的人用的；已经有权益时应该直接告诉他已经有了，
+  ///    而不是否认他屏幕上看到的事实。
+  alreadyActive,
 }
 
 /// 「恢复购买」四种结果 → **用户可见文案** —— 全库唯一事实源。
@@ -711,6 +731,8 @@ String restoreOutcomeMessage(RestoreOutcome outcome) => switch (outcome) {
         '当前账号未找到订阅。如果你曾在另一个账号订阅过，请切回该账号查看。',
       RestoreOutcome.failed => '恢复购买失败，请稍后重试',
       RestoreOutcome.unavailable => '当前无法连接 App Store',
+      // 🔴 不能再说「未找到」—— 用户屏幕上正写着「订阅中」
+      RestoreOutcome.alreadyActive => '你当前已是订阅状态，无需恢复。',
     };
 
 /// 「恢复购买」结束时的**结果判定** —— 全库唯一判据。
@@ -742,7 +764,19 @@ RestoreOutcome judgeRestoreOutcome({
   required IapEntitlementStatus entitlement,
   required String? ownerUserId,
   required String? currentUserId,
+  // 🆕 2026-10-21：调用方（UI）把「本账号当前是否已有效」传进来。
+  //
+  // 🔴 为什么由调用方传而不是本函数自己查：本函数是**纯函数**（零依赖、可断言），
+  //    查订阅状态需要 Riverpod 容器 ⇒ 会把它拖进 Flutter 依赖（同文件头的取舍）。
+  //    而「谁最适合算这个」有唯一答案：UI 上显示「订阅中/未订阅」的那一处
+  //    （`subscriptionActiveNow`）——**同一个判据，不要算两遍**。
+  bool alreadyActive = false,
 }) {
+  // 🔴 先判「已经是订阅状态」——
+  //    否则会出现「页面写着订阅中、点恢复却说未找到」这种自相矛盾的输出
+  //    （2026-10-21 白哥真机实测）。Apple 沙盒续期用尽后「服务端有效、端侧查不到」
+  //    就是这种情形的标准样本。
+  if (alreadyActive) return RestoreOutcome.alreadyActive;
   final usable = entitlement == IapEntitlementStatus.active &&
       iapEntitlementBelongsToAccount(
         ownerUserId: ownerUserId,

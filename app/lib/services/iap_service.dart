@@ -364,7 +364,7 @@ class IapService {
   ///    最坏情况是先提示「未找到」、随后状态自动变成已订阅（且不再提示错误）。
   /// 📌 判据对照：项目反对「等猜的时长」是针对**可以用条件替代**的场景
   ///    （如 `showDialog` 的 builder 是否跑过）。此处无替代信号，如实记录理由。
-  Future<RestoreOutcome> restore() async {
+  Future<RestoreOutcome> restore({bool alreadyActive = false}) async {
     if (_snapshot.availability != IapAvailability.available) {
       return RestoreOutcome.unavailable;
     }
@@ -398,6 +398,8 @@ class IapService {
       // 归属过滤的「当前账号」用**上报绑定值** —— 与 `_deliver` / `applyServerExpiry`
       // 用的是同一个口径，避免出现「第三套账号来源」。
       currentUserId: _reporterAccountKey,
+      // 🆕 2026-10-21：本账号是否**已经**有效（由 UI 传入，见 `judgeRestoreOutcome`）。
+      alreadyActive: alreadyActive,
     );
   }
 

@@ -149,3 +149,48 @@ iPhone「设置 → Apple 账户 → 订阅」看这条订阅的真实状态：
 2. 或者**先不折腾**：现在能用了，明天再定位「重买失败」。
 3. D1 / 恢复文案 / 沙盒文案（D3）留到看到短码之后再动 ——
    ⚠️ 不要在没有证据时改归属判据（那是安全敏感项，改错会串号）。
+
+---
+
+## 八、🔴 第二个真 bug：已订阅时点「恢复购买」说「未找到订阅」（23:05 修）
+
+白哥 22:57 截图：顶部「订阅中 · 到期日 2026-11-20」，点「恢复购买」弹
+**「当前账号未找到订阅。如果你曾在另一个账号订阅过，请切回该账号查看。」**
+
+### 8.1 为什么互相打脸
+
+| 看什么 | 用哪个判据 |
+|---|---|
+| 页面上的「订阅中」 | `subscriptionActiveNow` = 端侧权益 **OR** 服务端记录 |
+| 「恢复购买」的结果 | `judgeRestoreOutcome` = **只看端侧** `currentEntitlements` |
+
+而「服务端有效、端侧查不到」是**合法存在**的状态：
+- Apple 沙盒订阅自动续期**最多 6 次**，用尽后 StoreKit 里就没有有效项了（本次就是）；
+- 人工开通 / 后台调整 / 我今晚的续期，端侧一概不知道。
+
+⇒ 于是「屏幕说订阅中」+「恢复说没找到」并存。**给用户的结论自己打脸。**
+
+### 8.2 修法（不放松安全判据，只修输出）
+
+| 文件 | 改动 |
+|---|---|
+| `iap_plan.dart` | `RestoreOutcome` 新增 **`alreadyActive`**；`judgeRestoreOutcome` 加 `bool alreadyActive = false`，**优先**返回它；文案「你当前已是订阅状态，无需恢复。」|
+| `iap_service.dart` | `restore({bool alreadyActive = false})` 透传给判定函数 |
+| `profile_screen.dart` / `subscribe_screen.dart` | 两个入口都传 `ref.read(subscriptionProvider).isActive`（**两处同一套**，项目既有判据）|
+
+🔑 **为什么用 `ref.read` 而不是 `subscriptionActiveNow(ref)`**：后者内部 `ref.watch`，
+只能在 build 期间调用；这里是点击回调。口径没变 —— 服务端 `isActive` 正是那个 OR 的服务端一腿。
+
+🔑 **为什么不直接放宽 `iapEntitlementBelongsToAccount`**：那是**安全判据**（防串号）。
+今晚的现象**不需要**动它 —— 只要把「已经是订阅状态」这件事**说出来**就够了。
+
+### 8.3 断言（新增 5 条 + 修 1 条旧断言）
+
+- `⑳-1` `alreadyActive:true` ⇒ `alreadyActive`（即使 entitlement=expired、归属不符）
+- `⑳-2` 🔴 **反向**：`alreadyActive:false` 时仍必须 notFound（防「顺手把所有情况放行」）
+- `⑳-3/4` 文案不得与 notFound 相同、必须含「已是订阅」
+- `⑳-5` 🔴 两个入口都要传 `alreadyActive`（改一处漏一处 = 一真一假）
+- ✏️ 旧断言 `subscribeCode.contains('.restore()')` → `.restore(` ——
+  参数从无到有会让精确匹配**假红**。📌 判据：**断言锁意图，不锁拼写**。
+
+**证伪过**：把 `if (alreadyActive) return …alreadyActive;` 删掉 ⇒ `⑳-1` 立刻红；还原后 294/294 全绿。

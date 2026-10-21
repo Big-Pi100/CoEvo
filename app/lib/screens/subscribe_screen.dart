@@ -971,7 +971,12 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
     if (!await _ensureSignedIn()) return;
     if (!mounted) return;
 
-    final outcome = await ref.read(iapServiceProvider).restore();
+    // 🆕 2026-10-21：与「我的」页**同一套行为**（两个入口必须一致，否则又是一处口径分叉）。
+    //    已订阅时不许再说「未找到订阅」—— 顶部明明写着「订阅中」。
+    //    ⚠️ `ref.read` 而非 `subscriptionActiveNow(ref)`：后者内部 watch，只能在 build 期调用。
+    final alreadyActive = ref.read(subscriptionProvider).isActive;
+    final outcome =
+        await ref.read(iapServiceProvider).restore(alreadyActive: alreadyActive);
     if (!mounted) return;
 
     // 🔴 2026-10-12：文案改走**全库唯一事实源** `restoreOutcomeMessage` ——
