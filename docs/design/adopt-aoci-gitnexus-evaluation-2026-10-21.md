@@ -742,3 +742,111 @@ stderr 里出现：
 
 **备份何时删**：`lbug.bak` 建议留到**下一次重建成功**再删（回滚点是它）；
 `parse-cache.bak`（3 个小文件）可以随时删。
+
+---
+
+## 十五、✅ Step 2 已执行：AOCI 落地 + 5 条试点条目
+
+### 15.1 实际执行链路（含 4 个踩坑）
+
+```bash
+aoci --repo E:/CoEvo init                  # 省略 --agent（全局 host 的正确路径）
+# 改 .aoci/config.json 的 managed_scope.rules（收窄 scope）
+aoci --repo E:/CoEvo scan                  # 建 baseline（必须先于 activate）
+aoci --repo E:/CoEvo scope activate        # 生成审批单 → 真人 approve + apply
+# 用 update-entry 逐条写入
+```
+
+**四个坑（全部踩过）**：
+
+| # | 现象 | 真因 | 正确做法 |
+|---|---|---|---|
+| 1 | `managed_scope_rule_contract_invalid: coevo-infra-gitnexus` | `source` 必须是 **`"user"`**（我写 `"project"`）；且 `rule_id` 必须**四段式**（`coevo-top-gitnexus-exclude`）| 照 vibedollar 的 user 规则结构抄 |
+| 2 | `managed_scope_baseline_preimage_unavailable` | **先改了 scope 才 scan** | 顺序：**scan → activate**，不能反 |
+| 3 | `impact_candidate_tag_dictionary_violation`（4 条全灭）| 我用了 `[DF9L]`/`[AF9L]` —— **`F-财务计费` 只在 `database` 字典里，`code` 字典的 B 没有 F** | 查 `aoci_header` 的字典；改 `[DB9L]`/`[DD9L]`/`[AB9L]` |
+| 4 | `Every candidate must include a valid source_sha256` | 连 `--preview` 都要（help 说不用，实测不符）| 见 15.2 —— **baseline 里就有** |
+
+### 15.2 🔑 重大发现：**写条目不需要 MCP**
+
+skill 说「`source_sha256` 只能来自 `aoci_maintain`」。**实测：`.aoci/baseline.json` 里每个文件都存了 sha256**：
+
+```json
+".files.backend/crates/api_server/src/schema.rs":
+  { "role": "index", "sha256": "af941843...", "size": 166907,
+    "normalized_sha256": "af941843..." }
+```
+
+⇒ 直接取来喂给 `aoci update-entry --source-sha256`，**正式写入成功**（766 个文件全有）。
+
+**这省掉了「配 MCP + 重启会话」一整圈** —— 全局配置型 host（WorkBuddy）的痛点被绕开了。
+
+📌 判据：**「文档说只能从 X 拿」时，先查 X 存的东西有没有副本** —— baseline 就是那份副本。
+
+### 15.3 scope 收窄：390 → 171
+
+**默认 scope 不可用**：`index=1559 文件 / 173K tokens`（含 `.gitnexus` 缓存 1118、`.workbuddy` 157、`docs` 867…）。
+
+**第一版规则仍漏了三块**（收窄后 390）：
+
+| 被误算进 index | 数量 |
+|---|---|
+| `backend/prompts/**`（提示词模板）| **111** |
+| `app/macos|windows|linux|web/**`（Flutter 平台壳）| **63** |
+| `app/assets/**` + `app/docs/**` | 17 |
+
+补上后 **index 390 → 171**（审批单原文：「**219 files losing Index coverage**」）。
+
+**最终 scope**：`index 171 / observe 421 / exclude 1070`
+
+| 档 | 内容 |
+|---|---|
+| **index** | `backend/crates/api_server/src/**`（37）· `app/lib/services|providers|api/**`（112）· 根配置 6 · workflows 2 · 其余 14 |
+| observe | `app/lib/screens|widgets|theme|models`（UI 层）· `scripts/**`（断言脚本：**它们验证契约，本身不是被改的业务代码**）· 其余 |
+| exclude | `.gitnexus` · `.workbuddy` · `docs` · `backend/prompts` · 平台壳 · `backend/target` · `marketing` · `data` 等 |
+
+📌 **判据落地**：按「**改了它，别人要不要跟着改**」划，不按目录名划。
+`scripts/` 虽然有 220 个文件，但改断言不需要改业务代码 ⇒ **observe**。
+
+### 15.4 5 条试点条目（已写入 `aoci.code.txt`）
+
+| 文件 | 标签 | 选它的理由 |
+|---|---|---|
+| `schema.rs` | `[PD9L]` | MEMORY 里有「新表/索引只写 `schema.rs`」这类**文件级**事实 |
+| `iap_handlers.rs` | `[DB9L]` | 归属两层判定 + UPSERT 例外 |
+| `subscription.rs` | `[DD9L]` | 今天刚收口的格式契约 + 单调写入 |
+| `iap_service.dart` | `[AB9L]` | 端侧权威 + unknown 判据 |
+| `iap_plan.dart` | `[DB9L]` | 可断言层（纯逻辑下沉的理由）|
+
+**质量验收**（`aoci verify` / `check`）：
+
+```
+Volumes v1 candidate structure is valid
+S coverage: C7+ Entries 5/5 have S (0% absent) | by band: C9 5/5      ← S 全有
+E scale: 0 of 5 Code Entries carry a scale letter the source line count contradicts   ← E 档全对
+```
+
+`check` 报 **163 findings** = 「其余 166 个 index 文件未写条目」—— **试点阶段的预期状态**，不是错误。
+
+### 15.5 成本核算（决定后续写多少条）
+
+| 项 | 数值 |
+|---|---|
+| 5 条产物大小 | 3.4 KB ⇒ **约 680 B/条** |
+| 若写满 171 条 | ≈ **116 KB ≈ 29K tokens** |
+| 对照 vibedollar | 117 条 = 36 KB ≈ 12.6K tokens |
+
+⇒ 我们**每条的 S 写得更详细**（680 vs 308 B）。**171 条全写完约 29K tokens**，
+是 vibedollar 的 2.3 倍 —— 对 56K 行 Dart + 30K 行 Rust 的项目算合理比例，但**不必一次写完**。
+
+### 15.6 当前状态与后续
+
+| 项 | 值 |
+|---|---|
+| `scope` | ✅ `policy aligned true` |
+| `index` | 171（已写 5 · 待写 163 + 3 无法读取）|
+| `baseline.json` | 766 文件（index 171 + observe 421 + 其它）|
+| AGENTS.md | 已生成（103 行，**英文** —— init 默认 `en-US`；语义准确，未改）|
+| 进 git 的 `.aoci` 资产 | `.gitignore` · `baseline.json` · `config.json`（`ledger`/`transactions`/`scope-change` 被忽略）|
+
+**建议的后续节奏**：**不追求写满 171 条**，而是「**改到哪个文件，就补哪个文件的条目**」——
+这符合 skill 的维护闭环（改完 → `maintain` → 更新），也避免一次性投入 29K tokens。

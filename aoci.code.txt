@@ -1,0 +1,12 @@
+#AOCI-CODE-VOLUME: 1
+
+===E:/CoEvo/===
+
+===E:/CoEvo/backend/crates/api_server/src/===
+schema.rs[PD9L]: F:建表与迁移的唯一权威：SCHEMA_SQL 建全新库，run_migrations_inner 补已存在的库 | R:code:backend/crates/api_server/src/subscription.rs | A:init_database / run_migrations_inner / drop_column_if_exists | S:CREATE TABLE IF NOT EXISTS 对已存在的库无效（见表就跳过）⇒ 新表/索引只写这里等于只对新库生效，ALTER 必须进 migrations；容错白名单只能吞"确已改过"的错（列名拼错也会吞）；with_foreign_keys_off 是注销写 deleted: 形态的前提（iap_transactions.user_id 有外键无 CASCADE，有意为之——支付记录须留库对账）
+iap_handlers.rs[DB9L]: F:IAP 交易验签、归属判定与记账；订阅权益只由这里写 | R:code:backend/crates/api_server/src/subscription.rs,code:backend/crates/api_server/src/apple_auth.rs | A:iap_verify_handler / upsert_transaction / account_binding_conflict / effective_binding | S:归属判定两层且顺序不能反——B1 绑定层(app_account_token) → B2 归属层(user_id)；绑定指向已注销账号即视为无绑定（否则付了钱拿不到权益）；UPSERT 的 SET 故意无 user_id（防串号核心），孤儿重认领是唯一例外；到期日必须 set_expires_if_later——StoreKit 重放不保证顺序，覆盖式会把 10-21 回退成 10-18
+subscription.rs[DD9L]: F:订阅到期日的唯一读写权威：解析、有效性判定、单调推进、审计 | R:code:backend/crates/api_server/src/iap_handlers.rs,code:backend/crates/api_server/src/sync_handlers.rs | A:parse_expires / parsed_expires / is_subscription_active / set_expires_if_later / extend_subscription | S:subscription_expires 曾三种归一手法并存（手写补 T00:00:00Z / SQL datetime() / substr 前 10 位）；现在只有 parse_expires 解析（RFC3339 含偏移 / 纯日期 / 空格分隔），set_expires* 写入即规范化；无条件版保留给退款，IAP 一律 _if_later；extend_subscription 旧写法对 RFC3339 解析失败后退回今天，会静默清零剩余权益（已修）
+
+===E:/CoEvo/app/lib/services/===
+iap_service.dart[AB9L]: F:端侧 StoreKit 权威：购买/恢复/归属解析/上报；端侧先解锁再对账 | R:code:app/lib/services/iap_plan.dart,code:app/lib/providers/iap_provider.dart | A:buy / restore / _deliver / applyServerExpiry | S:端侧权益按交易自带的 appAccountToken 判归属（不是当前登录 userId）；availability=unknown 是"还没查"不等于"不可用"——按 !=available 判会拿服务端滞后值冒充端侧权威，导致启动瞬间误弹"订阅已到期"；StoreKit 冷启动不重投已完成事务；buy() 未登录直接拒绝（不止 UI 拦）
+iap_plan.dart[DB9L]: F:订阅的纯逻辑层（零 Flutter 依赖）：档位/文案/按钮态/归属与恢复判定，全部可断言 | R:code:app/lib/services/iap_service.dart,code:app/lib/providers/iap_provider.dart | A:iapEntitlementBelongsToAccount / judgeRestoreOutcome / purchaseButtonState / restoreOutcomeMessage / downgradeNotice | S:本文件存在的理由：UI 文件本机验不了（import Flutter 插件），判定下沉到这里才能断言；ownerUserId 为空（无绑定）一律不算（旧版"未登录才算"已作废——那正是串号土壤）；文案必须唯一源（订阅页与我的页各写一份必然漂移）

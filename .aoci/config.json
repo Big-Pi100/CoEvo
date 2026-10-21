@@ -1,0 +1,476 @@
+{
+  "version": 2,
+  "locale": "en-US",
+  "index_path": "aoci.txt",
+  "exclude_dirs": [
+    "node_modules",
+    ".next",
+    ".output",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".tox",
+    ".nox",
+    "htmlcov"
+  ],
+  "exclude_root_dirs": [
+    "backup",
+    "backups",
+    "build",
+    "cache",
+    "coverage",
+    "dist",
+    "target",
+    "tmp",
+    "uploads",
+    "artifacts",
+    "vendor"
+  ],
+  "exclude_files": [
+    "*.backup.*",
+    "*.bak",
+    ".coverage"
+  ],
+  "exclude_exts": [],
+  "curation_exclude": [],
+  "hook_strict": false,
+  "ledger_enabled": true,
+  "line_ending_tolerance": true,
+  "cognition_refresh_threshold": 30,
+  "overview_delivery": {
+    "chunk_tokens": 7000
+  },
+  "managed_scope": {
+    "version": "managed-scope-policy/v2",
+    "profile": "production",
+    "observe_change_policy": "review_required",
+    "approval_mode": "inherit",
+    "approval_thresholds": {
+      "entry_removal_count": 25,
+      "entry_removal_percent": 25
+    },
+    "rules": [
+      {
+        "rule_id": "coevo-top-gitnexus-exclude",
+        "action": "exclude",
+        "pattern": ".gitnexus/**",
+        "pattern_kind": "glob",
+        "reason": "gitnexus 索引与解析缓存，每次 analyze 都变；纳入会导致 baseline 永久漂移",
+        "source": "user",
+        "order": 200,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-top-workbuddy-exclude",
+        "action": "exclude",
+        "pattern": ".workbuddy/**",
+        "pattern_kind": "glob",
+        "reason": "agent 记忆与临时产物，不是源码",
+        "source": "user",
+        "order": 201,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-top-docs-exclude",
+        "action": "exclude",
+        "pattern": "docs/**",
+        "pattern_kind": "glob",
+        "reason": "文档归档（600+ md），知识在文档内自成体系",
+        "source": "user",
+        "order": 202,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-top-build-exclude",
+        "action": "exclude",
+        "pattern": "build/**",
+        "pattern_kind": "glob",
+        "reason": "构建产物",
+        "source": "user",
+        "order": 203,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-top-marketing-exclude",
+        "action": "exclude",
+        "pattern": "marketing/**",
+        "pattern_kind": "glob",
+        "reason": "营销物料（1600+），与代码无关",
+        "source": "user",
+        "order": 204,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-top-images-exclude",
+        "action": "exclude",
+        "pattern": "generated-images/**",
+        "pattern_kind": "glob",
+        "reason": "生成图",
+        "source": "user",
+        "order": 205,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-top-data-exclude",
+        "action": "exclude",
+        "pattern": "data/**",
+        "pattern_kind": "glob",
+        "reason": "词库/课程数据，不是代码",
+        "source": "user",
+        "order": 206,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-backend-target-exclude",
+        "action": "exclude",
+        "pattern": "backend/target/**",
+        "pattern_kind": "glob",
+        "reason": "Rust 编译产物（4 万+ 文件）",
+        "source": "user",
+        "order": 207,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-ios-exclude",
+        "action": "exclude",
+        "pattern": "app/ios/**",
+        "pattern_kind": "glob",
+        "reason": "Flutter 原生壳，认知价值低",
+        "source": "user",
+        "order": 208,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-android-exclude",
+        "action": "exclude",
+        "pattern": "app/android/**",
+        "pattern_kind": "glob",
+        "reason": "Flutter 原生壳，认知价值低",
+        "source": "user",
+        "order": 209,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-top-logs-exclude",
+        "action": "exclude",
+        "pattern": "flutter_*.log",
+        "pattern_kind": "glob",
+        "reason": "构建日志",
+        "source": "user",
+        "order": 210,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-top-scripts-observe",
+        "action": "observe",
+        "pattern": "scripts/**",
+        "pattern_kind": "glob",
+        "reason": "断言与一次性脚本：它们验证契约，本身不是被改的业务代码",
+        "source": "user",
+        "order": 350,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-screens-observe",
+        "action": "observe",
+        "pattern": "app/lib/screens/**",
+        "pattern_kind": "glob",
+        "reason": "UI 页面：改它不需要别人跟着改（判据=契约传导性）",
+        "source": "user",
+        "order": 351,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-widgets-observe",
+        "action": "observe",
+        "pattern": "app/lib/widgets/**",
+        "pattern_kind": "glob",
+        "reason": "UI 组件，同上",
+        "source": "user",
+        "order": 352,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-theme-observe",
+        "action": "observe",
+        "pattern": "app/lib/theme/**",
+        "pattern_kind": "glob",
+        "reason": "视觉 token，靠规范/截图校验",
+        "source": "user",
+        "order": 353,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-models-observe",
+        "action": "observe",
+        "pattern": "app/lib/models/**",
+        "pattern_kind": "glob",
+        "reason": "数据模型，纯结构",
+        "source": "user",
+        "order": 354,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-rest-observe",
+        "action": "observe",
+        "pattern": "app/lib/**",
+        "pattern_kind": "glob",
+        "reason": "app/lib 兜底 observe",
+        "source": "user",
+        "order": 355,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-backend-contract-index",
+        "action": "index",
+        "pattern": "backend/crates/api_server/src/**",
+        "pattern_kind": "glob",
+        "reason": "后端契约层：入口/持久化/集成/编排，改它会传导",
+        "source": "user",
+        "order": 400,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-services-index",
+        "action": "index",
+        "pattern": "app/lib/services/**",
+        "pattern_kind": "glob",
+        "reason": "服务层=端侧契约（IAP/同步/查词/翻译）",
+        "source": "user",
+        "order": 401,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-providers-index",
+        "action": "index",
+        "pattern": "app/lib/providers/**",
+        "pattern_kind": "glob",
+        "reason": "状态层，跨页面契约",
+        "source": "user",
+        "order": 402,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-api-index",
+        "action": "index",
+        "pattern": "app/lib/api/**",
+        "pattern_kind": "glob",
+        "reason": "HTTP 客户端契约",
+        "source": "user",
+        "order": 403,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-backend-prompts-exclude",
+        "action": "exclude",
+        "pattern": "backend/prompts/**",
+        "pattern_kind": "glob",
+        "reason": "提示词模板（111 个 md），是数据不是代码",
+        "source": "user",
+        "order": 211,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-macos-exclude",
+        "action": "exclude",
+        "pattern": "app/macos/**",
+        "pattern_kind": "glob",
+        "reason": "Flutter 平台壳",
+        "source": "user",
+        "order": 212,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-windows-exclude",
+        "action": "exclude",
+        "pattern": "app/windows/**",
+        "pattern_kind": "glob",
+        "reason": "Flutter 平台壳",
+        "source": "user",
+        "order": 213,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-linux-exclude",
+        "action": "exclude",
+        "pattern": "app/linux/**",
+        "pattern_kind": "glob",
+        "reason": "Flutter 平台壳",
+        "source": "user",
+        "order": 214,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-web-exclude",
+        "action": "exclude",
+        "pattern": "app/web/**",
+        "pattern_kind": "glob",
+        "reason": "Flutter 平台壳",
+        "source": "user",
+        "order": 215,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-assets-exclude",
+        "action": "exclude",
+        "pattern": "app/assets/**",
+        "pattern_kind": "glob",
+        "reason": "静态资源",
+        "source": "user",
+        "order": 216,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-docs-exclude",
+        "action": "exclude",
+        "pattern": "app/docs/**",
+        "pattern_kind": "glob",
+        "reason": "app 内文档",
+        "source": "user",
+        "order": 217,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-app-tool-observe",
+        "action": "observe",
+        "pattern": "app/tool/**",
+        "pattern_kind": "glob",
+        "reason": "Flutter 工具脚本",
+        "source": "user",
+        "order": 356,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-backend-examples-observe",
+        "action": "observe",
+        "pattern": "backend/examples/**",
+        "pattern_kind": "glob",
+        "reason": "示例代码",
+        "source": "user",
+        "order": 357,
+        "enabled": true,
+        "created_by": "host-model"
+      },
+      {
+        "rule_id": "coevo-backend-othercrates-observe",
+        "action": "observe",
+        "pattern": "backend/crates/**",
+        "pattern_kind": "glob",
+        "reason": "非 api_server 的 crate 先 observe（chat_engine 属退役概念）",
+        "source": "user",
+        "order": 358,
+        "enabled": true,
+        "created_by": "host-model"
+      }
+    ]
+  },
+  "cognition_budget": {
+    "version": "cognition-budget-policy/v1",
+    "mode": "enforce",
+    "whole_index": {
+      "target_tokens": 200000,
+      "warning_tokens": 300000,
+      "max_tokens": 400000
+    },
+    "r": [
+      {
+        "min_c": 1,
+        "max_c": 4,
+        "target_tokens": 25,
+        "max_tokens": 50
+      },
+      {
+        "min_c": 5,
+        "max_c": 7,
+        "target_tokens": 45,
+        "max_tokens": 90
+      },
+      {
+        "min_c": 8,
+        "max_c": 8,
+        "target_tokens": 70,
+        "max_tokens": 140
+      },
+      {
+        "min_c": 9,
+        "max_c": 9,
+        "target_tokens": 90,
+        "max_tokens": 180
+      }
+    ],
+    "s": [
+      {
+        "min_c": 1,
+        "max_c": 4,
+        "target_tokens": 20,
+        "max_tokens": 40
+      },
+      {
+        "min_c": 5,
+        "max_c": 7,
+        "target_tokens": 40,
+        "max_tokens": 80
+      },
+      {
+        "min_c": 8,
+        "max_c": 8,
+        "target_tokens": 70,
+        "max_tokens": 140
+      },
+      {
+        "min_c": 9,
+        "max_c": 9,
+        "target_tokens": 100,
+        "max_tokens": 200
+      }
+    ]
+  },
+  "installed_agents": [],
+  "automation": {
+    "mode": "auto"
+  },
+  "ai": {
+    "enabled": false,
+    "provider": "openai-compatible",
+    "base_url": "",
+    "model": "",
+    "api_key_env": "",
+    "timeout_seconds": 0,
+    "max_concurrency": 0,
+    "max_input_tokens": 0,
+    "token_accounting": "auto",
+    "prompt_snapshot": "redacted"
+  }
+}
