@@ -244,3 +244,87 @@ AOCI 的 `S` 字段正好是那个结构：**改这个文件时，它自己会�
 3. **边界划分**是否认可 §4.2（AOCI-S = 文件级；判据库 = 做事方式）？
 
 批了我按 Step 1 先重建 gitnexus，跑那三项验证，把结果给你再决定往下走。
+
+---
+
+## 九、skill 已抽象完成（2026-10-21 12:1x 实测 review）
+
+白哥已把 vibedollar 的实战经验抽象为**用户级 skill**：
+`~/.workbuddy/skills/aoci-cognition-maintenance/SKILL.md`（16.8 KB）
+
+### 9.1 技术准确性：实测 5 条，全部正确
+
+| skill 的说法 | 实测 |
+|---|---|
+| 版本以 `aoci --version` 为准 | ✅ `0.1.0-rc21 (commit cfa8e93…, built 2026-10-14)` |
+| `init --agent` 支持 claude/codex/cursor/opencode/qoder/all | ✅ `init --help` 逐字一致 |
+| **CLI 没有 `maintain` / `overview`** | ✅ 两者均报 `unknown command` |
+| `doctor` 查四组、默认不联网 | ✅ 实测输出四节，`--net` 才探端点 |
+| `init` 写项目级 `.mcp.json` / AGENTS.md 块 | ✅（`doctor` 明确列 `.mcp.json: not configured`）|
+
+⇒ **skill 可以放心用**，不是凭印象写的。
+
+### 9.2 🔴 三个 skill 未覆盖的坑（实测发现，建议补进 skill）
+
+#### 坑 1：`guide` 失败时 **exit code 是 0**
+
+```console
+$ aoci --repo E:/CoEvo index agent guide --agent workbuddy
+Error: open E:/CoEvo/aoci.txt: The system cannot find the file specified.
+exit=0        ← 🔴 报错了，但退出码是 0
+```
+
+⇒ 脚本里 `if aoci index agent guide; then ...` 会**误判为成功**。
+📌 与项目既有判据同族：**「`main` 返回值 ≠ 退出码」**。
+建议 skill 加一句：**判断成败要看输出内容 / `--json` 的字段，不要只看 exit code。**
+
+#### 坑 2：WorkBuddy 的 MCP 是**全局**配置，`init --agent` 写的项目级配置**不会被读**
+
+| | Claude Code / Codex / Cursor | **WorkBuddy** |
+|---|---|---|
+| MCP 落点 | 项目级 `.mcp.json` / `.codex/config.toml` | **全局 `~/.workbuddy/mcp.json`** |
+| 多项目共存 | `init --agent` 天然隔离 | 🔴 **要手工加多条**（每条 `--repo` 指一个仓库）|
+
+实测现有条目：`aoci → E:/AOCI-CODE/build/aoci.exe mcp --repo E:/vibedollar`（**写死一个仓库**）。
+`doctor` 也只检测 `claude codex` 两类环境，**不认识 WorkBuddy**。
+
+⇒ 对 WorkBuddy 的正确做法：
+1. `init --agent <任意>` 仍可跑（它会建 `.aoci/` 与 AGENTS.md 块），但**别指望它写 MCP**
+2. 手工往 `~/.workbuddy/mcp.json` 加独立条目，**server 名要区分仓库**：
+
+```json
+"aoci-coevo": { "command": "E:/AOCI-CODE/build/aoci.exe", "args": ["--repo", "E:/CoEvo", "mcp"] }
+```
+
+3. ⚠️ 多条目后工具名变成 `mcp__aoci-coevo__aoci_maintain` 这种带前缀的形式
+   ⇒ **模型可能选错 server**，而 `--repo` 指错就是 skill 自己警告的「静默改到别的仓库」。
+   ⇒ 建议：**同一时间只启用一个 aoci server**，切项目时改配置而不是并存。
+
+#### 坑 3：gitnexus **索引过期**时返回的是「错答案」而不是「空」
+
+skill §三 写「没建过索引 ⇒ 四个工具全返回空」——那只是最轻的情形。实测更糟的一种：
+
+```json
+{ "symbol": { "filePath": ".../subscription.rs", "startLine": 116 },
+  "epistemic": "lower-bound",
+  "incoming": {},                    // 🔴 空 —— 但该函数实际被 sync/translation/电子书多处调用
+  "staleness": { "status": "diverged" } }
+```
+
+⇒ **`incoming: {}` 会被读成"没人调用"，实际是索引坏了。**
+建议 skill 加：**读结果必须同时看 `staleness.status` 与 `epistemic`；
+`epistemic: lower-bound` 不得当作 exact；`diverged`/`behind` 一律先 `analyze` 重建。**
+
+### 9.3 🟠 三处可以补强
+
+| # | 现状 | 建议 |
+|---|---|---|
+| 1 | §〇「能不能用」是 4 步手查（`--version` / `ls .aoci/` / `scan` / `guide`）| 实测 **`aoci doctor` 一条命令就给全**（仓库发现 / 索引文件 / baseline / Agent 集成 / 各 host MCP 状态 / AI 层）⇒ 建议把它放在 §〇 第 0 步 |
+| 2 | 只讲 scope **怎么改**，没讲 **index 范围怎么定** | 加一条判据：**index 只放「契约层」**（入口/持久化/集成/编排/断言骨架）；**UI 层、纯样式、一次性脚本一律 observe**。依据：vibedollar 117 条 index 里**没有一条 UI 页面** |
+| 3 | 是通用 skill，没有「与项目既有记忆体系共存」的边界 | 加通用判据：**文件级事实 → AOCI `S`；跨文件方法论 / 判断规则 → 留在原体系**。否则必然双写漂移 |
+
+### 9.4 结论
+
+- **skill 可以按现状用**（技术准确，链路完整）
+- 上述 **坑 1/2/3** 建议补进 skill（通用性都够：exit code、WorkBuddy 是 host 之一、stale 索引是通病）
+- **§9.3-3 的边界**建议写进 skill（通用），具体到 CoEvo 的划分见本文 §4.2
