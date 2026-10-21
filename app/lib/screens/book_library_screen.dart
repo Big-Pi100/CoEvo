@@ -52,6 +52,7 @@ import '../providers/book_cloud_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/book_raw_dir_provider.dart';
 import '../services/ebook/book_blob_parse.dart' show kCloudQuotaBytes;
+import '../services/ebook/book_upload_queue.dart' show UploadOneResult;
 import '../theme/clay.dart';
 import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
@@ -79,6 +80,12 @@ class BookLibraryScreen extends ConsumerStatefulWidget {
 }
 
 class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
+  /// 正在**手动上传**的那一本（`null` = 空闲）。
+  ///
+  /// 🔑 只用于「这一本」的图标转圈 —— 不复用队列的 `state.uploadingHash`：
+  ///    那是**全局**状态，用它会让所有未同步的书一起转（误导）。
+  String? _uploadingHash;
+
   @override
   Widget build(BuildContext context) {
     final t = CoEvoTokensExt.of(context);
@@ -462,6 +469,19 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
   ///
   /// 版式：`[封面占位 46×62] [标题 / 作者·进度 / 进度条] [›]`
   Widget _bookCard(CoEvoTokens t, BookSummary b) {
+    // 🆕 2026-10-22：**显式上传入口**（白哥要求）。
+    //
+    // 🔴 为什么必须有：顶部「未同步 N」是**批量**入口，点了只知道数字变没变，
+    //    不知道**为什么不传**。而传不上去有 6 种成因，处置完全不同
+    //    （缺原始文件 / 太大 / 配额 / 未登录 / 网络 / 已到上限）。
+    // ⇒ 每本书自己带一个「上传」图标，点完**直接说原因**。
+    //
+    // 🔑 与「只有云端」那张卡的云下载图标**形状对称**（一个下、一个上），
+    //    三个主题档下都认得出，且不靠颜色区分。
+    final presence = ref.watch(cloudPresenceProvider).value?[b.contentHash];
+    final needsUpload = presence == CloudPresence.localOnly;
+    final uploadingThis = _uploadingHash == b.contentHash;
+
     return Dismissible(
       key: ValueKey(b.id),
       direction: DismissDirection.endToStart,
@@ -518,12 +538,67 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
               ),
             ),
             const SizedBox(width: CoSpacing.sm),
+            if (needsUpload)
+              // 🔑 独立可点区域（不能和整卡 onTap 撞）：点它 = 只传这一本
+              InkWell(
+                onTap: uploadingThis ? null : () => _uploadThis(t, b),
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
+                    uploadingThis
+                        ? Icons.cloud_sync_outlined
+                        : Icons.cloud_upload_outlined,
+                    size: 20,
+                    // 传输中给「弱化」而不是换颜色（同 token 体系）
+                    color: Color(
+                        (uploadingThis ? t.ink3 : t.accent).argb32),
+                  ),
+                ),
+              ),
             Icon(Icons.chevron_right, size: 20, color: Color(t.accent.argb32)),
           ],
         ),
       ),
     );
   }
+
+  /// 上传**这一本**，并把**具体原因**直接告诉用户。
+  ///
+  /// 🔑 结果映射放在这里而不是服务层：它是**文案**，且服务层要能被 `dart run` 验
+  ///    （不依赖 Flutter）。→ 与 `restoreOutcomeMessage` 同一个分工。
+  Future<void> _uploadThis(CoEvoTokens t, BookSummary b) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _uploadingHash = b.contentHash);
+    try {
+      final db = await ref.read(bookDbProvider.future);
+      final r = await uploadOneBook(
+        db: db,
+        queue: ref.read(bookUploadQueueProvider),
+        contentHash: b.contentHash,
+      );
+      if (!mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(_uploadResultMessage(r, b.title))));
+    } finally {
+      if (mounted) setState(() => _uploadingHash = null);
+    }
+  }
+
+  /// 上传结果 → **用户能照着做**的一句话。
+  ///
+  /// 🔴 不能说「上传失败」就完事 —— 那等于把 6 种成因压成一句废话。
+  String _uploadResultMessage(UploadOneResult r, String title) => switch (r) {
+        UploadOneResult.uploaded => '《$title》已同步到云端',
+        UploadOneResult.noRaw =>
+          '《$title》缺少原始文件，无法上传。请重新导入这本书。',
+        UploadOneResult.tooLarge => '《$title》超过单本上限（50 MB），无法上传。',
+        UploadOneResult.quota => '云端空间不足，请先在书架里删除一些书。',
+        UploadOneResult.needLogin => '请先登录账号再同步。',
+        UploadOneResult.skipped => '《$title》已连续失败多次，请稍后再试。',
+        UploadOneResult.failed => '《$title》同步失败，请检查网络后重试。',
+      };
 
   /// 进度条（设计稿 `.bbar`：4px 高、圆角 2、槽 `sunken`、填充 `accent`）。
   ///

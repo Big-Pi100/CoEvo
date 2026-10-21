@@ -78,9 +78,17 @@ class BookSummary {
     required this.chapterCount,
     required this.chapterIdx,
     required this.scrollRatio,
+    required this.contentHash,
   });
 
   final String id;
+
+  /// 内容指纹 —— 云端判定的**唯一键**（`cloud_book` / `sync_book` 都用它）。
+  ///
+  /// 🆕 2026-10-22：加它是为了让书架能判断「这本书同步了没」，
+  ///    从而给**未同步的书**显示一个显式上传按钮（白哥要求）。
+  ///    ⚠️ 用 `book.id` 判会错 —— 同一本书在不同设备上 id 不同，而 hash 相同。
+  final String contentHash;
   final String title;
   final String? author;
   final int chapterCount;
@@ -111,6 +119,7 @@ final bookListProvider = FutureProvider<List<BookSummary>>((ref) async {
 
   final rows = await db.rawQuery('''
     SELECT b.id, b.title, b.author, b.chapter_count,
+           COALESCE(b.content_hash, '')  AS content_hash,
            COALESCE(pr.chapter_idx, 0)   AS chapter_idx,
            COALESCE(pr.scroll_ratio, 0.0) AS scroll_ratio
     FROM book b
@@ -126,6 +135,7 @@ final bookListProvider = FutureProvider<List<BookSummary>>((ref) async {
             chapterCount: (r['chapter_count'] as int?) ?? 0,
             chapterIdx: (r['chapter_idx'] as num?)?.toInt() ?? 0,
             scrollRatio: (r['scroll_ratio'] as num?)?.toDouble() ?? 0.0,
+            contentHash: (r['content_hash'] as String?) ?? '',
           ))
       .toList();
 });

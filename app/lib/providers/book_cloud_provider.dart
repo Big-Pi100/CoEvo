@@ -194,6 +194,52 @@ Future<void> kickBookUpload({
   await queue.run(candidates);
 }
 
+/// 上传 **指定的那一本** —— 书架上的「显式上传按钮」用它。
+///
+/// # 🔴 为什么需要（白哥 2026-10-22）
+///
+/// 顶部「未同步 N」药丸是**批量**入口：点了只知道数字变没变，
+/// **不知道为什么不传**。而传不上去有 6 种成因（缺原始文件 / 太大 /
+/// 配额 / 未登录 / 网络 / 已到重试上限），处置完全不同。
+/// ⇒ 单本上传必须**返回原因**，否则用户只能反复点、反复猜。
+///
+/// 🔑 **复用同一个队列**（不另写一套上传逻辑）——
+///    「同一件事两套实现必然分叉」是本项目反复踩的坑。
+///    队列每轮结束会留下 `lastResults`，这里只取那一本的结果。
+///
+/// ⚠️ 队列正在跑时不硬塞（`run` 会直接 return ⇒ 拿不到结果）：
+///    先等它跑完（最多 20 秒），等不到就如实说「正在同步」。
+Future<UploadOneResult> uploadOneBook({
+  required Database db,
+  required BookUploadQueue queue,
+  required String contentHash,
+}) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 20));
+  while (queue.state.isBusy && DateTime.now().isBefore(deadline)) {
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+  }
+  if (queue.state.isBusy) return UploadOneResult.failed;
+
+  final rows = await db.query(
+    'book',
+    columns: ['source_format', 'source_name', 'title'],
+    where: 'content_hash = ?',
+    whereArgs: [contentHash],
+    limit: 1,
+  );
+  if (rows.isEmpty) return UploadOneResult.failed;
+
+  final r = rows.first;
+  final fmt = (r['source_format'] as String?) ?? 'epub';
+  final name = (r['source_name'] as String?) ??
+      '${(r['title'] as String?) ?? 'book'}.$fmt';
+
+  await queue.run([
+    UploadCandidate(contentHash: contentHash, ext: fmt, fileName: name),
+  ]);
+  return queue.lastResults[contentHash] ?? UploadOneResult.failed;
+}
+
 /// 下载一本「只有云端」的书并落库。
 ///
 /// 🔑 **复用导入管线**（`importBook`）而不是另写一条落库路径 ——

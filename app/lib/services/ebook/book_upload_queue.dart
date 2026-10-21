@@ -85,6 +85,33 @@ class UploadQueueState {
   bool get isBusy => uploadingHash != null;
 }
 
+/// 一本书的**处理结果** —— 供「显式上传按钮」给出**明确原因**。
+///
+/// # 🔴 为什么需要它（白哥 2026-10-22）
+///
+/// 书架上的「未同步」药丸只有**一个数字**：点它只看到数字不变，**没有任何原因**。
+/// 而「传不上去」至少有 6 种成因，处置完全不同：
+///
+/// | 结果 | 用户下一步 |
+/// |---|---|
+/// | [noRaw] | 重新导入这本书（原始文件丢了）|
+/// | [tooLarge] | 换一本 / 去掉图片重做 |
+/// | [quota] | 删几本书 / 升级订阅 |
+/// | [needLogin] | 去登录 |
+/// | [failed] | 网络问题，等等再试 |
+/// | [skipped] | 已连续失败 3 次，本轮不再试 |
+///
+/// 📌 判据：**「失败」不是一种状态，是一个分类** —— 只报「失败」等于没说。
+enum UploadOneResult {
+  uploaded,
+  noRaw,
+  tooLarge,
+  quota,
+  needLogin,
+  failed,
+  skipped,
+}
+
 /// 一条待上传记录（由调用方从 `book` 表 + `cloud_book` 算出）。
 class UploadCandidate {
   const UploadCandidate({
@@ -165,6 +192,14 @@ class BookUploadQueue {
 
   UploadQueueState get state => _state;
 
+  /// 上一轮**逐本**的处理结果（`contentHash` → 结果）。
+  ///
+  /// 供「显式上传按钮」用：点一下就知道**为什么传不上去**。
+  /// 🔑 只保留最近一轮（这不是历史记录，是「刚刚那次怎么失败的」）。
+  final Map<String, UploadOneResult> _lastResults = {};
+  Map<String, UploadOneResult> get lastResults =>
+      Map.unmodifiable(_lastResults);
+
   void _emit(UploadQueueState s) {
     _state = s;
     onStateChanged?.call(s);
@@ -190,6 +225,7 @@ class BookUploadQueue {
 
     // 🔴 2026-10-22：计数与目录都提到 try **外面** —— 下面要用 `finally` 兜底。
     var done = 0, failed = 0, noRaw = 0, tooLarge = 0;
+    _lastResults.clear();
     late final String rawDir;
 
     try {
@@ -205,6 +241,7 @@ class BookUploadQueue {
       // ① 退避上限：这一本已经失败够多次 ⇒ 跳过（保留在 pending 里，下次启动再算）
       if ((_attempts[c.contentHash] ?? 0) >= kMaxUploadAttempts) {
         failed++;
+        _lastResults[c.contentHash] = UploadOneResult.skipped;
         continue;
       }
 
@@ -227,6 +264,7 @@ class BookUploadQueue {
         //    要**跳过并计数**，让 UI 能说「有 N 本因缺少原始文件无法上传」
         //    —— 不给出口的静默跳过会让用户以为「同步坏了」。
         noRaw++;
+        _lastResults[c.contentHash] = UploadOneResult.noRaw;
         continue;
       }
 
@@ -240,6 +278,7 @@ class BookUploadQueue {
       switch (r) {
         case BlobUploaded(:final blobSize):
           done++;
+          _lastResults[c.contentHash] = UploadOneResult.uploaded;
           _attempts.remove(c.contentHash);
           // 🔴 写回本地 `blob_size`（根因见 `onUploaded` 的长说明）。
           //    ⚠️ 失败**不改变本次结论**（网络那一下已经成功了）——
@@ -253,10 +292,12 @@ class BookUploadQueue {
           }
         case BlobNeedLogin():
           // 未登录 ⇒ **整体停下**（后面的书同样传不了，继续只会刷一串 401）
+          _lastResults[c.contentHash] = UploadOneResult.needLogin;
           _cancelled = true;
         case BlobQuotaExceeded():
           // 配额满 ⇒ **整体停下**（再传也会被拒）—— 由 UI 提示「删书 / 订阅」
           failed++;
+          _lastResults[c.contentHash] = UploadOneResult.quota;
           _cancelled = true;
         case BlobTooLarge():
           // 🔴 2026-10-21：**只有这一本**太大 ⇒ 跳过它、继续传下一本。
@@ -269,16 +310,19 @@ class BookUploadQueue {
           //    （白耗流量与时间），而它**永远不会成功**。到 `kMaxUploadAttempts`
           //    后走上面的退避分支，不再尝试。
           tooLarge++;
+          _lastResults[c.contentHash] = UploadOneResult.tooLarge;
           _attempts[c.contentHash] =
               (_attempts[c.contentHash] ?? 0) + 1;
         case BlobFailed():
           failed++;
+          _lastResults[c.contentHash] = UploadOneResult.failed;
           _attempts[c.contentHash] = (_attempts[c.contentHash] ?? 0) + 1;
         case BlobDeleted():
         case BlobNotFound():
         case BlobDownloaded():
           // 不会出现在上传路径上；归到失败（避免静默吞掉意外结果）
           failed++;
+          _lastResults[c.contentHash] = UploadOneResult.failed;
       }
     }
 
