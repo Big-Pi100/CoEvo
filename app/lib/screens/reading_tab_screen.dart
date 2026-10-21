@@ -305,7 +305,10 @@ class _ReadingTabScreenState extends ConsumerState<ReadingTabScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               HeaderChip(
-                label: '未上云',
+                // 🔴 2026-10-22 白哥：「'未上云'三个字要改成'未同步'」。
+                // 🔑 也确实是「未同步」更准：云端书架的语义是**同步**，
+                //    而「上云」是实现视角的词（用户不关心文件放在哪）。
+                label: '未同步',
                 count: pending,
                 onTap: _retryUpload,
               ),

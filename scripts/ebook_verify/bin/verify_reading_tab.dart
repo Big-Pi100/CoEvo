@@ -229,7 +229,8 @@ void main() {
     //    🔑 改法两半：
     //      ① **逐动作**锁「`HeaderChip(` 调用里带该 label」（退化成纯文字就断）
     //      ② 一条**反向**断言：文件里**不得自写药丸实现**（反向断言天然免疫数量腐坏）
-    for (final label in ['收藏', '导入', '未上云']) {
+    // 🔴 2026-10-22：第三枚改成「未同步」（白哥：用户视角是同步，不是上云）。
+    for (final label in ['收藏', '导入', '未同步']) {
       check("🔴 「$label」动作用公共组件 HeaderChip（调用里带该 label）",
           _chipForLabel(container, label),
           "未见 HeaderChip(… label: '$label') —— 退回纯文字或自写药丸都会断");

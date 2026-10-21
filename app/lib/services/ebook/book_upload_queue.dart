@@ -188,11 +188,16 @@ class BookUploadQueue {
     if (_state.isBusy) return;
     _cancelled = false;
 
-    // 🔴 **目录在本轮开始时取一次**（回调形态，根因见 `rawDirOf` 的长说明）。
-    //    这是「上传真的会发请求」的前提 —— 取到空串的旧写法会让整轮**静默跳过**。
-    final rawDir = await rawDirOf();
-
+    // 🔴 2026-10-22：计数与目录都提到 try **外面** —— 下面要用 `finally` 兜底。
     var done = 0, failed = 0, noRaw = 0, tooLarge = 0;
+    late final String rawDir;
+
+    try {
+      // 🔴 **目录在本轮开始时取一次**（回调形态，根因见 `rawDirOf` 的长说明）。
+      //    这是「上传真的会发请求」的前提 —— 取到空串的旧写法会让整轮**静默跳过**。
+      //
+      // ⚠️ 它自己也可能抛（回调里读 provider / 拼路径）⇒ 必须在 try 内。
+      rawDir = await rawDirOf();
 
     for (final c in candidates) {
       if (_cancelled) break;
@@ -277,12 +282,34 @@ class BookUploadQueue {
       }
     }
 
-    _emit(UploadQueueState(
-      doneThisRun: done,
-      failedThisRun: failed,
-      skippedNoRaw: noRaw,
-      tooLargeThisRun: tooLarge,
-    ));
+    } finally {
+      // 🔴🔴 2026-10-22：**无论怎么退出，都必须清掉「正在传」标记**。
+      //
+      // # 一个会让上传永久瘫痪的洞（白哥 2026-10-22 真机）
+      //
+      // 现场：某本书一直「未上云」，手动点同步没反应、重新导入也没反应，
+      //       **后端日志里零条上传请求**（连 401 都没有）。
+      //
+      // 根因就在本函数的开头：`if (_state.isBusy) return;`
+      // · `isBusy` ⇔ `_state.uploadingHash != null`
+      // · 而 `uploadingHash` 只在**每轮结束时**那次 `_emit` 里被清掉
+      // · 中途任何一步抛异常（`rawDirOf()` / `readRawBook` 的 IO /
+      //   `upload` 的未捕获异常）⇒ **最后那次 `_emit` 永远不执行**
+      // ⇒ `uploadingHash` 永久非 null ⇒ **之后每一次 kick 都在第一行返回**
+      // ⇒ 队列静默瘫痪：不发请求、不报错、UI 上「未上云」永远挂着。
+      //
+      // 📌 判据：**「每轮结束」的清理必须写在 `finally` 里，不能写在正常路径末尾**。
+      //    （同族：`sync_service` 的 push 循环也靠状态自清，那里同样脆弱。）
+      // 🔑 为什么不是「catch 后重置」：`catch` 只覆盖异常，`return`/`break`
+      //    的提前退出仍会漏；`finally` 是唯一覆盖全部出口的位置。
+      _emit(UploadQueueState(
+        // 🔑 **不传 `uploadingHash`** ⇒ 它回到 null ⇒ 队列解除 busy
+        doneThisRun: done,
+        failedThisRun: failed,
+        skippedNoRaw: noRaw,
+        tooLargeThisRun: tooLarge,
+      ));
+    }
   }
 }
 

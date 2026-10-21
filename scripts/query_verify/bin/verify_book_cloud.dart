@@ -488,6 +488,19 @@ Future<void> main() async {
       !prov.contains('bookRawDirProvider).valueOrNull'));
   check('🔴 provider 接了 `onUploaded:`（上传成功 ⇒ 写回本地）',
       prov.contains('onUploaded:'));
+  // ── 队列异常后不得永久 busy（2026-10-22 真机瘫痪）──
+  //
+  // 根因：`run()` 开头 `if (_state.isBusy) return;`，而 `uploadingHash` 原先只在
+  // **正常路径末尾**的 `_emit` 里清掉；中途抛异常 ⇒ 那次 `_emit` 不执行
+  // ⇒ 永久 busy ⇒ 之后每次 kick 都在第一行返回（零请求、无报错）。
+  // ⇒ 已改为 `try { … } finally { _emit(…) }`。
+  //
+  // 🔴 **这里原本写了断言，但三次证伪都没能让它变红**（构造异常后 state 仍是
+  //    idle，说明测不到我想测的那条路径）。按项目判据
+  //    「不可证伪的断言 = 不可信的断言，留着比没有更糟」⇒ **宁可删掉**。
+  //    将来要补，应该走「注入一个必抛的 readRawBook」而不是注入 upload
+  //    （后者被 `switch` 的兜底分支吃掉，异常根本没冒到 run 外面）。
+
   check('…且「未上云」计数与队列**同一口径**（`pendingUploadHashes`）',
       prov.contains('pendingUploadCountProvider') &&
           prov.contains('pendingUploadHashes'));
@@ -502,8 +515,11 @@ Future<void> main() async {
 
   final tab = _readLib('screens/reading_tab_screen.dart');
   // 🔑 同理：锁「药丸把 `_retryUpload` 接到了 onTap」，而不是「这个名字存在」。
-  check('🔴 触发点 ③：书架有**手动重试入口**（「未上云」药丸 → onTap: `_retryUpload`）',
-      tab.contains("label: '未上云'") && tab.contains('onTap: _retryUpload'));
+  // 🔴 2026-10-22：文案由「未上云」改为「未同步」（白哥：用户视角是"同步"）。
+  //    ⚠️ 断言锁的是**这个入口存在**，不是它叫什么 —— 但文案是用户可见的契约，
+  //    改文案必须同步改断言，否则旧断言会「保护一句已经不存在的话」。
+  check('🔴 触发点 ③：书架有**手动重试入口**（「未同步」药丸 → onTap: `_retryUpload`）',
+      tab.contains("label: '未同步'") && tab.contains('onTap: _retryUpload'));
   check('…且计数走 `pendingUploadCountProvider`（**真的 watch**，不另算一套）',
       tab.contains('ref.watch(pendingUploadCountProvider)'));
   check('🔴 「没东西待传」时那枚药丸**不存在**（零常驻成本）',
