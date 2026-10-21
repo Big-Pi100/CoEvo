@@ -393,3 +393,72 @@ skill §三 写「没建过索引 ⇒ 四个工具全返回空」——那只是
 
 **skill 现在可以按现状用了**，三条建议全部落地，且两处比原建议更严谨。
 剩下只有 §10.4 那条属于**落地时的注意事项**，不必改 skill。
+
+---
+
+## 十一、skill 第三次更新：反馈闭环情况（2026-10-21 15:0x）
+
+`SKILL.md`：**21,335 B → 22,424 B**（+1,089，15:09 修改）
+
+### 11.1 逐条核对我的 4 条反馈
+
+| # | 我的反馈 | 状态 | 依据 |
+|---|---|---|---|
+| **P0** | `repo` 从启动参数 → **工具参数**（多项目根本解）| 🔴 **未动** | 二进制仍是 `0.1.0-rc21 (built 2026-10-14)`，`aoci mcp --help` 与之前**逐字一致**，只有全局 `--repo` |
+| **P1** | `init` 对未知 host 应**省略 `--agent`**，skill 没写 | ✅ **完全采纳** | 新增三条路对照表（见 11.2），并**修正了 skill 原有的一句错话** |
+| **P2** | `doctor` 对未知 host 报 `not configured` 会误导 | 🟠 **文字缓解** | skill 加了「它报 `not configured` 的意思是"**我看不见**"，不是"**你没配**"」；但 `doctor` 输出本身未变（需二进制）|
+| **P3** | `init --agent claude` 写 `.gitattributes` 的覆盖风险 | ✅ **已解答** | skill 补实测：**已有自己的行尾策略时，`不覆盖也不追加`** ⇒ 非破坏性；但 aoci 的 LF 要求**不会自动生效**，需自己决定是否补 |
+
+### 11.2 P1 采纳得比我写的更好：给了三条路的实测对照
+
+skill 现在写成：
+
+| 写法 | 实测结果 |
+|---|---|
+| `init --agent workbuddy`（未知名字）| `Error: unknown Agent`，**报错即退出，连 `.aoci/` 都不会建** |
+| `init --agent claude`（硬借一个）| 写一份**没人读的 `.mcp.json`**，还被 init 加进 `.gitignore` —— `git status` 都看不见它，**形似配好、实际不生效** |
+| ✅ `init`（**省略 `--agent`**）| 只建 `.aoci/` + `AGENTS.md` + `.gitattributes`，**不写任何 host 配置** |
+
+**这比我反馈里写的更好**：我只说了"省略才对"，它把**三条路的后果**都列了，
+尤其第二条「`git status` 都看不见它」——这正是用户会踩的那个坑。
+
+### 11.3 🎯 并且修正了 skill 自己原来的一句错话
+
+原文（上一版 §〇）：
+> ① `init --agent` **照样能建 `.aoci/` 和 `AGENTS.md`**，但不会写 MCP
+
+现在：
+> ① `init --agent <未知名字>` **直接报错退出，骨架都不会建**（**不是"能建但不写 MCP"**）—— 务必省略 `--agent`
+
+**我复测确认新说法正确**（空目录 + `git init`）：
+
+```console
+$ aoci --repo <空目录> init --agent workbuddy
+Error: unknown Agent "workbuddy" (...; omit it to create the skeleton ...)
+真实 exit=3
+$ ls -a
+.  ..  .git          ← 只有 .git，.aoci/ 确实没建
+
+$ aoci --repo <空目录> init          # 省略
+exit=0
+.  ..  .aoci  .git  .gitattributes  AGENTS.md  aoci.code.txt  aoci.meta.txt  aoci.txt
+```
+
+### 11.4 P3 的实测结论（补一个我要注意的点）
+
+skill 说 `.gitattributes` **不覆盖也不追加** —— 也就是**非破坏性**，这点比我担心的情况好。
+但反过来：**aoci 的 LF 要求不会自动落地**，需要我们**自己决定**要不要按它的写法补。
+
+⚠️ 我们项目的 `.gitattributes` 是**已经 pin 了 LF** 的（`*.dart` / `*.rs` / `*.md` 等），
+所以这条对我们**实质无影响**。落地时只需确认「已有内容不被改动」即可（skill 已答：不覆盖不追加）。
+
+### 11.5 结论：现在可以按 skill 走，P0 等二进制
+
+**可落地的路径**（P0 未解决时的正确姿势）：
+
+1. `aoci --repo E:/CoEvo init`（**省略 `--agent`**）→ 只建骨架
+2. 手工往 `~/.workbuddy/mcp.json` 加**一条** `aoci-coevo`（`--repo E:/CoEvo`）
+3. **不要并存** vibedollar 那条 —— 要切项目就改那一条的 `--repo`（这正是 P0 要解决的痛点）
+4. `doctor` 报 `not configured` 时**不必理会**（skill 已说明那是"看不见"不是"没配"）
+
+**P0 一旦解决**（`repo` 成为工具参数），就能一条 MCP 服务两个仓库，无需改配置重启。
