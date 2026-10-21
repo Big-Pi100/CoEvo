@@ -29,7 +29,17 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-/// 单本书的字节上限（与后端 `MAX_BOOK_BYTES` 同值 —— 改一处必须改两处）。
+/// 单本书的字节上限（**必须**与后端 `MAX_BOOK_BYTES` 同值）。
+///
+/// 🔴 2026-10-21：这两处**曾经不同值**（端 50 MB / 服 32 MB），而注释还写着
+///    「同值 —— 改一处必须改两处」。后果不是报错，而是**静默的**：
+///    32–50 MB 的书能导入、能解析、能落库，上传时才被后端拒 → 用户看到
+///    「云端空间不足」（因为 413 被当成配额满），而且**整个上传队列停摆**。
+///
+/// 📌 现在由 `scripts/ebook_verify/bin/verify_book_limits.dart` 从**两端源码里
+///    各抠出这个数字**做断言 —— 光靠注释写「必须同值」是守不住的（已证）。
+/// ⚠️ 改这个值要同时确认：后端 `book_storage.rs::MAX_BOOK_BYTES` 与
+///    `book_text.dart::kMaxEbookBytes`（导入解析上限，语义不同但必须同值）。
 const int kMaxBookBytes = 50 * 1024 * 1024;
 
 /// 云端配额（与后端 `CLOUD_BOOK_QUOTA_BYTES` 同值）。
@@ -99,6 +109,23 @@ class BlobNeedLogin extends BlobResult {
 /// 配额/单本超限 —— **与「失败」分开**：用户的下一步是「删书 / 换文件」，不是重试。
 class BlobQuotaExceeded extends BlobResult {
   const BlobQuotaExceeded(this.message);
+  final String message;
+}
+
+/// 🆕 2026-10-21：**这一本太大**（超过服务端单本上限）—— 与「配额满」分开。
+///
+/// # 🔴 为什么必须再分一类（一个真实的放大事故）
+///
+/// 原先 413 与「超过单本上限」都被归成 [BlobQuotaExceeded]，而队列对这个结果的
+/// 处理是 `_cancelled = true`（**整队停下**，理由是「配额满了再传也是白传」）。
+/// 于是**一本大书**会让**其余所有书**都传不上去 —— 而且提示是「云端空间不足」，
+/// 用户明明 2 GB 一点没用。
+///
+/// 🔑 判据：**「这本书不行」≠「这个人不行」**。
+///    · 配额满 → 整个账号都传不了 ⇒ 停下合理
+///    · 单本超限 → 只有这一本传不了 ⇒ **跳过它、继续传下一本**
+class BlobTooLarge extends BlobResult {
+  const BlobTooLarge(this.message);
   final String message;
 }
 
@@ -176,14 +203,23 @@ BlobResult parseUploadResponse(int statusCode, String body) {
   }
   if (statusCode == 400) {
     // 🔴 后端把三种语义挤在 400 —— 按**文案前缀**区分（见文件头）。
-    if (body.contains('云端空间不足') || body.contains('超过单本上限')) {
+    // ⚠️ 必须先判「单本太大」，再判「空间不足」：两者都回 400，
+    //    而队列对它们的反应**相反**（跳过 vs 整队停下）。
+    if (body.contains('超过单本上限')) {
+      return BlobTooLarge(_messageOf(body));
+    }
+    if (body.contains('云端空间不足')) {
       return BlobQuotaExceeded(_messageOf(body));
     }
     return BlobFailed(_messageOf(body));
   }
   if (statusCode == 413) {
-    // 万一将来后端改成 413（单本超限的规范码），这里也认。
-    return BlobQuotaExceeded(_messageOf(body));
+    // axum 的 `DefaultBodyLimit` 超限回 413（=`MAX_BOOK_BYTES + 1 MB`）——
+    // **这是「单本太大」，不是「配额满」**。
+    //
+    // 📌 2026-10-21 之前这里归成 `BlobQuotaExceeded` ⇒ 一本 40 MB 的书会让
+    //    整个上传队列停摆，而提示说「空间不足」。两者都错。
+    return BlobTooLarge(_messageOf(body));
   }
   return BlobFailed('HTTP $statusCode：${_messageOf(body)}');
 }

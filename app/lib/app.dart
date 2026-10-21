@@ -774,10 +774,37 @@ class _CoEvoAppState extends ConsumerState<CoEvoApp>
         //    端侧就绪后 `iap` 变化会触发 rebuild ⇒ `build()` 里的 microtask 会立刻补判，
         //    所以这里"跳过"不会漏判（代价只是最长 5 分钟的显示延迟，远好于误弹）。
         if (iap.availability == IapAvailability.unavailable) {
-          _applyExpired(
-            expired: ref.read(subscriptionProvider).isExpired,
-            isAnonymous: isAnonymous,
+          // 🔴 2026-10-21：改用 `subscriptionLapsed`（「曾订阅且已失效」的**唯一**判据），
+          //    不再直接拿 `subscriptionProvider.isExpired` 当结论。
+          //
+          // # 为什么（同一个坑的第二半）
+          //
+          // 后端那条 `expired` 字段对「从未订阅」（`subscription_expires IS NULL`）也回 true
+          // ⇒ `isExpired == true` 对**所有免费用户**成立 ⇒ 弹「订阅已到期」是一句假话。
+          // `iap_provider.dart` 早就为此写过警告（「不是 !subscriptionActiveNow，那会把
+          // 从未订阅也算进已到期」），只是本处没走那条判据。
+          //
+          // 🔑 `subscriptionLapsed` 多要一个前提 `backendHasRecord`（到期日**非空**）——
+          //    这条与**服务端版本无关**：哪怕端侧先发版、后端还没上 `state` 四态，
+          //    「没有到期日」也不会被当成「已到期」。
+          //
+          // ⚠️ 这里不能用 `subscriptionLapsedNow(ref, …)`：那个内部 `ref.watch`，
+          //    只能在 build 期间调用；本方法在 `.then()` 回调里跑。
+          final sub = ref.read(subscriptionProvider);
+          final snap = ref.read(iapServiceProvider).snapshot;
+          final uid = ref.read(authProvider).userId;
+          final lapsed = subscriptionLapsed(
+            iapExpired:
+                snap.entitlement == IapEntitlementStatus.expired &&
+                    iapEntitlementBelongsToAccount(
+                      ownerUserId: snap.ownerUserId,
+                      currentUserId: uid,
+                    ),
+            // 「有过记录」= 到期日非空（空/`null` 都算从未订阅）
+            backendHasRecord: (sub.expiresAt ?? '').trim().isNotEmpty,
+            backendExpired: sub.isExpired,
           );
+          _applyExpired(expired: lapsed, isAnonymous: isAnonymous);
         }
       }, onError: (Object e) {
         // 对账失败**不影响**判定与内容可用性（同本方法的总体取向：失败静默）

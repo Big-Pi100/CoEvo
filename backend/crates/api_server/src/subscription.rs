@@ -204,6 +204,42 @@ pub fn is_subscription_active(conn: &Connection, user_id: &str) -> bool {
     }
 }
 
+/// 订阅状态的**四态**判据（**纯函数** ⇒ 可断言）。
+///
+/// # 为什么需要它（2026-10-21）
+///
+/// 协议原先只回 `expired: bool`，于是两件不同的事在协议层面**共用一个值**：
+/// - 「**从未订阅**」（`subscription_expires IS NULL`）
+/// - 「**订阅过期了**」（有到期日，且已过）
+///
+/// ⇒ 端侧只能把两者混为一谈，实际表现就是本项目反复出现的那条：
+/// **给所有免费用户显示「你的会员已到期」**。
+///
+/// 🔑 判据：**「没有」≠「有过且失效」** —— 前者应该说「未订阅」，
+///    后者才配得上「已到期 / 续订」这套文案。
+///
+/// | 返回 | 含义 |
+/// |---|---|
+/// | `"none"`    | 无到期日（`NULL` 或空串）= **从未订阅** |
+/// | `"active"`  | 有到期日，且 `> now` |
+/// | `"expired"` | 有到期日，且 `<= now` |
+/// | `"invalid"` | 有值但 `parse_expires` 不认（脏数据 / 未知格式）|
+///
+/// ⚠️ `"invalid"` **不能**并入 `"expired"`：那等于把脏数据说成「用户欠费」；
+///    也**不能**并入 `"active"`：那等于凭脏数据白送权益。单独一态才可如实展示。
+/// ⚠️ 边界用 `>` 而不是 `>=`：到期日恰等于当前秒仍算**有效**
+///    （与 [`is_subscription_active`] 的 `dt.timestamp() > now` 保持同一口径）。
+pub fn expires_state(raw: Option<&str>, now_ts: i64) -> &'static str {
+    match raw.map(str::trim) {
+        None | Some("") => "none",
+        Some(s) => match parse_expires(s) {
+            Some(dt) if dt.timestamp() > now_ts => "active",
+            Some(_) => "expired",
+            None => "invalid",
+        },
+    }
+}
+
 /// 设置用户到期日 —— **管理端 / 退款 / 人工调整**语义（可往回改）。
 ///
 /// 🔴 **IAP 上报不要用它** —— 用 [`set_expires_if_later`]（Apple 会乱序重放交易）。
@@ -665,5 +701,67 @@ mod tests {
             expires_of(&conn).unwrap().contains('T'),
             "落库值必须含 T（RFC3339）"
         );
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// `expires_state` —— 「从未订阅」与「已到期」必须分开（2026-10-21）
+// ══════════════════════════════════════════════════════════════════════
+#[cfg(test)]
+mod state_tests {
+    use super::*;
+
+    /// 固定「现在」= 2026-10-21T00:00:00Z，避免测试随时间漂。
+    fn now() -> i64 {
+        chrono::DateTime::parse_from_rfc3339("2026-10-21T00:00:00Z")
+            .unwrap()
+            .timestamp()
+    }
+
+    #[test]
+    fn none_when_absent_or_blank() {
+        // 🔴 这条是本改动的**目的**：从未订阅必须是 `none`，不能算「已到期」。
+        assert_eq!(expires_state(None, now()), "none", "NULL = 从未订阅");
+        assert_eq!(expires_state(Some(""), now()), "none", "空串 = 从未订阅");
+        assert_eq!(
+            expires_state(Some("   "), now()),
+            "none",
+            "全空白 = 从未订阅"
+        );
+    }
+
+    #[test]
+    fn active_only_when_strictly_future() {
+        assert_eq!(expires_state(Some("2026-10-22T00:00:00Z"), now()), "active");
+        // 边界：恰等于当前秒 ⇒ 仍算有效（与 is_subscription_active 的 `>` 同口径）
+        assert_eq!(
+            expires_state(Some("2026-10-21T00:00:00Z"), now()),
+            "expired"
+        );
+        assert_eq!(
+            expires_state(Some("2026-10-20T00:00:00Z"), now()),
+            "expired"
+        );
+    }
+
+    /// 🔴 旧实现在这三种形态上会**静默判成已过期**，这正是两处判据分歧的证据。
+    #[test]
+    fn legacy_formats_are_not_mistaken_for_expired() {
+        // ① 纯日期（旧实现也认，但补的是 T00:00:00Z）
+        assert_eq!(expires_state(Some("2026-12-31"), now()), "active");
+        // ② 带 +08:00 偏移（旧实现 parse_from_rfc3339 能过，但这里显式锁住）
+        assert_eq!(
+            expires_state(Some("2026-12-31T23:59:59+08:00"), now()),
+            "active"
+        );
+        // ③ **空格分隔**（旧实现不认 ⇒ 判「已过期」；现在按 UTC 正确解析）
+        assert_eq!(expires_state(Some("2026-12-31 23:59:59"), now()), "active");
+    }
+
+    #[test]
+    fn unparseable_is_its_own_state() {
+        // 既不白送权益，也不诬告用户欠费 —— 必须单独一态。
+        assert_eq!(expires_state(Some("不是日期"), now()), "invalid");
+        assert_eq!(expires_state(Some("2026-13-45"), now()), "invalid");
     }
 }

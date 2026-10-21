@@ -86,6 +86,31 @@ pub trait BlobStore: Send + Sync {
     /// 写入（**覆盖式** —— 同一个 `content_hash` 就是同一本书）。
     fn put(&self, user_id: &str, content_hash: &str, ext: &str, data: &[u8]) -> Result<(), String>;
 
+    /// 从**已经写好的临时文件**接管（原子 `rename`），返回字节数。
+    ///
+    /// 🔴 为什么需要它（2026-10-21）：上传必须**边收边写盘**，
+    ///    不能把整本书攒在 `Vec<u8>` 里 —— 否则单本上限一旦放到 50 MB，
+    ///    10 个并发上传就是 500 MB，VPS（约 460 MB 可用）直接 OOM。
+    ///    ⇒ 调用方先用 [`staging_dir`] 拿目录、把 chunk 写进临时文件，
+    ///    校验/配额通过后再用本方法把它**原子**换成正式文件。
+    ///
+    /// ⚠️ `src` **必须**在 `staging_dir` 下（同一文件系统）—— 跨文件系统
+    ///    `rename` 会失败（`EXDEV`）。调用方自己保证，本方法不做跨盘搬运。
+    /// ⚠️ 失败时 `src` **不保证被删除**，调用方负责清理（否则残留临时文件）。
+    fn put_from_file(
+        &self,
+        user_id: &str,
+        content_hash: &str,
+        ext: &str,
+        src: &Path,
+    ) -> Result<u64, String>;
+
+    /// 上传临时文件的落点目录（**与最终文件同目录**，保证 `rename` 不跨盘）。
+    ///
+    /// 🔑 刻意暴露目录而不是让调用方自己拼：换 COS 实现时这里返回 `None`-like
+    ///    语义会立刻在类型上暴露问题（届时上传要走分片上传，本方法不存在）。
+    fn staging_dir(&self, user_id: &str) -> Result<PathBuf, String>;
+
     /// 绝对路径（本地盘实现专用；将来 COS 实现不适用 ⇒ 用 `Option` 表达）。
     ///
     /// 🔑 下载端点在本地盘形态下需要它来开文件；抽象成 `Option` 是为了让
@@ -172,6 +197,37 @@ impl BlobStore for LocalDiskStore {
         std::fs::write(&tmp, data).map_err(|e| format!("写临时文件失败 {}: {e}", tmp.display()))?;
         std::fs::rename(&tmp, &path).map_err(|e| format!("落盘失败 {}: {e}", path.display()))?;
         Ok(())
+    }
+
+    fn put_from_file(
+        &self,
+        user_id: &str,
+        content_hash: &str,
+        ext: &str,
+        src: &Path,
+    ) -> Result<u64, String> {
+        let path = safe_blob_path(&self.root, user_id, content_hash, ext)?;
+        let dir = path
+            .parent()
+            .ok_or_else(|| "路径没有父目录".to_string())?
+            .to_path_buf();
+        std::fs::create_dir_all(&dir).map_err(|e| format!("建目录失败 {}: {e}", dir.display()))?;
+        let size = std::fs::metadata(src)
+            .map_err(|e| format!("读临时文件元数据失败 {}: {e}", src.display()))?
+            .len();
+        // rename 原子替换 ⇒ 读端任何时刻看到的都是**完整**文件（见 `put` 的同条理由）
+        std::fs::rename(src, &path).map_err(|e| {
+            format!(
+                "落盘失败（src={} dst={}）: {e}",
+                src.display(),
+                path.display()
+            )
+        })?;
+        Ok(size)
+    }
+
+    fn staging_dir(&self, user_id: &str) -> Result<PathBuf, String> {
+        self.user_dir(user_id)
     }
 
     fn local_path(
@@ -295,13 +351,32 @@ pub fn safe_blob_path(
 /// 订阅用户的云端书架配额：**2 GB**（设计稿 `visual-cloud-bookshelf` §3 定）。
 pub const CLOUD_BOOK_QUOTA_BYTES: i64 = 2 * 1024 * 1024 * 1024;
 
-/// 单本书的体积上限：**32 MB**。
+/// 单本书的体积上限：**50 MB**。
 ///
 /// 🔑 取值的依据不是「随便定一个」：常见 EPUB（纯文字）0.3–2 MB、
-///    带插图的小说 3–10 MB。32 MB 足够，且让「一次读进内存」的
-///    下载实现（见 `book_blob_handler`）在并发下**不会打爆内存**
-///    （VPS 约 460 MB 可用 ⇒ 32 MB × 10 并发 = 320 MB，仍在界内）。
-pub const MAX_BOOK_BYTES: i64 = 32 * 1024 * 1024;
+///    带插图的小说 3–10 MB。**图片版 / 扫描版 / 漫画** EPUB 很容易 30–80 MB，
+///    原先的 32 MB 会把这类书挡在门外（而端侧导入是放行到 50 MB 的）。
+///
+/// # 🔴 2026-10-21 由 32 MB 提到 50 MB —— 前提是**上传已改流式**
+///
+/// 原注释的理由是「一次读进内存的下载/上传实现在并发下不会打爆内存
+/// （VPS 约 460 MB 可用 ⇒ 32 MB × 10 并发 = 320 MB）」。
+/// 那个理由**只对「整块进内存」的实现成立**：
+///
+/// | 实现 | 50 MB × 10 并发 | 结论 |
+/// |---|---|---|
+/// | 旧：`Vec<u8>` 攒整本 | 500 MB > 460 MB | **会 OOM** |
+/// | 现：边读边写临时文件 / 下载 64 KB 分块 | ≈ 64 KB/请求 | 安全 |
+///
+/// ⇒ **这个 50 MB 与「上传必须流式」是一件事的两半**。
+///    谁要是把 `upload_blob_handler` 改回 `field.bytes()`（或 `Vec` 攒整本），
+///    必须**同时**把这个常量降回 32 MB —— 否则一次批量上传就会把 VPS 打爆。
+///
+/// 📌 与端侧 `kMaxBookBytes` / `kMaxEbookBytes`（`app/lib/services/ebook/`）
+///    必须**同值**：端侧大于后端 ⇒ 书能导入却永远传不上去（用户看到的是
+///    「空间不足」，因为 413 会被当成配额问题）。断言见
+///    `scripts/ebook_verify/bin/verify_book_limits.dart`。
+pub const MAX_BOOK_BYTES: i64 = 50 * 1024 * 1024;
 
 /// 配额判断（**纯函数** ⇒ 可断言边界）。
 ///
@@ -431,12 +506,52 @@ mod tests {
     fn test_single_book_size_limit() {
         assert!(
             check_quota(0, MAX_BOOK_BYTES, i64::MAX).is_ok(),
-            "恰好 32MB"
+            "恰好 {MAX_BOOK_BYTES} 字节必须放行"
         );
         assert!(
             check_quota(0, MAX_BOOK_BYTES + 1, i64::MAX).is_err(),
             "超 1 字节要拒"
         );
+    }
+
+    /// 🔴 上传改流式之后，`staging_dir` 与最终文件**必须同一目录**。
+    ///
+    /// 否则 `rename` 跨文件系统会 `EXDEV` 失败 —— 而失败点在「已经收完 50 MB 之后」，
+    /// 用户白等一场。这里把两者锁死。
+    #[test]
+    fn test_staging_dir_is_final_dir() {
+        let tmp = std::env::temp_dir().join(format!("coevo_stage_{}", std::process::id()));
+        let store = LocalDiskStore::with_root(&tmp);
+        let staging = store.staging_dir("0123456789abcdef").unwrap();
+        let final_path = store
+            .local_path("0123456789abcdef", &"a".repeat(32), "epub")
+            .unwrap();
+        // local_path 在文件不存在时返回 None，所以直接比目录部分
+        let expected_dir = tmp.join("0123456789abcdef");
+        assert_eq!(staging, expected_dir, "临时目录必须是该用户目录");
+        assert!(final_path.is_none(), "文件还没写，local_path 应为 None");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// `put_from_file` 往返：临时文件被接管成正式文件，字节数正确。
+    #[test]
+    fn test_put_from_file_takes_over_tempfile() {
+        let tmp = std::env::temp_dir().join(format!("coevo_take_{}", std::process::id()));
+        let store = LocalDiskStore::with_root(&tmp);
+        let uid = "0123456789abcdef";
+        let hash = "b".repeat(32);
+        std::fs::create_dir_all(store.staging_dir(uid).unwrap()).unwrap();
+        let src = store.staging_dir(uid).unwrap().join(".upload-1.tmp-upload");
+        std::fs::write(&src, b"hello-epub").unwrap();
+
+        let size = store.put_from_file(uid, &hash, "epub", &src).unwrap();
+        assert_eq!(size, 10);
+        assert!(!src.exists(), "临时文件必须已被移走（rename 而不是 copy）");
+        let p = store.local_path(uid, &hash, "epub").unwrap().unwrap();
+        assert_eq!(std::fs::read(&p).unwrap(), b"hello-epub");
+        // 遗留的 `.upload-*.tmp-upload` 不计入磁盘占用（`disk_usage_of` 的既有口径）
+        assert_eq!(store.disk_usage_of(uid).unwrap(), 10);
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     // ══════════════════════════════════════════════════════════════

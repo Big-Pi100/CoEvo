@@ -237,6 +237,7 @@ Future<BookDownloadOutcome> downloadCloudBook({
     case BlobUploaded():
     case BlobDeleted():
     case BlobQuotaExceeded():
+    case BlobTooLarge():
       // 不会出现在下载路径上；归到失败而不是静默吞掉（同 `book_upload_queue` 的处理）
       return const BookDownloadFailed('意外的响应类型');
     case BlobDownloaded(:final bytes, :final ext):

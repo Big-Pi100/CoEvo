@@ -39,6 +39,37 @@ use crate::book_storage::{
 };
 use crate::error::AppError;
 
+/// 上传临时文件的**自动清理**守卫。
+///
+/// 🔴 为什么必须有：上传路径上有 6 个提前返回（hash 非法 / ext 非法 / 空文件 /
+///    书单没同步 / 配额不足 / 落盘失败）。手工在每个分支删临时文件，
+///    漏一个就留下一个几十 MB 的垃圾 —— 而 `disk_usage_of` 虽然不计它，
+///    它仍会**实占磁盘**直到用户注销账号。
+/// ⇒ 用 `Drop` 兜住「所有非成功路径」，成功时 `take()` 把所有权交出去。
+struct TempFileGuard(Option<std::path::PathBuf>);
+
+impl TempFileGuard {
+    fn new(p: std::path::PathBuf) -> Self {
+        Self(Some(p))
+    }
+    /// 待接管文件的路径（`disarm` 之后不可用）。
+    fn path(&self) -> &std::path::Path {
+        self.0.as_deref().expect("路径已被 disarm")
+    }
+    /// 放弃清理权（文件已被 `rename` 接管）。
+    fn disarm(&mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        if let Some(p) = self.0.take() {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+}
+
 /// 路由状态：存储后端。
 ///
 /// 🔑 用 `Arc<dyn BlobStore>` 而不是具体类型 —— 切 COS 时**只换构造这一行**。
@@ -213,7 +244,9 @@ pub async fn upload_blob_handler(
     //    `file` 完全可能出现在 `content_hash` 之前。
     let mut content_hash: Option<String> = None;
     let mut ext: Option<String> = None;
-    let mut data: Option<Vec<u8>> = None;
+    // 🔴 2026-10-21：不再攒 `Vec<u8>`，改成「边收边写临时文件」。
+    //    理由见 `MAX_BOOK_BYTES` 的注释 —— 50 MB × N 并发攒在内存里会 OOM。
+    let mut upload: Option<(TempFileGuard, i64)> = None;
 
     while let Some(mut field) = multipart
         .next_field()
@@ -240,25 +273,55 @@ pub async fn upload_blob_handler(
                 );
             }
             "file" => {
-                // ── 🔴 分块读 + **边读边限** ──
-                // 不用 `field.bytes()`：它会把整个 body 一次读进内存，
-                // 若有人传 10 GB，VPS（约 460 MB 可用）会 OOM。
-                // 分块累计，越界立刻中断（Body limit 是第二道网）。
-                let mut buf: Vec<u8> = Vec::new();
+                // ── 🔴 分块读 → **直接落临时文件**，内存占用恒为一块 chunk ──
+                //
+                // 不用 `field.bytes()`：它会把整个 body 一次读进内存（10 GB ⇒ OOM）。
+                // 也**不能**再攒 `Vec<u8>`：单本上限已放到 50 MB，攒着就回到同一个坑。
+                //
+                // ⚠️ 临时文件必须建在 `staging_dir`（= 该用户目录）而不是系统临时目录 ——
+                //    跨文件系统 `rename` 会 `EXDEV` 失败，落盘那一步就会崩。
+                //
+                // ⚠️ multipart 的字段顺序由客户端决定（`file` 可能先于 `content_hash`），
+                //    所以这里用**随机名**，不做任何依赖 hash 的命名。
+                let dir = st.store.staging_dir(&uid).map_err(AppError::Internal)?;
+                std::fs::create_dir_all(&dir)
+                    .map_err(|e| AppError::Internal(format!("建上传目录失败：{e}")))?;
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0);
+                let tmp = dir.join(format!(".upload-{nanos}.tmp-upload"));
+                let guard = TempFileGuard::new(tmp.clone());
+
+                let mut f = tokio::fs::File::create(&tmp)
+                    .await
+                    .map_err(|e| AppError::Internal(format!("建临时文件失败：{e}")))?;
+                let mut received: i64 = 0;
                 while let Some(chunk) = field
                     .chunk()
                     .await
                     .map_err(|e| AppError::BadRequest(format!("读文件块：{e}")))?
                 {
-                    if buf.len() as i64 + chunk.len() as i64 > MAX_BOOK_BYTES {
+                    received += chunk.len() as i64;
+                    // 边收边限：越界立刻中断（Body limit 是第二道网）。
+                    // ⚠️ 提前 `return` 时 guard 会 Drop ⇒ 临时文件被删干净。
+                    if received > MAX_BOOK_BYTES {
                         return Err(AppError::BadRequest(format!(
                             "这本书超过单本上限（{} MB）",
                             MAX_BOOK_BYTES / 1024 / 1024
                         )));
                     }
-                    buf.extend_from_slice(&chunk);
+                    tokio::io::AsyncWriteExt::write_all(&mut f, &chunk)
+                        .await
+                        .map_err(|e| AppError::Internal(format!("写临时文件失败：{e}")))?;
                 }
-                data = Some(buf);
+                tokio::io::AsyncWriteExt::flush(&mut f)
+                    .await
+                    .map_err(|e| AppError::Internal(format!("flush 临时文件失败：{e}")))?;
+                // 🔑 必须先关句柄再 rename（Windows 上打开中的文件不能改名；
+                //    生产是 Linux 但测试可能跑在本机 ⇒ 统一按严格的那一侧写）
+                drop(f);
+                upload = Some((guard, received));
             }
             // 未知字段忽略（前向兼容：端侧将来加字段不该让上传失败）
             _ => {}
@@ -267,7 +330,8 @@ pub async fn upload_blob_handler(
 
     let content_hash = content_hash.unwrap_or_default();
     let ext = ext.unwrap_or_default();
-    let data = data.ok_or_else(|| AppError::BadRequest("缺少 file 字段".into()))?;
+    let (mut upload_guard, size) =
+        upload.ok_or_else(|| AppError::BadRequest("缺少 file 字段".into()))?;
 
     if !is_valid_content_hash(&content_hash) {
         return Err(AppError::BadRequest("content_hash 格式非法".into()));
@@ -275,12 +339,12 @@ pub async fn upload_blob_handler(
     if !is_valid_ext(&ext) {
         return Err(AppError::BadRequest(format!("不支持的格式：{ext:?}")));
     }
-    if data.is_empty() {
+    if size == 0 {
         return Err(AppError::BadRequest("文件是空的".into()));
     }
 
     let received_at = now_ms();
-    let (used, is_new) = {
+    let (used, existing, is_new) = {
         let conn = crate::db_pool::get_conn();
         // 🔴 顺序约束：书单必须先到（见模块头）
         if !book_row_exists(&conn, &uid, &content_hash)? {
@@ -302,18 +366,19 @@ pub async fn upload_blob_handler(
 
         // 🔑 配额判断基于「**净增量**」而不是「原始用量 + 新文件」：
         //    否则一本书 5 MB 重传两次就会把 2 GB 的额度算成用了 10 MB。
-        check_quota(used - existing, data.len() as i64, CLOUD_BOOK_QUOTA_BYTES)
-            .map_err(AppError::BadRequest)?;
-        (used, is_new)
+        check_quota(used - existing, size, CLOUD_BOOK_QUOTA_BYTES).map_err(AppError::BadRequest)?;
+        (used, existing, is_new)
     };
 
     // ── 落盘（I/O 在事务外，见模块头的并发说明）──
+    // 🔑 `put_from_file` 是**原子 rename**：读端任何时刻都只会看到完整文件。
+    //    这里把临时文件的所有权交给存储层，成功后 `disarm()` 撤销清理守卫。
     st.store
-        .put(&uid, &content_hash, &ext, &data)
+        .put_from_file(&uid, &content_hash, &ext, upload_guard.path())
         .map_err(AppError::Internal)?;
+    upload_guard.disarm();
 
     // ── 记账 ──
-    let size = data.len() as i64;
     {
         let conn = crate::db_pool::get_conn();
         let n = set_blob_size(&conn, &uid, &content_hash, size, &received_at)?;
@@ -339,7 +404,11 @@ pub async fn upload_blob_handler(
     Ok(Json(serde_json::json!({
         "ok": true,
         "blob_size": size,
-        "usage": used - (if is_new { 0 } else { 0 }) + size,
+        // 🔴 2026-10-21：原式是 `used - (if is_new { 0 } else { 0 }) + size` ——
+        //    两个分支都是 0（等于没写），所以**覆盖式上传会把旧尺寸重复计入**：
+        //    一本 5 MB 的书重传后，端侧看到的用量变成 `used + 5 MB` 而不是 `used`。
+        //    正确值是「扣掉自己已占的，加上新的」。
+        "usage": used - existing + size,
         "quota": CLOUD_BOOK_QUOTA_BYTES,
     })))
 }

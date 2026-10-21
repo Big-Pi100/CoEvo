@@ -64,6 +64,7 @@ class UploadQueueState {
     this.doneThisRun = 0,
     this.failedThisRun = 0,
     this.skippedNoRaw = 0,
+    this.tooLargeThisRun = 0,
   });
 
   /// 正在上传的书的 `content_hash`；`null` = 空闲。
@@ -73,6 +74,13 @@ class UploadQueueState {
 
   /// 跳过（没有原始文件）—— **不是失败**，但要让用户知道「这本传不了」。
   final int skippedNoRaw;
+
+  /// 🆕 2026-10-21：跳过（**这一本超过服务端单本上限**）。
+  ///
+  /// 与 [failedThisRun] 分开计：它不是网络/服务故障，重试也不会成功，
+  /// 用户能做的是「换一本 / 去掉图片重做」。混进「失败 N 本」会让用户
+  /// 反复点重试而永远失败。
+  final int tooLargeThisRun;
 
   bool get isBusy => uploadingHash != null;
 }
@@ -184,7 +192,7 @@ class BookUploadQueue {
     //    这是「上传真的会发请求」的前提 —— 取到空串的旧写法会让整轮**静默跳过**。
     final rawDir = await rawDirOf();
 
-    var done = 0, failed = 0, noRaw = 0;
+    var done = 0, failed = 0, noRaw = 0, tooLarge = 0;
 
     for (final c in candidates) {
       if (_cancelled) break;
@@ -200,6 +208,7 @@ class BookUploadQueue {
         doneThisRun: done,
         failedThisRun: failed,
         skippedNoRaw: noRaw,
+        tooLargeThisRun: tooLarge,
       ));
 
       // ② 现读磁盘（不持字节 —— 见约束 ②）
@@ -244,6 +253,19 @@ class BookUploadQueue {
           // 配额满 ⇒ **整体停下**（再传也会被拒）—— 由 UI 提示「删书 / 订阅」
           failed++;
           _cancelled = true;
+        case BlobTooLarge():
+          // 🔴 2026-10-21：**只有这一本**太大 ⇒ 跳过它、继续传下一本。
+          //
+          // 原先这里和配额满走同一个分支（`_cancelled = true`）⇒ 一本 40 MB 的书
+          // 会让**其余所有书**都传不上去，直到用户猜着把它删掉。
+          // 📌 判据：「这本书不行」≠「这个人不行」。
+          //
+          // ⚠️ 仍要记 `_attempts`：否则每轮 kick 都会把这本重新读盘 + 传一遍
+          //    （白耗流量与时间），而它**永远不会成功**。到 `kMaxUploadAttempts`
+          //    后走上面的退避分支，不再尝试。
+          tooLarge++;
+          _attempts[c.contentHash] =
+              (_attempts[c.contentHash] ?? 0) + 1;
         case BlobFailed():
           failed++;
           _attempts[c.contentHash] = (_attempts[c.contentHash] ?? 0) + 1;
@@ -259,6 +281,7 @@ class BookUploadQueue {
       doneThisRun: done,
       failedThisRun: failed,
       skippedNoRaw: noRaw,
+      tooLargeThisRun: tooLarge,
     ));
   }
 }

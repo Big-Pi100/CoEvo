@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-21T08:37:06Z",
-  "updated_at": "2026-10-21T10:21:44Z",
+  "updated_at": "2026-10-21T11:36:30Z",
   "files": {
     ".gitattributes": {
       "role": "index",
@@ -35,9 +35,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "2fa5a7e0401ba0e7aba60f3c73e7bdf9c15d8805e76fe2240f91004df850db56",
-      "size": 111040,
-      "normalized_sha256": "2fa5a7e0401ba0e7aba60f3c73e7bdf9c15d8805e76fe2240f91004df850db56"
+      "sha256": "18246ef7562c44527a1a19f1bf081e3976793a2e4689bf62f643bfb5ce2e9dbc",
+      "size": 110925,
+      "normalized_sha256": "18246ef7562c44527a1a19f1bf081e3976793a2e4689bf62f643bfb5ce2e9dbc"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -101,9 +101,9 @@
     },
     "app/lib/api/book_blob_client.dart": {
       "role": "index",
-      "sha256": "1caff5c27fb41d62a92d4ad7d8934917afda3ca43fcb921f95fca9f6a0080a65",
-      "size": 7104,
-      "normalized_sha256": "1caff5c27fb41d62a92d4ad7d8934917afda3ca43fcb921f95fca9f6a0080a65"
+      "sha256": "39203449ed37877a3efd2e6ab8f793efaa4ef93e2309f5b4847106cfe37981fe",
+      "size": 8172,
+      "normalized_sha256": "39203449ed37877a3efd2e6ab8f793efaa4ef93e2309f5b4847106cfe37981fe"
     },
     "app/lib/api/content_client.dart": {
       "role": "index",
@@ -143,9 +143,9 @@
     },
     "app/lib/app.dart": {
       "role": "observe",
-      "sha256": "721445608238bc2d30ffe93a30dd90e30f0ec985a3d33c47ff55186822fe3d48",
-      "size": 57254,
-      "normalized_sha256": "721445608238bc2d30ffe93a30dd90e30f0ec985a3d33c47ff55186822fe3d48"
+      "sha256": "8e098bc227f4ef897d48ce25a6d64e7887481568e4d4b5c4601b68e25dec8048",
+      "size": 59068,
+      "normalized_sha256": "8e098bc227f4ef897d48ce25a6d64e7887481568e4d4b5c4601b68e25dec8048"
     },
     "app/lib/config/k12_subjects.dart": {
       "role": "observe",
@@ -209,9 +209,9 @@
     },
     "app/lib/providers/book_cloud_provider.dart": {
       "role": "index",
-      "sha256": "71822494225ed5b08011894aa435b57a8eec5c8db62ecb0b8d96d97010f2ec3d",
-      "size": 13599,
-      "normalized_sha256": "71822494225ed5b08011894aa435b57a8eec5c8db62ecb0b8d96d97010f2ec3d"
+      "sha256": "dc3ce8990bff57a84d00a4972f9e814e65fdb89393997c20ca7ce89469badc65",
+      "size": 13624,
+      "normalized_sha256": "dc3ce8990bff57a84d00a4972f9e814e65fdb89393997c20ca7ce89469badc65"
     },
     "app/lib/providers/book_marker_provider.dart": {
       "role": "index",
@@ -317,9 +317,9 @@
     },
     "app/lib/providers/subscription_provider.dart": {
       "role": "index",
-      "sha256": "92fb41925823ede0e9cf8b8c6f24dda8ef5b3a8c81bbe178bd0cfd74329b7ca5",
-      "size": 5886,
-      "normalized_sha256": "92fb41925823ede0e9cf8b8c6f24dda8ef5b3a8c81bbe178bd0cfd74329b7ca5"
+      "sha256": "51076c895c922d702b67ff37667644f4eb714d484c5bf86bbac6b4e71d83e6a5",
+      "size": 7197,
+      "normalized_sha256": "51076c895c922d702b67ff37667644f4eb714d484c5bf86bbac6b4e71d83e6a5"
     },
     "app/lib/providers/sync_provider.dart": {
       "role": "index",
@@ -539,9 +539,9 @@
     },
     "app/lib/services/ebook/book_blob_parse.dart": {
       "role": "index",
-      "sha256": "33127bd10134177228d493e9741f2fc65d57694ab7a6f4c2f6d3b2d45c6c9d52",
-      "size": 10398,
-      "normalized_sha256": "33127bd10134177228d493e9741f2fc65d57694ab7a6f4c2f6d3b2d45c6c9d52"
+      "sha256": "57d3a44bb170255c5193e99d0ece9c52487e3d55ac3ec68b3eb215cd92fff962",
+      "size": 12542,
+      "normalized_sha256": "57d3a44bb170255c5193e99d0ece9c52487e3d55ac3ec68b3eb215cd92fff962"
     },
     "app/lib/services/ebook/book_import_flow.dart": {
       "role": "index",
@@ -593,15 +593,15 @@
     },
     "app/lib/services/ebook/book_text.dart": {
       "role": "index",
-      "sha256": "2e00e8c6601e94122be10dc9dae1701f064f8f82ec2971cbe032cf2329f6a232",
-      "size": 4597,
-      "normalized_sha256": "2e00e8c6601e94122be10dc9dae1701f064f8f82ec2971cbe032cf2329f6a232"
+      "sha256": "983b948529b6f6bb3c2bbb58c2e5e7209466d6eb2ed8ff59407ef40de77eab9e",
+      "size": 4989,
+      "normalized_sha256": "983b948529b6f6bb3c2bbb58c2e5e7209466d6eb2ed8ff59407ef40de77eab9e"
     },
     "app/lib/services/ebook/book_upload_queue.dart": {
       "role": "index",
-      "sha256": "fb6fdba56d81f97cf812a61b4b6a0a7730424ec766712f7f6f7b0dafd5e715b2",
-      "size": 11637,
-      "normalized_sha256": "fb6fdba56d81f97cf812a61b4b6a0a7730424ec766712f7f6f7b0dafd5e715b2"
+      "sha256": "50711e5aedf8aeb4cb0e8913e3270dfc166412369cec1efa51108d195f31f39e",
+      "size": 12895,
+      "normalized_sha256": "50711e5aedf8aeb4cb0e8913e3270dfc166412369cec1efa51108d195f31f39e"
     },
     "app/lib/services/ebook/cloud_book_repository.dart": {
       "role": "index",
@@ -1312,15 +1312,15 @@
     },
     "backend/crates/api_server/src/book_blob_handler.rs": {
       "role": "index",
-      "sha256": "547e0a7801837ae5097bc35d36ac8e44237dc5440af1a956c2627c9420d70a92",
-      "size": 27374,
-      "normalized_sha256": "547e0a7801837ae5097bc35d36ac8e44237dc5440af1a956c2627c9420d70a92"
+      "sha256": "c1b9999440b579d38b76d6fd25912836e681264650328b2be32d5f203aea84c1",
+      "size": 31287,
+      "normalized_sha256": "c1b9999440b579d38b76d6fd25912836e681264650328b2be32d5f203aea84c1"
     },
     "backend/crates/api_server/src/book_storage.rs": {
       "role": "index",
-      "sha256": "d9cd020b71af00524416ddbc4d884dccc7d0006349623e0736a25b6ee9096c09",
-      "size": 23775,
-      "normalized_sha256": "d9cd020b71af00524416ddbc4d884dccc7d0006349623e0736a25b6ee9096c09"
+      "sha256": "63a995d20a081f64a922bd3c9298c4619a8ca99fce8d1e24f7cfee8501d6918e",
+      "size": 29577,
+      "normalized_sha256": "63a995d20a081f64a922bd3c9298c4619a8ca99fce8d1e24f7cfee8501d6918e"
     },
     "backend/crates/api_server/src/compliance.rs": {
       "role": "index",
@@ -1438,9 +1438,9 @@
     },
     "backend/crates/api_server/src/routes.rs": {
       "role": "index",
-      "sha256": "3bd394faf4726cbfaaab35dfbde805c922f4df37e9d0973cab242d278ed5d56f",
-      "size": 63286,
-      "normalized_sha256": "3bd394faf4726cbfaaab35dfbde805c922f4df37e9d0973cab242d278ed5d56f"
+      "sha256": "678e1e0b0045b93c73e6eb1307f6be851acdb87cbcf5afcd0a553511e28f1dc9",
+      "size": 64924,
+      "normalized_sha256": "678e1e0b0045b93c73e6eb1307f6be851acdb87cbcf5afcd0a553511e28f1dc9"
     },
     "backend/crates/api_server/src/schema.rs": {
       "role": "index",
@@ -1456,9 +1456,9 @@
     },
     "backend/crates/api_server/src/subscription.rs": {
       "role": "index",
-      "sha256": "82b46cd02a308cc805491b6a2f4550a581afbb25f391288fb20d445cd6d3f893",
-      "size": 27464,
-      "normalized_sha256": "82b46cd02a308cc805491b6a2f4550a581afbb25f391288fb20d445cd6d3f893"
+      "sha256": "9bae3f386fee6b18172279e00f3a2afcc44f7c1427fa24663fe826f83dd12e8c",
+      "size": 31949,
+      "normalized_sha256": "9bae3f386fee6b18172279e00f3a2afcc44f7c1427fa24663fe826f83dd12e8c"
     },
     "backend/crates/api_server/src/sync_handlers.rs": {
       "role": "index",
@@ -2251,6 +2251,12 @@
       "size": 9367,
       "normalized_sha256": "75dd91aeefd60517dc0434a3031851047734ac70b49e4e2d7791a9261d961157"
     },
+    "scripts/ebook_verify/bin/verify_book_limits.dart": {
+      "role": "observe",
+      "sha256": "dce3be72ba6883d708a1cc0a3355b3246f72ad469eb586f258b78fddc43d9a8c",
+      "size": 6209,
+      "normalized_sha256": "dce3be72ba6883d708a1cc0a3355b3246f72ad469eb586f258b78fddc43d9a8c"
+    },
     "scripts/ebook_verify/bin/verify_epub_parser.dart": {
       "role": "observe",
       "sha256": "a0fbd9eea24916ee6fedfe6454e6788d003d324116d6374c002a93fcd1b34118",
@@ -2503,6 +2509,12 @@
       "size": 104408,
       "normalized_sha256": "c40ab60e75d46f45706f826fe76903e3bb853bd195e522b3d617a853d9fb00f0"
     },
+    "scripts/iap_verify/bin/verify_subscription_state.dart": {
+      "role": "observe",
+      "sha256": "9896f3b8f649ea43e385bc27a0d6e966c29e843e7575f73ed1e20c08151a2f8f",
+      "size": 6100,
+      "normalized_sha256": "9896f3b8f649ea43e385bc27a0d6e966c29e843e7575f73ed1e20c08151a2f8f"
+    },
     "scripts/iap_verify/pubspec.lock": {
       "role": "observe",
       "sha256": "5bbf0e6325a3c6ce3a450dd2322645f20b5ba8c795e3d4b2763a5cb2aff4f21f",
@@ -2709,9 +2721,9 @@
     },
     "scripts/query_verify/bin/verify_book_cloud.dart": {
       "role": "observe",
-      "sha256": "9eaba7d4d06c8718cb22d07735460e1f5c3411a34fd699c3f25def70a5c28489",
-      "size": 27043,
-      "normalized_sha256": "9eaba7d4d06c8718cb22d07735460e1f5c3411a34fd699c3f25def70a5c28489"
+      "sha256": "2f1c1e142c5992a1110b0fe5f40782972460cb5ddc5322e3d4add8f42e871335",
+      "size": 29652,
+      "normalized_sha256": "2f1c1e142c5992a1110b0fe5f40782972460cb5ddc5322e3d4add8f42e871335"
     },
     "scripts/query_verify/bin/verify_book_marker.dart": {
       "role": "observe",

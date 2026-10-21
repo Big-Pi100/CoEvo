@@ -1188,6 +1188,36 @@ async fn update_display_name_handler(
 // ── Subscription check ──
 
 /// GET /api/user/{user_id}/subscription — 轻量订阅状态检查
+///
+/// # 🔴 判据只允许一处权威（2026-10-21 收口）
+///
+/// 这里**曾经**自己手写了一套归一：
+/// ```ignore
+/// let normalized = if e.len() == 10 && … { format!("{}T00:00:00Z", e) } else { e.clone() };
+/// parse_from_rfc3339(&normalized).map(…).unwrap_or(true)   // 解析失败 ⇒ 当成已过期
+/// ```
+/// 它和 `subscription::parse_expires` **接受的格式不同**（不认空格分隔的
+/// `YYYY-MM-DD HH:MM:SS`，而那正是 `parse_expires` 的第 ③ 种合法形态），
+/// 解析失败时又 `unwrap_or(true)` 静默判过期 ⇒ **同一件事两个判据**。
+/// 那种分歧在 `subscription_expires` 上已经出过一次真机事故（到期日回退），
+/// 所以现在**只调 `parse_expires`**，不再在路由层重复实现。
+///
+/// # 🔑 三态 `state`（给端侧区分「从未订阅」与「已到期」）
+///
+/// 原先只回 `expired: bool`，于是 `subscription_expires IS NULL`（**从未订阅**）
+/// 与「订阅过期了」在协议上是**同一个值** ⇒ 端侧只能把两者混为一谈，
+/// 结果就是本项目的老毛病：**给所有免费用户显示「你的会员已到期」**。
+///
+/// | `state` | 含义 | `expired`（**旧字段，语义不变**）|
+/// |---|---|---|
+/// | `none`    | 从未订阅（无到期日，或空串） | `true` |
+/// | `active`  | 有到期日且未过期 | `false` |
+/// | `expired` | 有到期日且已过期 | `true` |
+/// | `invalid` | 有值但解析不了（脏数据 / 未知格式）| `true` |
+///
+/// ⚠️ **`expired` 的取值与旧实现逐值等价**（`state != "active"`）——
+///    已经发出去的旧版本 App 读它，行为不变；新版本 App 改读 `state`
+///    才能把 `none` 从「已到期」里摘出来。
 async fn user_subscription_handler(Path(user_id): Path<String>) -> Json<serde_json::Value> {
     let conn = crate::db_pool::get_conn();
     let expires: Option<String> = conn
@@ -1200,22 +1230,13 @@ async fn user_subscription_handler(Path(user_id): Path<String>) -> Json<serde_js
         .flatten();
 
     let now_ts = chrono::Utc::now().timestamp();
-    let expired = match &expires {
-        Some(e) => {
-            let normalized = if e.len() == 10 && e.as_bytes().get(4) == Some(&b'-') {
-                format!("{}T00:00:00Z", e)
-            } else {
-                e.clone()
-            };
-            chrono::DateTime::parse_from_rfc3339(&normalized)
-                .map(|dt| dt.timestamp() < now_ts)
-                .unwrap_or(true)
-        }
-        None => true,
-    };
+    // 判据**只有** `subscription::expires_state` 一处（纯函数，已被单测覆盖）。
+    let state = crate::subscription::expires_state(expires.as_deref(), now_ts);
 
     Json(json!({
-        "expired": expired,
+        // 旧字段：逐值等价于旧实现（旧客户端行为不变）
+        "expired": state != "active",
+        "state": state,
         "expires_at": expires,
     }))
 }

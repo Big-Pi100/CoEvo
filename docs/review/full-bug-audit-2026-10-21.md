@@ -267,3 +267,78 @@ AOCI 条目标注「无写入方是有意的」—— 请确认这个「有意�
 | 4 | B4/B5/B6 | 需要产品判断（保留还是删），不阻塞前三条 |
 
 ⚠️ 按项目铁律：**以上均为调查结论，未改任何代码**。批准哪几条、选 A 还是 B，我再动手。
+
+---
+
+## 十、✅ 实施记录：B1 / B2 按 **B 方案** 修复（2026-10-21 18:5x–19:2x）
+
+白哥裁定「走 B」⇒ 两条 P1 都取报告里的 **B 方案**（而非 A 的「改端侧对齐」）。
+下面记录**实际改了什么、为什么这么改、以及怎么证伪的**。**未部署、未出包。**
+
+### 10.1 B1：单本上限 32 → 50 MB，**前提是把上传改成流式**
+
+| 位置 | 改动 |
+|---|---|
+| `book_storage.rs` | `MAX_BOOK_BYTES` 32 → **50 MB**；trait 新增 `put_from_file`（原子 rename 接管临时文件）+ `staging_dir`（与目标同目录，避免 `EXDEV`）|
+| `book_blob_handler.rs` | 上传从「`Vec<u8>` 攒整本」改为「**边收边写临时文件**」，内存占用恒为一块 chunk；新增 `TempFileGuard`（`Drop` 兜住 6 条提前返回路径，不漏垃圾文件）；`usage` 修正为 `used - existing + size` |
+| `book_blob_client.dart` | 下载改用 `send()` 拿 `StreamedResponse`，**先看 `Content-Length` 再收**（超限直接 `BlobTooLarge`，不耗尽内存）|
+| `book_blob_parse.dart` | 新增 `BlobTooLarge`；`413` 与「超过单本上限」**不再**归成 `BlobQuotaExceeded` |
+| `book_upload_queue.dart` | `BlobTooLarge` ⇒ **只跳过该本、继续传下一本**（并记 `attempts` 防每轮重传）；新增 `tooLargeThisRun` 单独计数 |
+
+🔴 **为什么 B1 的 B 方案必须连流式一起做**（这是报告里那句「否则不建议」的落地）：
+原注释的取值依据是「32 MB × 10 并发 = 320 MB，VPS 460 MB 够用」——
+那只对「整块进内存」成立。**不改成流式而直接把常量抬到 50 MB，就是 500 MB > 460 MB ⇒ OOM。**
+⇒ 两者是同一件事的两半，已写进 `MAX_BOOK_BYTES` 的注释与断言里（见 10.3）。
+
+### 10.2 B2：订阅判据收口为**唯一权威** + 四态协议
+
+| 位置 | 改动 |
+|---|---|
+| `subscription.rs` | 新增**纯函数** `expires_state(raw, now) -> none/active/expired/invalid`；4 个单测（含「空格分隔不能被判过期」）|
+| `routes.rs` | `user_subscription_handler` 删掉手写归一（`format!("{}T00:00:00Z")` + `unwrap_or(true)`），改调 `expires_state`；响应新增 `state`，`expired` **逐值等价于旧实现**（旧端行为不变）|
+| `subscription_provider.dart` | 读 `state` 四态：`none`/`invalid` → `required`（**不再** → `expired`）；无 `state` 时退回旧布尔（兼容「新端 + 旧服务端」）|
+| `app.dart` | 覆盖层改用 `subscriptionLapsed(...)`（要求 `backendHasRecord`），不再拿裸 `isExpired` 当结论 |
+
+🔑 **四态的关键在 `none`**：`subscription_expires IS NULL` = **从未订阅**，
+这与「买过但过期」在旧协议里是同一个 `true` —— 那正是「给所有免费用户说已到期」的根源。
+`invalid` 单独一态的理由：既不白送权益（不能算 active），也不诬告欠费（不能算 expired）。
+
+### 10.3 断言：新增 2 条，改 1 条（原断言在**保护旧行为**）
+
+| 脚本 | 作用 |
+|---|---|
+| 🆕 `scripts/ebook_verify/bin/verify_book_limits.dart`（10 项）| 从**两端源码**抠出 `MAX_BOOK_BYTES` / `CLOUD_BOOK_QUOTA_BYTES` 与 Dart 常量做比对；并锁「50 MB 的前提」——上传仍是 `put_from_file`、**没有** `buf.extend_from_slice`、`DefaultBodyLimit` 由常量推导、413 归 `BlobTooLarge` |
+| 🆕 `scripts/iap_verify/bin/verify_subscription_state.dart`（19 项）| 后端四态判据 + 路由不再手写归一 + 端侧四分支映射 + 覆盖层用 `subscriptionLapsed` |
+| ✏️ `scripts/query_verify/bin/verify_book_cloud.dart` | 原两条断言写的是「413/超单本上限 ⇒ 归到配额」——**它们锁的是有害行为**（队列会整队停摆）。改成新契约，并新增队列级断言：「第一本太大，第二本仍被尝试」 |
+
+🔴 **两条新断言都做了证伪**（否则不知道它是不是假绿）：
+- 把 `kMaxBookBytes` 临时改成 40 MB ⇒ `verify_book_limits` **红灯**（退出码非 0），还原后绿。
+- 把 `'none' || 'invalid' => required` 改成 `=> expired` ⇒ `verify_subscription_state` **红灯**，还原后绿。
+
+### 10.4 验证结果（本地全绿）
+
+| 项 | 结果 |
+|---|---|
+| `cargo clippy --workspace --all-targets` | ✅ 0 error（仅 2 条既有 `assertions_on_constants` 警告，在 `#[cfg(test)]` 里）|
+| `cargo test --workspace --lib` | ✅ **327 + 20 通过**、0 失败（新增 6 个：4 个 `expires_state` + 2 个存储层）|
+| `scripts/analyze_inproc` | ✅ 185 文件 · **error=0 / warning=0** |
+| `scripts/*/bin/verify*.dart` | ✅ **74/74 全过**（含新增 2 个）|
+| `aoci check` | ✅ **✓ ready to commit**（Entries 漂移 / 策展 / 字典 / 格式 / 草稿 五净）|
+| `aoci index agent guide` | ✅ `stage=aligned complete=true next_action=none` |
+
+⚠️ 本机 `cargo test --workspace`（不带 `--lib`）会因**沙箱拒绝写** `target/debug/examples/body_diag.exe` 而失败 —— 那是环境限制，不是代码问题；CI（ubuntu）不受影响。
+
+### 10.5 上线顺序与回滚（**还没做，等白哥指令**）
+
+1. **后端先发**：新增的 `state` 字段是**向后兼容**的（旧 App 只读 `expired`，语义未变）。
+   ⚠️ **不要反过来**（App 先发）→ 旧后端没有 `state`，端侧会走「退回旧布尔」兜底 ⇒ 回到旧行为，不崩但也不修好。
+2. **App 后发**（需 iOS 出包 ⇒ CI）：
+   - B1 的端侧部分（`BlobTooLarge`、队列跳过）**与后端无强依赖**：新端 + 旧后端时，413 也会被正确归成 `BlobTooLarge`（后端旧版同样回 413）。
+   - 但**上限一致性要靠后端先发**：端 50 / 服 32 的组合下，32–50 MB 的书仍会被拒（只是现在会「跳过该本」而不是「整队停摆」）。
+3. **回滚**：后端二进制 `.prev` 保留（部署脚本已有）；`.aoci` 与索引改动无运行时影响。
+
+### 10.6 本次**没有**做的（仍待定）
+
+- **B3**（`/api/user/{id}/subscription` 无鉴权）：没动。修之前必须先确认「登录态下 token 一定非空」，否则加鉴权会引入 401。
+- **B4**（4 处 `pub mod` 掩盖的死代码）、**B5**（通知零写入方）：需要产品判断（保留还是删），不阻塞。
+- **B6**：已顺手修掉（下载加 `Content-Length` 上限），因为 B1 把上限抬到 50 MB 后它从 P3 变成「必须一起处理」。

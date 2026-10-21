@@ -106,8 +106,14 @@ class EbookParseFailure extends EbookParseResult {
 
 /// 单文件体积上限。
 ///
-/// 🔑 依据：正常英文小说 < 5 MB（*War and Peace* 约 3.3 MB）。
-///    50 MB 已远超合理输入 ⇒ 超过即视为异常（防止用户误选视频/压缩包导致 OOM）。
+/// 🔑 依据：正常英文小说 < 5 MB（*War and Peace* 约 3.3 MB）；
+///    **图片版 / 扫描版 / 漫画** EPUB 常在 30–80 MB ⇒ 取 50 MB。
+///    再大就视为异常输入（防止用户误选视频/压缩包导致 OOM）。
+///
+/// 🔴 **必须与后端 `MAX_BOOK_BYTES` 同值**（2026-10-21 由 32 MB 提到 50 MB）。
+///    端侧大于后端 ⇒ 书能导入却**永远传不上去**，且报错方向是错的（见
+///    `book_blob_parse.dart::kMaxBookBytes` 的长说明）。
+///    📌 断言：`scripts/ebook_verify/bin/verify_book_limits.dart`
 const int kMaxEbookBytes = 50 * 1024 * 1024;
 
 /// 单个文件的章节数上限（中文长篇小说极端情况）。

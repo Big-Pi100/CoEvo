@@ -85,14 +85,25 @@ Future<void> main() async {
   check('上传 400 且文案为「云端空间不足」⇒ 归到配额（不是普通失败）',
       parseUploadResponse(400, '{"error":"云端空间不足（已用 1 MB / 共 2 MB）"}')
           is BlobQuotaExceeded);
-  check('上传 400 且文案为「超过单本上限」⇒ 也归到配额',
+  // 🔴 2026-10-21：「单本太大」与「配额满」**必须分开**
+  //
+  // 原先这两条断言锁的是**旧行为**（都归 BlobQuotaExceeded）。那个行为是有害的：
+  // 队列对配额满的反应是 `_cancelled = true`（整队停下）⇒ 一本 40 MB 的书
+  // 会让**其余所有书**都传不上去，提示还是「云端空间不足」。
+  // 📌 判据：「这本书不行」≠「这个人不行」。所以断言也得跟着改成新契约。
+  check('上传 400 且文案为「超过单本上限」⇒ BlobTooLarge（**不是**配额）',
       parseUploadResponse(400, '{"error":"这本书超过单本上限（50 MB）"}')
-          is BlobQuotaExceeded);
+          is BlobTooLarge);
+  check('上传 413 ⇒ BlobTooLarge（axum BodyLimit 超限 = 单本太大，不是配额）',
+      parseUploadResponse(413, '') is BlobTooLarge);
+  // 反向断言：两者**不能**再落回同一个桶（否则队列又会整队停摆）
+  check('「单本上限」与「配额不足」是两个不同的结果类型',
+      parseUploadResponse(400, '{"error":"超过单本上限"}') is BlobTooLarge &&
+          parseUploadResponse(400, '{"error":"云端空间不足"}')
+              is BlobQuotaExceeded);
   check('上传 400 且文案为「书单里没有」⇒ **普通失败**（内部顺序问题，不是用户能解的）',
       parseUploadResponse(400, '{"error":"这本书还没在书单里，请先同步书单再上传"}')
           is BlobFailed);
-  check('上传 413 ⇒ 也认作配额（后端将来若改用规范码）',
-      parseUploadResponse(413, '') is BlobQuotaExceeded);
 
     check('下载 404 ⇒ NotFound（确定的状态，不是失败）',
         parseDownloadResponse(404, Uint8List(0), null, ext: 'epub')
@@ -327,6 +338,42 @@ Future<void> main() async {
       '实际 ${q3.state.failedThisRun}');
   check('🔴 配额满后**同一次 run 内整体停下**（第二个候选根本没被尝试）',
       seen.length == 1 && seen.first == 'h-q1', seen.join(','));
+
+  // 🔴 2026-10-21：**「单本太大」必须只跳过那一本，不能整队停**
+  //
+  // 出事场景（真实）：用户书架里有一本 40 MB 的图册（端侧导入放行），
+  // 后端单本上限 32 MB（现已统一为 50 MB）⇒ 上传被拒 ⇒ 旧代码归成「配额满」
+  // ⇒ `_cancelled = true` ⇒ **其余所有书都传不上去**，用户完全不知道原因。
+  //
+  // 📌 断言形状：故意让**第一本**太大，检查**第二本仍然被尝试**。
+  //    ⚠️ 顺序不能反 —— 反了就测不出「停不停」（反正都不会再试）。
+  final seenTooLarge = <String>[];
+  final qTooLarge = BookUploadQueue(
+    rawDirOf: () async => rawDir,
+    upload: ({
+      required String contentHash,
+      required String ext,
+      required Uint8List bytes,
+      required String fileName,
+    }) async {
+      seenTooLarge.add(contentHash);
+      if (contentHash == 'h-q1') {
+        return const BlobTooLarge('这本书超过单本上限（50 MB）');
+      }
+      return const BlobUploaded(blobSize: 1, usage: 1);
+    },
+  );
+  await qTooLarge.run(buildCandidates(
+    pendingHashes: const ['h-q1', 'h-q2'],
+    formatOf: (h) => (ext: 'txt', fileName: '$h.txt'),
+  ));
+  check('单本太大 ⇒ 单独计数（不混进「失败」）',
+      qTooLarge.state.tooLargeThisRun == 1 && qTooLarge.state.failedThisRun == 0,
+      'tooLarge=${qTooLarge.state.tooLargeThisRun} failed=${qTooLarge.state.failedThisRun}');
+  check('🔴 单本太大 ⇒ **继续传下一本**（不是整队停摆）',
+      seenTooLarge.length == 2 && seenTooLarge.last == 'h-q2',
+      seenTooLarge.join(','));
+  check('…且那一本确实传成功了', qTooLarge.state.doneThisRun == 1);
 
   // buildCandidates 的跳过语义
   final c = buildCandidates(

@@ -82,6 +82,12 @@ class BookBlobClient {
   /// ⚠️ **一次性读入内存**：导入管线（`importBook(bytes:)`）本来就要 `Uint8List`
   ///    ⇒ 流式写盘的收益只是省一次拷贝，却要多一条临时文件生命周期。
   ///    单本上限 50 MB ⇒ 这个取舍成立。
+  ///
+  /// 🆕 2026-10-21：**先看 `Content-Length` 再决定要不要收**。
+  ///    原实现直接 `get()`（= 把 body 全收完），若服务端文件异常大
+  ///    （历史数据 / 将来放宽上限 / 被替换的响应），端侧直接 OOM 崩掉。
+  ///    现在用 `send()` 拿到 `StreamedResponse`（**body 还没被消费**），
+  ///    长度超限就丢弃 —— 代价是多了几行，收益是「大文件不会再打死 App」。
   Future<BlobResult> download({
     required String token,
     required String contentHash,
@@ -89,14 +95,26 @@ class BookBlobClient {
   }) async {
     try {
       final uri = Uri.parse('$_base/api/books/blob/$contentHash?ext=$ext');
-      final resp = await _http
-          .get(uri, headers: ApiConfig.headers(token: token))
-          .timeout(_blobTimeout);
-      // ⚠️ 这里必须用 `bodyBytes` 而不是 `body`（`body` 会按 UTF-8 解码 ⇒ 二进制被破坏）
+      final req = http.Request('GET', uri)
+        ..headers.addAll(ApiConfig.headers(token: token));
+      final streamed = await _http.send(req).timeout(_blobTimeout);
+
+      // 🔴 长度检查必须在**读 body 之前** —— 读完再判等于内存已经花掉了。
+      final declared = streamed.contentLength;
+      if (declared != null && declared > kMaxBookBytes) {
+        // 主动丢弃这个响应（不消费 body）—— 连接由底层池回收。
+        return BlobTooLarge(
+          '云端文件 ${declared ~/ (1024 * 1024)} MB，超过单本上限 '
+          '${kMaxBookBytes ~/ (1024 * 1024)} MB',
+        );
+      }
+
+      final bytes = await streamed.stream.toBytes().timeout(_blobTimeout);
+      // ⚠️ 这里必须用**原始字节**而不是字符串（`body` 会按 UTF-8 解码 ⇒ 二进制被破坏）
       return parseDownloadResponse(
-        resp.statusCode,
-        resp.bodyBytes,
-        resp.headers['content-type'],
+        streamed.statusCode,
+        bytes,
+        streamed.headers['content-type'],
         // 🔑 把**本次实际用的** ext 带出来 —— 根因见 `BlobDownloaded.ext` 的长说明：
         //    下载方（`downloadCloudBook`）不能猜格式，否则 txt 书会被当 epub 解析。
         ext: ext,

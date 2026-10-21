@@ -82,10 +82,33 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         final expired = data['expired'] as bool? ?? false;
         final expiresAt = data['expires_at'] as String?;
 
-        state = SubscriptionState(
-          status: expired
+        // 🔴 2026-10-21：优先读 `state`（四态），而不是只看 `expired`。
+        //
+        // # 为什么（一个真实的说假话现场）
+        //
+        // 服务端原先只回 `expired: bool`，而它对 `subscription_expires IS NULL`
+        // （= **从未订阅**）也回 `true` ⇒ 端侧只能把「从来没买过」和「买过但过期了」
+        // 当成同一件事，于是给**所有免费用户**准备了「你的会员已到期」这句话。
+        //
+        // 🔑 判据：**「没有」≠「有过且失效」**。
+        //    · `none`    → `required`（未激活）—— 该说「订阅」，不该说「已到期」
+        //    · `expired` → `expired`
+        //    · `invalid` → `required`（脏数据同样不许诬告用户欠费）
+        //
+        // ⚠️ 兼容「新端 + 旧服务端」：没有 `state` 字段时**退回旧口径**
+        //    （`expired` 一个布尔）。这条兜底不能删 —— 端侧先发版是常态。
+        final rawState = data['state'] as String?;
+        final status = switch (rawState) {
+          'active' => SubscriptionStatus.active,
+          'expired' => SubscriptionStatus.expired,
+          'none' || 'invalid' => SubscriptionStatus.required,
+          _ => expired
               ? SubscriptionStatus.expired
               : SubscriptionStatus.active,
+        };
+
+        state = SubscriptionState(
+          status: status,
           expiresAt: expiresAt,
           isLoading: false,
         );
