@@ -194,3 +194,23 @@ iPhone「设置 → Apple 账户 → 订阅」看这条订阅的真实状态：
   参数从无到有会让精确匹配**假红**。📌 判据：**断言锁意图，不锁拼写**。
 
 **证伪过**：把 `if (alreadyActive) return …alreadyActive;` 删掉 ⇒ `⑳-1` 立刻红；还原后 294/294 全绿。
+
+---
+
+## 九、✅ build 15 已上传（2026-10-21 23:22–23:44）
+
+| 项 | 值 |
+|---|---|
+| 版本 | `1.0.0+15` |
+| 构建来源 | `b34e85f`（含 §7.4 的 D2 + §8.2 的 alreadyActive）|
+| run | `39625000198` · **attempt 1 失败 / attempt 2 成功** |
+| attempt 1 失败原因 | `error: exportArchive **The network connection was lost.**` + `EXPORT FAILED` ⇒ **网络抖动，不是代码问题**（archive 阶段已全绿）|
+| attempt 2 | ✅ **Upload succeeded** + `EXPORT SUCCEEDED` ⇒ 已进 App Store Connect |
+| 仓库可见性 | 已恢复 **PRIVATE** |
+
+🔑 判据复核：**「job 红了」≠「事情没做成」**（这条文档 §2.2 已有）。
+本次是反过来 —— 「job 红了」确实没做成，但原因是**外部网络**，重跑即可。
+⇒ 遇到 export 阶段失败，先看日志里是 `network connection was lost` 还是**编译/签名**错误，别急着重构。
+
+⚠️ 一条 CI 自身的技术债（不影响本次）：`Command line name "app-store" is deprecated.
+Use "app-store-connect" instead.` —— 现在只是警告，将来要改 `export-options.plist` 的 `method`。
