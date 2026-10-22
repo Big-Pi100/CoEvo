@@ -65,11 +65,33 @@ HEAD = """<!doctype html>
 TAIL = """
 /* ── CoEvo 桥 ─────────────────────────────────────────────────────── */
 const __err = document.getElementById('err');
+// 🔴 换行一律用 `String.fromCharCode(10)` 拼 ——
+//    在生成脚本里写 `'\\n'` 很容易被解释成**真实的换行**，
+//    那会让 JS 出现「字符串未闭合」的语法错误 ⇒ **整段脚本不执行 ⇒ 白屏**
+//    （2026-10-22 真机就是这样白屏的，而且只报脱敏的 `Script error.`）。
+var NL = String.fromCharCode(10);
 const __fail = (m) => {
   __err.style.display = 'block';
-  __err.textContent += String(m) + '\\n';
+  __err.textContent += String(m) + NL;
 };
-window.onerror = (m) => __fail('JS: ' + m);
+
+// 🔴 2026-10-22：原来的 `(m) => __fail('JS: ' + m)` 只拿到脱敏后的
+//   `"Script error."`（跨域/origin 为 null 时浏览器不给详情）⇒ **等于没有错误信息**。
+//   现在把 msg / 行列 / stack 全都带出来，并且**上报到 Flutter**（真机上没有控制台）。
+window.onerror = function (msg, src, line, col, err) {
+  var detail = 'JS: ' + msg + ' @' + line + ':' + col +
+               (err && err.stack ? '\\n' + err.stack.split('\\n').slice(0, 4).join('\\n') : '');
+  __fail(detail);
+  __post({ type: 'error', detail: detail });
+  return false;
+};
+window.addEventListener('unhandledrejection', function (e) {
+  var r = e.reason;
+  var detail = 'Promise: ' + (r && r.message ? r.message : String(r)) +
+               (r && r.stack ? '\\n' + r.stack.split('\\n').slice(0, 4).join('\\n') : '');
+  __fail(detail);
+  __post({ type: 'error', detail: detail });
+});
 
 const __post = (obj) => {
   try { window.CoEvoBridge && window.CoEvoBridge.postMessage(JSON.stringify(obj)); }
@@ -105,8 +127,20 @@ function reopen(keep) {
   pag.open({
     dir: '',
     sections: state.chapters.map(function (html) {
-      return { load: function () { return Promise.resolve(buildDocUrl(html)); },
-               unload: function () {} };
+      return {
+        load: function () {
+          // ⚠️ 这里抛错会让 `#display` 静默 catch ⇒ **白屏且无提示**
+          //    （上游 `#display` 的 `.catch` 只 console.warn）⇒ 自己上报。
+          try {
+            return Promise.resolve(buildDocUrl(html));
+          } catch (e) {
+            __post({ type: 'error', detail: 'buildDocUrl 失败: ' +
+              (e && e.message ? e.message : e) });
+            throw e;
+          }
+        },
+        unload: function () {},
+      };
     }),
   });
   if (keep) pag.goTo(state.secIndex);
@@ -114,12 +148,42 @@ function reopen(keep) {
 
 window.__reader = {
   setContent: function (chaptersJson) {
-    const list = JSON.parse(chaptersJson);
-    state.chapters = list;
-    state.secIndex = 0; state.pageInSec = 0; state.fraction = 0;
-    state.ready = false;
-    reopen(false);
-    return list.length;
+    // 🔴 2026-10-22 真机「进去白屏」：**分阶段上报**，一轮就能看出卡在哪一步。
+    //    （真机没有控制台，`Script error.` 又是脱敏的 ⇒ 只能自己打点）
+    var stage = 'start';
+    try {
+      __post({ type: 'stage', detail: 'setContent:start' });
+      var list = JSON.parse(chaptersJson);
+      stage = 'parsed(' + (list ? list.length : 'null') + ')';
+      __post({ type: 'stage', detail: stage });
+      if (!list || !list.length) {
+        __post({ type: 'error', detail: 'setContent: 章节数组为空' });
+        return 0;
+      }
+      state.chapters = list;
+      state.secIndex = 0; state.pageInSec = 0; state.fraction = 0;
+      state.ready = false;
+      stage = 'reopen';
+      reopen(false);
+      stage = 'reopened';
+      __post({ type: 'stage', detail: stage });
+
+      // 🛟 兜底：有些环境下 `open()` 不会自动加载第一节 ⇒ 主动定位一次。
+      //    800ms 后如果还没收到 relocate（说明没渲染），就强制 goTo(0)。
+      setTimeout(function () {
+        if (!state.ready) {
+          __post({ type: 'stage', detail: 'fallback:goTo(0)' });
+          try { pag.goTo(0); } catch (e2) {
+            __post({ type: 'error', detail: 'fallback goTo 失败: ' + e2 });
+          }
+        }
+      }, 800);
+      return list.length;
+    } catch (e) {
+      __post({ type: 'error', detail: 'setContent[' + stage + ']: ' +
+        (e && e.message ? e.message : e) + NL + (e && e.stack ? e.stack : '') });
+      throw e;
+    }
   },
   setTheme: function (t) {
     Object.assign(state.theme, JSON.parse(t));
@@ -194,17 +258,25 @@ pag.addEventListener('relocate', function (e) {
 //   ⚠️ 必须三个都吞：只吞 start 的话，foliate 的 `#onTouchMove` 会读到
 //   未初始化的 `#touchState` 并抛 TypeError（那正是「Script error.」的来源之一）。
 pag.addEventListener('load', function (e) {
-  var d = e.detail;
-  var doc = d && (d.doc || d);
-  if (!doc || doc.__coevoSelBound) return;
-  doc.__coevoSelBound = true;
-  ['touchstart', 'touchmove', 'touchend'].forEach(function (type) {
-    doc.addEventListener(type, function (ev) {
-      var sel = null;
-      try { sel = doc.getSelection(); } catch (_) {}
-      if (sel && sel.toString().trim()) ev.stopImmediatePropagation();
-    }, true);
-  });
+  // ⚠️ 整段包 try/catch：这里是**初始化链路上**的监听器，
+  //    一旦在真机上抛错就会污染后续步骤（2026-10-22 白屏排查时踩到）。
+  try {
+    var d = e.detail;
+    var doc = d && (d.doc || d);
+    if (!doc || typeof doc.addEventListener !== 'function') return;
+    if (doc.__coevoSelBound) return;
+    doc.__coevoSelBound = true;
+    ['touchstart', 'touchmove', 'touchend'].forEach(function (type) {
+      doc.addEventListener(type, function (ev) {
+        try {
+          var sel = doc.getSelection ? doc.getSelection() : null;
+          if (sel && sel.toString().trim()) ev.stopImmediatePropagation();
+        } catch (_) {}
+      }, true);
+    });
+  } catch (err) {
+    __post({ type: 'error', detail: 'bind touch guard 失败: ' + err });
+  }
 });
 
 // 单击正文 → 通知 Flutter 切换顶栏/底栏（白哥：「只有单击页面才会弹出」）。

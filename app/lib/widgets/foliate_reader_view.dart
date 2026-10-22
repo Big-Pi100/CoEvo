@@ -43,6 +43,9 @@ class FoliateReaderController {
   /// 🔑 用递增计数而不是 bool：连续单击两次要能各自触发一次 toggle。
   final ValueNotifier<int> tapTick = ValueNotifier<int>(0);
 
+  /// JS 侧「进行到哪一步」—— 白屏时看它就知道卡在哪（真机没有控制台）。
+  final ValueNotifier<String> lastStage = ValueNotifier<String>('');
+
   bool _ready = false;
   List<String> _pendingChapters = const [];
 
@@ -116,6 +119,12 @@ class FoliateReaderController {
           selectedText.value = (m['text'] as String?)?.trim();
         case 'tap':
           tapTick.value = tapTick.value + 1;
+        case 'error':
+          // JS 侧自己 catch 到的错误（含阶段名）—— 直接显示出来，
+          // 因为真机上没有控制台，`Script error.` 又是脱敏的。
+          lastError.value = (m['detail'] as String?) ?? 'JS 未知错误';
+        case 'stage':
+          lastStage.value = (m['detail'] as String?) ?? '';
         default:
           break;
       }

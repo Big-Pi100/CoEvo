@@ -168,8 +168,18 @@ class _SpikePaginatorScreenState extends State<SpikePaginatorScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Text('⚠️ $_error',
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 11, color: Color(0xFFB4432C))),
               ),
+            // 白屏时看这一行就知道 JS 卡在哪一步（真机没有控制台）
+            ValueListenableBuilder<String>(
+              valueListenable: _c.lastStage,
+              builder: (_, st, __) => Text(
+                st.isEmpty ? '' : 'JS 阶段：$st',
+                style: const TextStyle(fontSize: 10, color: Color(0xFF8A7F70)),
+              ),
+            ),
             ValueListenableBuilder<FoliatePosition>(
               valueListenable: _c.position,
               builder: (_, p, __) => Text(
