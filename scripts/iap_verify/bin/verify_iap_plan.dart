@@ -635,9 +635,18 @@ void main() {
 
   // ── 「我的」页：§4.4.3 要求**两处**入口 ──
   final profileCode = codeOnly(readApp('screens/profile_screen.dart'));
+  // 🔴 2026-10-22 14:47 白哥改判：恢复购买**从「我的」页移到订阅页**。
+  //    旧断言「§4.4.3 要求两处」**已作废** —— 它锁的是一份**已废止的架构**，
+  //    留着会让人以为「少了一处」是 bug 而把它加回来。
+  //    📌 判据：**断言会保护错误** —— 架构改了，断言必须同批改向。
   check(
-    '🔴 「我的」页也有恢复购买（§4.4.3 要求两处）',
-    profileCode.contains('_restorePurchases'),
+    '🔴 「我的」页**不再**有恢复购买入口（已移到订阅页）',
+    !profileCode.contains('_restorePurchases'),
+    '又出现 ⇒ 与「订阅事务都在订阅页」的新架构冲突（且会出现两套恢复实现）',
+  );
+  check(
+    '🔴 但「我的」页的状态卡仍能进订阅页（可达性）',
+    profileCode.contains("push('/subscribe')"),
   );
   check(
     '「我的」页有「管理订阅」（跳 Apple）',
@@ -1564,11 +1573,17 @@ void main() {
         !notFoundMsg.contains('未找到订阅记录'));
 
     // ── 接线：两处调用点**都**必须走同一函数（防各写一份 switch 又漂）──
-    final usedRestoreMsg =
-        'restoreOutcomeMessage('.allMatches(subUi).length +
-            'restoreOutcomeMessage('.allMatches(profUi).length;
-    check('🔴 订阅页与「我的」页都走唯一文案函数（各写一份必然漂）',
-        usedRestoreMsg >= 2, '共 $usedRestoreMsg 处');
+    // 🔴 2026-10-22 14:47：入口从「两处」收到「订阅页一处」
+    //    ⇒ 判据从「≥2 处都走同一函数」改为「**不许有第二套文案实现**」：
+    //    订阅页必须用它；「我的」页已无入口，出现即说明有人又加了一套。
+    final restoreMsgInSub = 'restoreOutcomeMessage('.allMatches(subUi).length;
+    final restoreMsgInProf = 'restoreOutcomeMessage('.allMatches(profUi).length;
+    check('🔴 订阅页走唯一文案函数（`restoreOutcomeMessage`）',
+        restoreMsgInSub >= 1, '共 $restoreMsgInSub 处');
+    check(
+        '🔴 「我的」页不得再有第二套恢复文案（入口已移走）',
+        restoreMsgInProf == 0,
+        '共 $restoreMsgInProf 处 —— 有就说明又出现了一条并行的恢复路径');
 
     // ── ⑤ 🆕 2026-10-13：到期后的**同步口径**（后端 pull 已放行）──
     //
@@ -1754,20 +1769,38 @@ void main() {
               r'List<Widget> _activeChildren\([\s\S]*?\n      \];')
           .stringMatch(subSrc) ??
       '';
-  check('㉕-1 能切出已订阅态的函数体（下面两条的前提）', activeSeg.isNotEmpty);
+  check('㉕-1 能切出已订阅态的函数体（下面几条的前提）', activeSeg.isNotEmpty);
+
+  // 🔴 2026-10-22 14:47 白哥改判：「订阅页面其他都不变，除了增加两个按钮外」——
+  //    「恢复购买」与「历史订单」从「我的」页**移到订阅页**，两态都要有。
+  //    ⚠️ 这与当天早些时候的「已订阅态不需要恢复购买」相反 —— 以**最新指令**为准。
+  //    📌 判据：**用户改判时以最后一次为准**，并把旧注释一起改掉（否则后人会按旧理由改回去）。
   check(
-    '㉕-2 🔴 已订阅态**不得**渲染「恢复购买」',
-    activeSeg.isNotEmpty && !activeSeg.contains('_restoreButton'),
-    '它唯一的结果是「告诉你不需要它」',
+    '㉕-2 🔴 已订阅态**必须**有「恢复购买」（2026-10-22 14:47 白哥定：移到订阅页）',
+    activeSeg.isNotEmpty && activeSeg.contains('_restoreButton'),
   );
   check(
-    '㉕-3 🔴 未订阅态**必须**保留（否则订阅页会没有入口）',
+    '㉕-3 🔴 未订阅态也必须有（用户想找回订阅主要在这里）',
     subSrc.contains('_restoreButton(t, snap)'),
   );
   check(
-    '㉕-4 🔴 「我的」页必须保留（Apple 3.1.1 兜底，全删会没有恢复入口）',
-    codeOnly(readApp('screens/profile_screen.dart')).contains('恢复购买'),
-    '连这处一起删 ⇒ App 里再无恢复购买入口 ⇒ 3.1.1 审核风险',
+    '㉕-4 🔴 「历史订单」两态都要有（从「我的」页移入）',
+    activeSeg.contains('OrderHistory') &&
+        subSrc.contains('const OrderHistory()') &&
+        RegExp(r'const OrderHistory\(\)').allMatches(subSrc).length >= 2,
+  );
+
+  // 🔴 移出「我的」页之后，**可达性**必须仍然成立：
+  //    本页订阅状态卡整行可点 → 进订阅页（恢复购买 / 历史订单都在那里）。
+  final profSrc = codeOnly(readApp('screens/profile_screen.dart'));
+  check(
+    '㉕-5 🔴 「我的」页不再有「恢复购买」入口行（已移走）',
+    !profSrc.contains("title: '恢复购买'"),
+  );
+  check(
+    '㉕-6 🔴 但状态卡必须仍能进订阅页（否则那两个入口彻底找不到）',
+    profSrc.contains("push('/subscribe')"),
+    '可达性断了 ⇒ 用户从「我的」无法到达订阅页',
   );
 
   // ── ㉖ 已订阅卡的「条款」必须在**卡外**（方案 C，白哥 2026-10-22 选）──
@@ -1859,13 +1892,13 @@ void main() {
         iapSvcSrc.contains('if (_snapshot.purchasing)'),
         '没有 ⇒ 一帧内二次触发就调两次 buyNonConsumable ⇒ StoreKit 报 duplicate');
 
+    // 🔴 2026-10-22 14:47：入口已收口到订阅页一处 ⇒ 只断言这一处必须传
+    //    （原「两个入口都要传」的判据随架构一起作废）。
     check(
-        '⑳-5 🔴 两个入口都要把 alreadyActive 传进去（改一处漏一处就会一真一假）',
-        codeOnly(readApp('screens/profile_screen.dart'))
-                .contains('restore(alreadyActive: alreadyActive)') &&
-            codeOnly(readApp('screens/subscribe_screen.dart'))
-                .contains('restore(alreadyActive: alreadyActive)'),
-        '「我的」页与订阅页必须同一套行为（项目既有判据）');
+        '⑳-5 🔴 订阅页的恢复购买必须传 alreadyActive',
+        codeOnly(readApp('screens/subscribe_screen.dart'))
+            .contains('restore(alreadyActive: alreadyActive)'),
+        '不传 ⇒ 已订阅用户点恢复又会被说「未找到订阅」');
   }
 
   // ══════════════════════════════════════════════════════════════════════

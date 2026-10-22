@@ -31,7 +31,6 @@ import '../widgets/clay_button.dart';
 import '../widgets/clay_field.dart';
 import '../widgets/co_dialog.dart';
 import '../widgets/interest_filter_section.dart';
-import '../widgets/order_history.dart';
 import '../widgets/sync_cloud_badge.dart';
 import '../theme/clay.dart';
 import '../providers/sync_provider.dart';
@@ -670,26 +669,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         // 🔑 它**自包含**：自己判订阅（未订阅 ⇒ 零高）+ 自己 watch 同步状态
         //    ⇒ 调用方一行。形态的取舍见 `widgets/sync_cloud_badge.dart` 的类文档。
         const SyncCloudChip(),
-        const SizedBox(height: CoSpacing.sm),
-        // 🆕 「恢复购买」—— `ui-ux §4.4.3` 明确要求**两处**入口
-        //    （订阅页 + 本页）。理由：**用户订阅后就不会再进订阅页了**，
-        //    得从「我的」页也能找到（Apple 审核会检查这一项）。
+
+        // 🔴 2026-10-22 14:47（白哥定）：「恢复购买」与「历史订单」**已移到订阅页**。
         //
-        // 🔑 与上面「我的成就 / 关于」同样用 `_navTile` —— 同族入口行，
-        //    不做特殊外壳（判据：统一的是外壳与层级）。
-        _navTile(
-          icon: Icons.restore,
-          title: '恢复购买',
-          subtitle: '换设备或重装后找回已订阅',
-          onTap: _restorePurchases,
-        ),
-        //    ⚠️ 历史订单**未登录时不渲染**：它按 `user_id` 查（`_loadOrders`
-        //       里 `userId == null` 直接 return）→ 未登录必然显示「暂无订单」。
-        //       显示一个恒空的列表没有信息量，属「未登录态多出来的东西」。
-        if (auth.isAuthenticated) ...[
-          const SizedBox(height: CoSpacing.sm),
-          const OrderHistory(),
-        ],
+        // 原判据是「`ui-ux §4.4.3` 要求**两处**入口（订阅页 + 本页）」，理由是
+        // 「用户订阅后就不会再进订阅页了」。白哥新定的信息架构是
+        // **订阅相关的事都在订阅页办完** ⇒ 本页只留「状态 + 云同步」。
+        //
+        // ✅ 可达性没丢：本页那张**订阅状态卡整行可点** → `push('/subscribe')`
+        //    （见 `_buildSubscriptionCard` 的 `onTap`）⇒ 从「我的」一步就能到订阅页，
+        //    恢复购买 / 历史订单都在那里。
+        // ✅ Apple 3.1.1 的「必须提供恢复机制」仍然满足（订阅页两态都有入口）。
+        //
+        // ⚠️ 别把 `_restorePurchases` 一起删掉：它现在由订阅页的 `_restore` 承担，
+        //    本页这个私有方法已无调用方 —— 留着会变成死代码，**已同步删除**。
         const SizedBox(height: CoSpacing.lg),
 
         // ── ⑥ 其他 ──
@@ -1856,44 +1849,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     // 🔴 打开失败必须让用户看见（点了没反应 = 「静默失败 + 无出口」）
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('无法打开链接，请稍后重试')),
-    );
-  }
-
-  /// 「恢复购买」—— §4.4.3 要求**两处**入口（订阅页 + 本页）。
-  ///
-  /// 🔴 恢复的是 **Apple ID 名下的交易**（StoreKit 那层与我们的账号无关），
-  ///    但**我们的权益必须落到账号上** ⇒ 恢复前要求登录。
-  ///
-  /// 🔴🔴 2026-10-12（白哥定案「**订阅与账号一一绑定**」）：本条**已改口径** ——
-  ///    原文写的是「未登录也**必须能用**（这是换设备/重装后找回的唯一途径）」。
-  ///    现在：未登录 ⇒ **先引导登录，登录成功后自动继续恢复**（不再要求用户点第二次）。
-  ///    ⚠️ Apple 3.1.1 要求的是「**提供恢复购买入口**」—— 入口仍在、可见、点了能走完，
-  ///       只是中间多一步登录 ⇒ 仍然符合要求。
-  ///    📌 必须与订阅页 `subscribe_screen._restore` **同一套行为**（两处一致）。
-  Future<void> _restorePurchases() async {
-    if (!ref.read(authProvider).isAuthenticated) {
-      final ok = await AuthDialog.show(context);
-      if (!mounted) return;
-      if (ok != true || !ref.read(authProvider).isAuthenticated) return;
-    }
-    // 🆕 2026-10-21：把「本账号是否已有效」传进去。
-    //
-    // 🔴 否则会出现**自相矛盾**：上面那行写着「订阅中 · 到期日 …」，
-    //    点恢复却弹「当前账号未找到订阅」（白哥 2026-10-21 真机实测）。
-    //    根因是两者口径不同：状态用 `subscriptionActiveNow`（端侧 OR 服务端），
-    //    而恢复只看端侧 `currentEntitlements`。
-    //
-    // ⚠️ 用 `ref.read` 而不是 `subscriptionActiveNow(ref)` ——
-    //    后者内部 `ref.watch`，只能在 build 期间调用；这里是点击回调。
-    //    口径仍然对齐：服务端 `isActive` 正是那个 OR 里的服务端一腿。
-    final alreadyActive = ref.read(subscriptionProvider).isActive;
-    final outcome =
-        await ref.read(iapServiceProvider).restore(alreadyActive: alreadyActive);
-    if (!mounted) return;
-    // 🔴 2026-10-12：文案改走**全库唯一事实源** `restoreOutcomeMessage`
-    //    （原先这里与订阅页各写了一份同样的 switch ⇒ 必然漂）。
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(restoreOutcomeMessage(outcome))),
     );
   }
 

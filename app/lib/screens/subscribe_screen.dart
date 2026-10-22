@@ -80,6 +80,7 @@ import '../providers/auth_provider.dart';
 import '../providers/iap_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../services/iap_plan.dart';
+import '../widgets/order_history.dart';
 import '../services/iap_service.dart';
 import '../theme/clay.dart';
 import '../theme/co_spacing.dart';
@@ -227,6 +228,18 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
         ),
         const SizedBox(height: 10),
         _manageLink(t),
+
+        // 🆕 2026-10-22 14:47（白哥定）：「恢复购买」与「历史订单」从「我的」页
+        // **移到订阅页** —— 订阅相关的事都在这一页办完。
+        //
+        // ⚠️ 已订阅态放「恢复购买」是**兜底**用途：正常情况点了会得到
+        //    「你当前已是订阅状态，无需恢复。」（`RestoreOutcome.alreadyActive`）
+        //    —— 当端侧 StoreKit 与服务端状态不一致时，它是唯一的自救入口。
+        const SizedBox(height: CoSpacing.lg),
+        _restoreButton(t, snap),
+        const SizedBox(height: CoSpacing.sm),
+        const OrderHistory(),
+
         const SizedBox(height: CoSpacing.xl),
         _legalRows(),
         // 🔴 2026-10-12：**不再**渲染 `_signInHint` ——
@@ -273,6 +286,11 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
         // ⑦ 恢复购买（§4.4.3 Apple 强制项）
         const SizedBox(height: CoSpacing.lg),
         _restoreButton(t, snap),
+
+        // ⑦b 🆕 2026-10-22（白哥定）：历史订单从「我的」页移到这里
+        //     （订阅相关的事都在这一页办完）。
+        const SizedBox(height: CoSpacing.sm),
+        const OrderHistory(),
 
         // ⑧ 法律链接（Apple 强制）
         const SizedBox(height: CoSpacing.md),
