@@ -187,16 +187,47 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
     );
   }
 
-  /// 已订阅态（§4.4.4）：状态 → 恢复购买 → 法律链接。
+  /// 已订阅态（§4.4.4）：**状态卡 → 条款说明 → 管理入口 → 法律链接**。
   ///
   /// 🔴 2026-10-09（白哥定）：**不渲染「订阅权益」「订阅到期后」** ——
   ///    这两块是给**未订阅 / 已到期**的人看的（见文件头「受众」那节）。
   ///    已订阅的人看到自己的权益清单没有决策价值，白白占掉一屏。
+  ///
+  /// # 🔴 2026-10-22（白哥定）：三处结构改动
+  ///
+  /// 1. **卡片只留「状态 + 到期日」**（方案 C）——
+  ///    卡内原来还有「取消后…」条款和「管理或取消订阅」动作，
+  ///    四种性质（状态/期限/条款/动作）挤在一起，间距 8·8·10 几乎相等 ⇒ 读成一坨。
+  ///    ⇒ 条款与动作移到卡外，与**未订阅态页脚**同层级（它们本来就是同一类东西）。
+  ///
+  /// 2. **去掉「恢复购买」** —— 白哥问得对：「已订阅页面其实不需要恢复购买按钮吧？」
+  ///    「恢复购买」的用途是**把权益找回来**，已订阅的人没有可找的东西；
+  ///    点了只会得到「你当前已是订阅状态，无需恢复」（就是它自己的免责声明）。
+  ///    📌 判据：**一个按钮如果它的唯一结果是「告诉你不需要它」，就该删掉。**
+  ///
+  /// 3. 🔴 **审核约束（删之前必须确认）**：Apple 3.1.1 要求订阅 App **提供**恢复机制。
+  ///    这里删的只是**已订阅态**那一处；**「我的」页的入口仍在**（`profile_screen`，
+  ///    账号页永久可达）⇒ 审核员任何时候都能找到它。
+  ///    ⚠️ 将来若有人想连「我的」页那处一起删 —— **不行**，那会让整个 App 没有恢复入口。
   List<Widget> _activeChildren(CoEvoTokens t, IapSnapshot snap) => [
         _activeCard(t, snap),
+        const SizedBox(height: CoSpacing.md),
+        // 条款说明（卡外 · 与未订阅态页脚同一层级）
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Text(
+            SubscriptionLegalText.howToCancel(),
+            style: TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: _kCaption,
+              height: 1.6,
+              color: Color(t.ink3.argb32),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        _manageLink(t),
         const SizedBox(height: CoSpacing.xl),
-        _restoreButton(t, snap),
-        const SizedBox(height: CoSpacing.lg),
         _legalRows(),
         // 🔴 2026-10-12：**不再**渲染 `_signInHint` ——
         //    那句话讲的是「订阅需要先登录」，而能走到「已订阅」态的账号
@@ -858,55 +889,40 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
               ),
             ),
           ],
-          const SizedBox(height: CoSpacing.sm),
-          Text(
-            SubscriptionLegalText.howToCancel(),
-            style: TextStyle(
-              fontFamily: CoFonts.uiSans,
-              fontSize: _kCaption,
-              height: 1.6,
-              color: Color(t.ink3.argb32),
-            ),
-          ),
-          const SizedBox(height: 10),
-          // 🔴 2026-10-22：**「管理订阅」从胶囊按钮改成卡片内的一行文字链接**。
-          //
-          // 白哥两次说「已订阅页面丑陋」。上一轮我只砍了文案（47→19 字），
-          // 没动**结构** —— 所以「依然没解决」。真正的病是布局：
-          //
-          //   改前：卡片里孤零零挂一个**小胶囊按钮**，卡片下方一大片留白，
-          //         视线在「✓ 订阅中 / 一行说明 / 一个小按钮」之间来回跳。
-          //   改后（对齐设计稿 `subscribe-page-redesign-2026-10-09.html` §已订阅态）：
-          //         状态一行、到期日**独立一行**、管理入口作为**文字链接**收在卡内。
-          //
-          // 📌 判据：**同卡内的次要动作用「文字链接」，不用「按钮」** ——
-          //    按钮是页面的「主行动」，而「管理订阅」在已订阅态是**次要**的
-          //    （用户此刻没打算改，只是可能想取消）。给它按钮的视觉重量 = 抢戏。
-          GestureDetector(
-            onTap: () => _openUrl(kAppleManageSubscriptionsUrl),
-            behavior: HitTestBehavior.opaque,
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  const TextSpan(text: '管理或取消订阅：'),
-                  TextSpan(
-                    text: 'Apple ID 设置 → 订阅',
-                    style: TextStyle(
-                      color: Color(t.accent.argb32),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-              style: TextStyle(
-                fontFamily: CoFonts.uiSans,
-                fontSize: _kCaption,
-                height: 1.6,
-                color: Color(t.ink3.argb32),
-              ),
-            ),
-          ),
         ],
+      ),
+    );
+  }
+
+  /// 「管理或取消订阅：Apple ID 设置 → 订阅」—— 卡外的一行文字链接。
+  ///
+  /// 🔑 为什么是**文字链接**而不是按钮：它在已订阅态是**次要动作**
+  ///    （用户此刻没打算改，只是可能想取消）。给它按钮的视觉重量 = 抢戏。
+  /// 🔑 为什么在**卡外**：它是「去哪操作」，与卡内「我现在什么状态」不是一类信息；
+  ///    和条款说明一起放在卡外，层级与未订阅态页脚一致。
+  Widget _manageLink(CoEvoTokens t) {
+    return GestureDetector(
+      onTap: () => _openUrl(kAppleManageSubscriptionsUrl),
+      behavior: HitTestBehavior.opaque,
+      child: Text.rich(
+        TextSpan(
+          children: [
+            const TextSpan(text: '管理或取消订阅：'),
+            TextSpan(
+              text: 'Apple ID 设置 → 订阅',
+              style: TextStyle(
+                color: Color(t.accent.argb32),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        style: TextStyle(
+          fontFamily: CoFonts.uiSans,
+          fontSize: _kCaption,
+          height: 1.6,
+          color: Color(t.ink3.argb32),
+        ),
       ),
     );
   }

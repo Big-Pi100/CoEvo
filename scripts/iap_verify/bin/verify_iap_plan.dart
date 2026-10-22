@@ -1734,7 +1734,66 @@ void main() {
     // 白哥 2026-10-22 真机：支付一次后又弹第二次支付，取消时报
     // `storekit_duplicate_product_object`。根因是 `buy()` 无防重入，
     // 只靠 UI 把按钮变灰（`_emit` → 重建 → 变灰，中间隔一帧）。
-    // ── ㉔ Clay 卡片必须显式给 padding（否则内容贴边 = 「撑爆了」）──
+    // 订阅页源码（㉔㉕㉖ 共用；**先定义再使用**）
+  final subSrc = codeOnly(readApp('screens/subscribe_screen.dart'));
+
+  // ── ㉕ 已订阅态不渲染「恢复购买」（白哥 2026-10-22 定）──
+  //
+  // 白哥原话：「如果恢复购买放在订阅详情页面是否就应该从我的中移出，
+  //            在未订阅和已订阅都有恢复购买按钮的话，但已订阅页面其实不需要恢复购买按钮吧？」
+  //
+  // 判断：**对**。「恢复购买」的用途是把权益找回来，已订阅的人没有可找的东西；
+  // 点了只会得到「你当前已是订阅状态，无需恢复」—— 就是它自己的免责声明。
+  // 📌 判据：**一个按钮如果它的唯一结果是「告诉你不需要它」，就该删掉。**
+  //
+  // 🔴 但**不能全删**（Apple 3.1.1 要求订阅 App 提供恢复机制）：
+  //    · 订阅页·**未订阅态** 保留（用户想找回订阅时就在这）
+  //    · **「我的」页** 保留（账号页永久可达 ⇒ 审核员任何时候都能找到）
+  //    ⇒ 只删「已订阅态」那一处。
+  final activeSeg = RegExp(
+              r'List<Widget> _activeChildren\([\s\S]*?\n      \];')
+          .stringMatch(subSrc) ??
+      '';
+  check('㉕-1 能切出已订阅态的函数体（下面两条的前提）', activeSeg.isNotEmpty);
+  check(
+    '㉕-2 🔴 已订阅态**不得**渲染「恢复购买」',
+    activeSeg.isNotEmpty && !activeSeg.contains('_restoreButton'),
+    '它唯一的结果是「告诉你不需要它」',
+  );
+  check(
+    '㉕-3 🔴 未订阅态**必须**保留（否则订阅页会没有入口）',
+    subSrc.contains('_restoreButton(t, snap)'),
+  );
+  check(
+    '㉕-4 🔴 「我的」页必须保留（Apple 3.1.1 兜底，全删会没有恢复入口）',
+    codeOnly(readApp('screens/profile_screen.dart')).contains('恢复购买'),
+    '连这处一起删 ⇒ App 里再无恢复购买入口 ⇒ 3.1.1 审核风险',
+  );
+
+  // ── ㉖ 已订阅卡的「条款」必须在**卡外**（方案 C，白哥 2026-10-22 选）──
+  //
+  // 卡内原来塞了状态/期限/条款/动作四种性质，间距 8·8·10 几乎相等 ⇒ 读成一坨。
+  // ⇒ 卡片只留「状态 + 到期日」，条款与「管理或取消订阅」移到卡外，
+  //    与**未订阅态页脚**同层级（它们本来就是同一类东西）。
+  final cardSeg = RegExp(r'Widget _activeCard\([\s\S]*?\n  \}')
+          .stringMatch(subSrc) ??
+      '';
+  check('㉖-1 能切出 _activeCard（下面两条的前提）', cardSeg.isNotEmpty);
+  check(
+    '㉖-2 🔴 卡片内**不得**再出现条款说明（howToCancel）',
+    cardSeg.isNotEmpty && !cardSeg.contains('howToCancel'),
+    '卡内有它 ⇒ 与「管理或取消订阅」两句都在讲取消，必然挤',
+  );
+  check(
+    '㉖-3 🔴 卡片内**不得**再出现「管理或取消订阅」',
+    cardSeg.isNotEmpty && !cardSeg.contains('管理或取消订阅'),
+  );
+  check(
+    '㉖-4 条款与管理入口移到卡外后仍然存在（不许删掉）',
+    activeSeg.contains('howToCancel') && activeSeg.contains('_manageLink'),
+  );
+
+  // ── ㉔ Clay 卡片必须显式给 padding（否则内容贴边 = 「撑爆了」）──
   //
   // 🔴 2026-10-22 白哥连说三次「丑 / 撑爆了」，我前两次都在改文案和排版，
   //    **从没检查容器自己的内边距**。
@@ -1746,7 +1805,6 @@ void main() {
   //
   // ⚠️ 只断言**本页的内容型卡片**（`clay_button` / `clay_field` 这些控件
   //    内部有自己的 padding 逻辑，不传是对的 —— 不能无脑全扫）。
-  final subSrc = codeOnly(readApp('screens/subscribe_screen.dart'));
   final clayHeads = RegExp(r'Clay\(').allMatches(subSrc).map((m) {
     final tail = subSrc.substring(m.start, (m.start + 420).clamp(0, subSrc.length));
     return tail.split('child:').first;
