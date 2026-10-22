@@ -279,11 +279,7 @@ class AboutScreen extends StatelessWidget {
                   _InfoRow(
                     labelWidth: labelColumnWidth,
                     label: '版本',
-                    value: kCoEvoVersion,
-                    // 🔬 2026-10-22 spike 入口：长按版本号进「翻页验证页」。
-                    //    ⚠️ 验完删掉这一行 + 上面的路由与 import。
-                    onLongPress: () => context.push('/spike/paginator'),
-                  ),
+                    value: kCoEvoVersion),
                   // 🔑 备案号是**中国区上架的常规要求**，且已真实持有 → 直接放（不是占位）
                   _InfoRow(
                       labelWidth: labelColumnWidth,
@@ -320,10 +316,75 @@ class AboutScreen extends StatelessWidget {
                     label: GroupQrcodeDialog.kTitle,
                     onTap: () => GroupQrcodeDialog.show(context),
                   ),
+
+                  // 🔬🔬 2026-10-22 **临时**：翻页阅读器验证页入口。
+                  //
+                  // 白哥：「长按版本号没有反应，你还是弄个显式的胶囊按钮来进入测试页，
+                  //        发布的时候记得删掉就行了。」
+                  // ⇒ 换成显式按钮（隐藏手势 = 用户找不到 = 等于没有）。
+                  //
+                  // 🔴 **发布前必须删掉这一整块**（连同 `/spike/paginator` 路由、
+                  //    `spike_paginator_screen.dart`、`foliate_reader_view.dart`
+                  //    与 `assets/foliate/`，如果你最终不采用翻页方案的话）。
+                  const SizedBox(height: 14),
+                  _SpikeEntryButton(
+                    onTap: () => context.push('/spike/paginator'),
+                  ),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 🔬 **临时**：翻页阅读器验证页的入口胶囊（2026-10-22）。
+///
+/// 白哥：「弄个显式的胶囊按钮来进入测试页，发布的时候记得删掉就行了。」
+/// ⇒ 刻意做得**比其它行显眼**（朱砂描边 + 科学图标），
+///    让它一眼就是「临时入口」，不会被误当成正式功能；
+///    同时**一眼能找到** —— 隐藏手势（长按版本号）根本没人会发现。
+///
+/// 🔴 发布前删除：本组件 + 上面 `_SpikeEntryButton(...)` 调用 +
+///    `app.dart` 的 `/spike/paginator` 路由与 import。
+class _SpikeEntryButton extends StatelessWidget {
+  const _SpikeEntryButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CoEvoTokensExt.of(context);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Color(t.accent.argb32), width: 0.8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.science_outlined,
+                  size: 15, color: Color(t.accent.argb32)),
+              const SizedBox(width: 6),
+              Text(
+                '翻页阅读 · 测试版',
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  color: Color(t.accent.argb32),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -412,7 +473,6 @@ class _InfoRow extends StatelessWidget {
     required this.labelWidth,
     required this.label,
     required this.value,
-    this.onLongPress,
   });
 
   /// label 列的**共用宽度**（调用方用 [_measureLabelColumn] 实测传入；同组各行必须相同）。
@@ -420,10 +480,6 @@ class _InfoRow extends StatelessWidget {
 
   final String label;
   final String value;
-
-  /// 🔬 2026-10-22 spike：长按值触发（只给「版本」行传，用来进翻页验证页）。
-  /// 不传 = 普通文本，行为与原来一致。
-  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -449,17 +505,12 @@ class _InfoRow extends StatelessWidget {
           // 🔑 值**左对齐**并占满剩余宽度 ⇒ 三行的值从**同一条竖线**开始。
           //    ⚠️ 不再用 `Flexible` + `TextAlign.right`（那是右对齐：右边界齐、起点不齐）。
           Expanded(
-            child: GestureDetector(
-              // 🔬 只对传了 onLongPress 的行生效；其余行它是 null，手势不拦截。
-              onLongPress: onLongPress,
-              behavior: HitTestBehavior.opaque,
-              child: Tw(
-                value,
-                style: TextStyle(
-                  fontFamily: CoFonts.uiSans,
-                  fontSize: _kBodyFontSize,
-                  color: Color(t.ink3.argb32),
-                ),
+            child: Tw(
+              value,
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: _kBodyFontSize,
+                color: Color(t.ink3.argb32),
               ),
             ),
           ),
