@@ -49,7 +49,9 @@
 <body>
 <h1>订阅页 · 已订阅卡片 · 现状 vs 三方案</h1>
 <p class="sub">
-  左一是<b>现状（build 20 真机）</b>，按截图 1:1 复现（含真实间距 8 / 8 / 10）。<br>
+  左一是<b>你截图里的现状</b>：<b>卡片 padding 为 0</b>，内容压在圆角上（红框标的就是这块）。<br>
+  ⚠️ <b>注意</b>：build 20（13:07 上传）里我补了 `padding: 16/15/16/15`。
+  如果你看到的是<b>有留白</b>的版本，说明 build 20 已生效；<b>没有留白</b>就是还没装上 build 20。<br>
   可以看出「挤」不是边距问题（padding 已修好），而是<b>卡片里塞了 4 行、行间距几乎一样 ⇒ 读成一坨</b>。<br>
   后三张是按真机宽度（340pt）画的方案草稿。<b>第 3 行「取消后…」是设计稿里没有的，是我加的。</b>
 </p>
@@ -57,14 +59,14 @@
 <div class="row">
 
   <div class="col">
-    <div class="tag">现状<span class="badge">build 20 真机</span></div>
-    <div class="desc">4 行 · 间距 8 / 8 / 10 —— 三个数几乎相同</div>
+    <div class="tag">现状<span class="badge">你截图里的版本 · padding = 0</span></div>
+    <div class="desc">4 行 · <b>padding 为 0</b>（= 你截图里的版本）</div>
     <div class="phone" style="border-color:#D6A69A">
       <div class="canvas">
         <h2 class="hdr">订阅</h2><span class="back">返回</span>
       </div>
-      <div class="card" style="border-color:#D6A69A">
-        <div class="state"><span class="ck">✓</span><span class="t">订阅中</span><span class="cloud">✓</span></div>
+      <div class="card" style="border-color:#D6A69A;padding:0">
+        <div class="state" style="padding:0"><span class="ck">✓</span><span class="t">订阅中</span><span class="cloud">✓</span></div>
         <div class="date mt8">到期日 2026-11-20</div>
         <div class="note mt8">取消后，当前订阅期结束前仍可使用会员功能。</div>
         <div class="link mt10">管理或取消订阅：<a>Apple ID 设置 → 订阅</a></div>
@@ -75,10 +77,11 @@
         <div>用户协议<span>›</span></div>
       </div>
       <div class="diff" style="border-top-color:#D6A69A">
-        <b>问题</b>：<br>
-        ① <b>4 行挤在一张卡</b>：状态 / 期限 / 条款 / 动作，四种性质没有分组<br>
-        ② <b>8 · 8 · 10</b> 三个间距几乎相等 ⇒ 分组等于没做<br>
-        ③ 第 3 行与第 4 行<b>都在讲「取消」</b>，相邻且同字号 ⇒ 读成一句长话
+        <b>🔴 就是你截图里画红线的那块</b>：<br>
+        <b>① 卡片 padding = 0</b> —— ✓ 图标压住左上圆角、文字左右顶到边、
+        最后一行贴在底部（`Clay.padding` 默认是 `EdgeInsets.zero`）<br>
+        ② 4 行四种性质（状态/期限/条款/动作），间距 8·8·10 几乎相等 ⇒ 没有分组<br>
+        ③ 第 3、4 行都在讲「取消」，相邻同字号 ⇒ 读成一句长话
       </div>
     </div>
   </div>
