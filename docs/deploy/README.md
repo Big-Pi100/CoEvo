@@ -167,6 +167,41 @@ CI 两个 job 的实际动作：
   所以有那步「显式 `chmod` + `test -x`」。
 - ⚠️ `backend-deploy` **不依赖**门禁 job ⇒ **门禁红也照样部署**。「门禁绿」不能当「部署已就绪」的证明。
 
+### 2.2.1 🔴🔴 第三处体积上限：nginx 的 `client_max_body_size`
+
+**2026-10-22 真机事故（代价：排查一整晚）**：
+
+| 层 | 上限 | 当时的值 |
+|---|---|---|
+| 端侧 `kMaxBookBytes` | 50 MB | 50 MB ✅ |
+| 后端 `MAX_BOOK_BYTES` | 50 MB | 50 MB ✅ |
+| **nginx `client_max_body_size`** | —— | **2 m** ❌ |
+
+⇒ 一本 **5.5 MB** 的书被 **nginx 直接 413**，请求**根本到不了后端**
+（后端日志零条上传记录 —— 排查方向被彻底带偏），
+而端侧把 413 归成「超过单本上限」，于是提示「**超过 50 MB**」。
+
+📌 判据：**「上限」在部署链路上有几处，就要对齐几处**。
+   代码里两处对了，不代表线上能通 —— 中间还隔着反向代理。
+
+**当前值：`client_max_body_size 51m;`**
+（= `MAX_BOOK_BYTES` 50MB + 1MB multipart 开销，与后端 `DefaultBodyLimit` 同口径）
+
+⚠️ **改上限的正确动作（三处一起）**：
+1. `app/lib/services/ebook/book_blob_parse.dart::kMaxBookBytes`
+2. `backend/crates/api_server/src/book_storage.rs::MAX_BOOK_BYTES`
+3. `/etc/nginx/sites-available/zz-coevo` 的 `client_max_body_size`（**+1m 余量**）
+   ⇒ `sudo nginx -t && sudo systemctl reload nginx`
+
+🔍 **验证方法（不用真书）**：
+```bash
+head -c 5500000 /dev/urandom > /tmp/t.bin
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.<domain>/api/books/blob \
+  -F "content_hash=0123456789abcdef0123456789abcdef" -F "ext=epub" -F "file=@/tmp/t.bin"
+# 期望 401（未登录，说明请求已穿透 nginx 到后端）；
+# 若是 413 ⇒ nginx 还在挡。
+```
+
 ### 2.3 服务器侧设施（实测现状）
 
 | 项 | 值 |

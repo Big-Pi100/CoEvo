@@ -140,10 +140,12 @@ void main() {
   final idx413 = parseDart.indexOf('statusCode == 413');
   check('端侧有 413 分支', idx413 >= 0);
   if (idx413 >= 0) {
-    // 取 413 分支后 400 字符内，必须出现 BlobTooLarge 且**不**出现 BlobQuotaExceeded
+    // 取 413 分支后一段（**窗口要够长**：这个分支里现在有「先判 nginx、再判 axum」
+    // 的两段注释，400 字符会把真正的 `return BlobTooLarge` 挤出窗口 ⇒ **假红**。
+    // 📌 判据：滑窗类断言必须核实「目标确实落在窗口内」，否则窗口一改就误报。）
     final seg = parseDart.substring(
       idx413,
-      (idx413 + 400).clamp(0, parseDart.length),
+      (idx413 + 1200).clamp(0, parseDart.length),
     );
     check(
       '413 → BlobTooLarge（不是配额满）',
@@ -151,6 +153,29 @@ void main() {
       '归成配额满会让**整个上传队列**因一本大书停摆',
     );
   }
+
+  // ── ⑥ 413 必须**区分来源**（nginx 的 HTML vs axum 的纯文本）──
+  //
+  // 🔴 2026-10-22 真机：nginx `client_max_body_size` 还是 2m（电子书上传上线前定的），
+  //    一本 **5.5MB** 的书被 nginx 直接 413，而端侧把它归成「超过单本上限 50MB」
+  //    —— **5.5MB 被说成超过 50MB**，且请求根本没到后端（日志零记录）。
+  // 判据：**状态码相同不代表语义相同**。
+  check(
+    '413 分支能区分 nginx（HTML 响应体）与 axum',
+    parseDart.contains("body.trimLeft().startsWith('<')"),
+    '不区分 ⇒ nginx 挡下来的请求会被谎报成「超过单本上限」',
+  );
+
+  // ── ⑦ 部署侧必须知道「还有第三处上限」（nginx）──
+  //
+  // ⚠️ nginx 配置不在仓库里，无法机械比对 ⇒ 只能断言**文档与代码里都提到它**，
+  //    让下一个改上限的人不会漏掉（这次漏掉，代价是排查了一整晚）。
+  final storageDocs = _read('docs/deploy/README.md');
+  check(
+    '部署文档提到 client_max_body_size（第三处上限）',
+    storageDocs.contains('client_max_body_size'),
+    '三处上限：端侧 kMaxBookBytes / 后端 MAX_BOOK_BYTES / nginx client_max_body_size',
+  );
 
   _report();
 }

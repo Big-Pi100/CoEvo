@@ -214,8 +214,27 @@ BlobResult parseUploadResponse(int statusCode, String body) {
     return BlobFailed(_messageOf(body));
   }
   if (statusCode == 413) {
-    // axum 的 `DefaultBodyLimit` 超限回 413（=`MAX_BOOK_BYTES + 1 MB`）——
-    // **这是「单本太大」，不是「配额满」**。
+    // 413 有**两个来源**，语义完全不同：
+    //
+    // | 来源 | 触发条件 | 响应体 |
+    // |---|---|---|
+    // | nginx（反向代理）| 超过 `client_max_body_size` | **HTML** |
+    // | axum（应用）| 超过 `DefaultBodyLimit`（= MAX_BOOK_BYTES + 1 MB）| 纯文本/空 |
+    //
+    // 🔴 2026-10-22 真机事故：nginx 的 `client_max_body_size` 还是**电子书上传
+    //    上线之前**定的 **2m** ⇒ 一本 **5.5 MB** 的书被 nginx 直接 413，
+    //    而这里把它归成 `BlobTooLarge` ⇒ 用户看到「超过单本上限（50 MB）」。
+    //    **5.5 MB 被说成超过 50 MB** —— 而且请求根本没到后端
+    //    （后端日志零记录，排查方向被彻底带偏）。
+    //
+    // 📌 判据：**状态码相同不代表语义相同**；能区分就区分（这里靠响应体形态）。
+    //    ⇒ 靠 HTML 判断是 nginx 挡的。
+    if (body.trimLeft().startsWith('<')) {
+      return const BlobFailed(
+        '请求被服务器拒绝（超过网关体积上限）。这不是你的文件太大的问题，请联系支持。',
+      );
+    }
+    // axum 的 `DefaultBodyLimit` 超限 ⇒ **确实是单本太大**（>50 MB）。
     //
     // 📌 2026-10-21 之前这里归成 `BlobQuotaExceeded` ⇒ 一本 40 MB 的书会让
     //    整个上传队列停摆，而提示说「空间不足」。两者都错。
