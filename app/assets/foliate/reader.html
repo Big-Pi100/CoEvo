@@ -1296,7 +1296,14 @@ function reopen(keep) {
   //   ⇒ 只 `open()` 不 `goTo()` = **永远没有 iframe** = 白屏，且**不报任何错**
   //     （我重构时把 build 23 里的 `pag.goTo(0)` 弄丢了，之后五轮都在猜别的）。
   // 📌 判据：**「初始化了」≠「渲染了」** —— 上游方法只设状态时，必须再找它的第一步渲染入口。
-  pag.goTo(keep ? state.secIndex : 0);
+  // 🔴🔴🔴 2026-10-22 **最后一个、也是最隐蔽的 bug**：
+  //   foliate 的 `goTo(target)` 签名是 `const resolved = await target;
+  //   if (this.#canGoToIndex(resolved.index)) ...` —— 它要的是 **`{index, anchor}` 对象**，
+  //   **不是页码数字**！传 `0` ⇒ `resolved = 0` ⇒ `resolved.index = undefined`
+  //   ⇒ `#canGoToIndex(undefined)` = false ⇒ **静默 return，什么都不做**。
+  //   表现：`goTo(0)` 的 Promise **正常 resolve**、**零报错**、**永远没有 iframe** = 白屏。
+  // 📌 判据：**调用上游 API 前先读它的参数形状** —— 「没报错」不等于「生效了」。
+  pag.goTo({ index: keep ? state.secIndex : 0 });
 }
 
 window.__reader = {
@@ -1326,7 +1333,7 @@ window.__reader = {
       setTimeout(function () {
         if (!state.ready) {
           __setStage('fallback:goTo(0)'); __post({ type: 'stage', detail: 'fallback:goTo(0)' });
-          try { pag.goTo(0); } catch (e2) {
+          try { pag.goTo({ index: 0 }); } catch (e2) {
             __post({ type: 'error', detail: 'fallback goTo 失败: ' + e2 });
           }
         }
@@ -1372,8 +1379,9 @@ window.__reader = {
     return state.pageInSec;
   },
   goTo: function (i) {
+    // ⚠️ 必须传对象 `{index}`，传数字会被 goTo 静默忽略（见 reopen 里的长注释）
     if (!state.ready && i !== 0) return false;
-    pag.goTo(i);
+    pag.goTo({ index: i });
     return true;
   },
   status: function () {
