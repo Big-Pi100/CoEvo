@@ -124,29 +124,6 @@ __setStage('boot:2 vendor 执行完毕'); __post({ type: 'stage', detail: 'boot:
 //    ⚠️ 而页面上的「阶段」是 `__setStage` **直接写 DOM** 的，**不经过 bridge** ——
 //    所以「阶段能显示」**不等于**「bridge 能用」。这一行专门把两件事分开：
 __setStage('bridge:start bridge=' + (window.CoEvoBridge ? 'YES' : 'NO'));
-// 🔴 2026-10-22：原来的 `(m) => __fail('JS: ' + m)` 只拿到脱敏后的
-//   `"Script error."`（跨域/origin 为 null 时浏览器不给详情）⇒ **等于没有错误信息**。
-//   现在把 msg / 行列 / stack 全都带出来，并且**上报到 Flutter**（真机上没有控制台）。
-window.onerror = function (msg, src, line, col, err) {
-  var detail = 'JS: ' + msg + ' @' + line + ':' + col +
-               (err && err.stack ? '\\n' + err.stack.split('\\n').slice(0, 4).join('\\n') : '');
-  __fail(detail);
-  __post({ type: 'error', detail: detail });
-  return false;
-};
-window.addEventListener('unhandledrejection', function (e) {
-  var r = e.reason;
-  var detail = 'Promise: ' + (r && r.message ? r.message : String(r)) +
-               (r && r.stack ? '\\n' + r.stack.split('\\n').slice(0, 4).join('\\n') : '');
-  __fail(detail);
-  __post({ type: 'error', detail: detail });
-});
-
-const __post = (obj) => {
-  try { window.CoEvoBridge && window.CoEvoBridge.postMessage(JSON.stringify(obj)); }
-  catch (_) {}
-};
-
 const pag = document.getElementById('pag');
 const state = {
   chapters: [], secIndex: 0, pageInSec: 0, fraction: 0, ready: false,
@@ -180,14 +157,12 @@ function buildDocUrl(bodyHtml) {
   //   ⇒ 改用 **data: URL**（兼容性最好，不依赖 blob 存储）。
   //   ⚠️ 必须 base64 且按 UTF-8 编码，否则中文段落会乱码：
   //      `btoa` 只吃 latin1，所以先 `encodeURIComponent` + `unescape` 转成字节串。
-  try {
-    return 'data:text/html;charset=utf-8;base64,' +
-           btoa(unescape(encodeURIComponent(html)));
-  } catch (e) {
-    __post({ type: 'error', detail: 'data URL 编码失败: ' + e });
-    // 兜底：退回 blob（万一 data URL 太长被拒）
-    return URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-  }
+  // 🔴🔴 2026-10-22 本地 headless 实测（sandbox iframe）：
+  //   `data:` / `blob:` 都能 load，但 **contentDocument 恒为 null**（跨源）
+  //   ⇒ foliate 的 `afterLoad(doc)` 里 `doc.head` 抛 TypeError ⇒ 永不渲染。
+  //   **只有 `srcdoc` 能让 contentDocument 可访问** ⇒ 走 `srcdoc:` 前缀，
+  //   由生成脚本 patch 过的 `View.load` 识别（见 build_foliate_reader.py）。
+  return 'srcdoc:' + encodeURIComponent(html);
 }
 
 function reopen(keep) {
@@ -210,7 +185,13 @@ function reopen(keep) {
       };
     }),
   });
-  if (keep) pag.goTo(state.secIndex);
+  // 🔴🔴 2026-10-22 本地 headless 复现出来的**真正白屏原因**：
+  //   foliate 的 `open(book)` **只设置字段**（`this.bookDir` / `this.sections`），
+  //   **不做任何渲染**；iframe 是在 `goTo()` → `#display()` → `#createView()` 里才建的。
+  //   ⇒ 只 `open()` 不 `goTo()` = **永远没有 iframe** = 白屏，且**不报任何错**
+  //     （我重构时把 build 23 里的 `pag.goTo(0)` 弄丢了，之后五轮都在猜别的）。
+  // 📌 判据：**「初始化了」≠「渲染了」** —— 上游方法只设状态时，必须再找它的第一步渲染入口。
+  pag.goTo(keep ? state.secIndex : 0);
 }
 
 window.__reader = {
@@ -393,6 +374,35 @@ def main() -> None:
     js = SRC.read_text(encoding="utf-8")
     # 内联到普通 <script> 里，`export` 必须去掉（否则语法错误）
     js = js.replace("export class ", "class ").replace("export function ", "function ")
+
+    # 🔴🔴 2026-10-22 **本地 headless 复现出来的真正白屏根因**（第 4 个，也是最后一个）：
+    #
+    # foliate 的 `View` 给 iframe 设了 `sandbox="allow-same-origin allow-scripts"`，
+    # 然后把 `iframe.src = src`。而 `get document()` 返回 `iframe.contentDocument`。
+    #
+    # 实测（Chrome headless，sandbox iframe）：
+    #   · `src = data:...`  → load 触发，但 **contentDocument = null**（跨源）
+    #   · `src = blob:...`  → 同上，**null**
+    #   · `srcdoc = ...`    → load 触发，**contentDocument 可访问** ✓
+    #
+    # ⇒ `afterLoad(doc)` 里 `doc.head` 抛 TypeError ⇒ `#display` 抛 ⇒ `#view` 永不赋值
+    #   ⇒ `pag.pages` 报 "Cannot read properties of undefined (reading 'element')"
+    #   ⇒ **白屏，且只报脱敏的 Script error.**
+    #
+    # ⇒ patch：让 `load()` 认识 `srcdoc:` 前缀（内容 URL-encoded，避免引号转义问题）。
+    # ⚠️ 这是**改 vendored 代码**，升级 foliate 时必须重跑本脚本并确认这行还在。
+    _OLD_SRC = "this.#iframe.src = src"
+    _NEW_SRC = (
+        "if (typeof src === 'string' && src.indexOf('srcdoc:') === 0) "
+        "this.#iframe.srcdoc = decodeURIComponent(src.slice(7)); "
+        "else this.#iframe.src = src"
+    )
+    if _OLD_SRC not in js:
+        raise SystemExit(
+            "❌ vendor 里找不到 `this.#iframe.src = src` —— 上游改过了，"
+            "本脚本的 srcdoc patch 失效，必须先读 diff 再改这里。"
+        )
+    js = js.replace(_OLD_SRC, _NEW_SRC, 1)
     OUT.write_text(HEAD + js + TAIL, encoding="utf-8", newline="\n")
     print(f"wrote {OUT.relative_to(ROOT)}  ({OUT.stat().st_size} bytes)")
     print(f"  vendor: {SRC.name} ({len(js)} chars inlined)")
