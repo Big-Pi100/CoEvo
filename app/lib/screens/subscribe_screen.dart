@@ -805,7 +805,6 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
       iapExpiresAtUtc: snap.expiresAtUtc,
       backendExpiresAt: ref.watch(subscriptionProvider).expiresAt,
     );
-    final dateText = expiry == null ? '' : ' · 到期日 $expiry';
     return Clay(
       borderRadius: BorderRadius.circular(16),
       child: Column(
@@ -815,13 +814,16 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
             children: [
               Icon(Icons.verified, size: 19, color: Color(t.accent.argb32)),
               const SizedBox(width: 10),
+              // 🔴 2026-10-22：标题只留「订阅中」，**到期日拆成独立一行**
+              //    （对齐设计稿）。挤在一行里会让标题过长、和 ✓ 图标一起顶满，
+              //    读起来像一句压缩过的状态串，而不是「状态 + 期限」两层信息。
               Expanded(
                 child: Text(
-                  '订阅中$dateText',
+                  '订阅中',
                   style: TextStyle(
                     fontFamily: CoFonts.uiSans,
                     fontSize: 15,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                     color: Color(t.ink.argb32),
                   ),
                 ),
@@ -832,6 +834,17 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
               const SyncCloudBadge(),
             ],
           ),
+          if (expiry != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              '到期日 $expiry',
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: _kCaption,
+                color: Color(t.ink3.argb32),
+              ),
+            ),
+          ],
           const SizedBox(height: CoSpacing.sm),
           Text(
             SubscriptionLegalText.howToCancel(),
@@ -842,11 +855,43 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
               color: Color(t.ink3.argb32),
             ),
           ),
-          const SizedBox(height: CoSpacing.md),
-          // 🔴 §4.4.4：「已订阅 → 提供**管理订阅**（跳 Apple 订阅管理）」
-          ClayButton(
-            label: '管理订阅',
+          const SizedBox(height: 10),
+          // 🔴 2026-10-22：**「管理订阅」从胶囊按钮改成卡片内的一行文字链接**。
+          //
+          // 白哥两次说「已订阅页面丑陋」。上一轮我只砍了文案（47→19 字），
+          // 没动**结构** —— 所以「依然没解决」。真正的病是布局：
+          //
+          //   改前：卡片里孤零零挂一个**小胶囊按钮**，卡片下方一大片留白，
+          //         视线在「✓ 订阅中 / 一行说明 / 一个小按钮」之间来回跳。
+          //   改后（对齐设计稿 `subscribe-page-redesign-2026-10-09.html` §已订阅态）：
+          //         状态一行、到期日**独立一行**、管理入口作为**文字链接**收在卡内。
+          //
+          // 📌 判据：**同卡内的次要动作用「文字链接」，不用「按钮」** ——
+          //    按钮是页面的「主行动」，而「管理订阅」在已订阅态是**次要**的
+          //    （用户此刻没打算改，只是可能想取消）。给它按钮的视觉重量 = 抢戏。
+          GestureDetector(
             onTap: () => _openUrl(kAppleManageSubscriptionsUrl),
+            behavior: HitTestBehavior.opaque,
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(text: '管理或取消订阅：'),
+                  TextSpan(
+                    text: 'Apple ID 设置 → 订阅',
+                    style: TextStyle(
+                      color: Color(t.accent.argb32),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              style: TextStyle(
+                fontFamily: CoFonts.uiSans,
+                fontSize: _kCaption,
+                height: 1.6,
+                color: Color(t.ink3.argb32),
+              ),
+            ),
           ),
         ],
       ),
@@ -854,12 +899,33 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
   }
 
   // ── 恢复购买（§4.4.3）─────────────────────────────────────────────
-  Widget _restoreButton(CoEvoTokens t, IapSnapshot snap) => ClayButton(
-        label: snap.purchasing ? '处理中…' : '恢复购买',
-        variant: ClayButtonVariant.secondary,
-        expanded: true,
-        enabled: !snap.purchasing,
-        onTap: _restore,
+  //
+  // 🔴 2026-10-22：从**全宽次级按钮**改成**文字按钮**。
+  //
+  // 改前是个整宽的灰底灰字长条 —— 视觉上像**禁用的控件**（白哥截图里最刺眼的一处），
+  // 但它其实可点。`secondary` 变体在这个位置没有任何「主行动」与之竞争，
+  // 唯一的阅读效果就是「这里好像坏了」。
+  //
+  // 📌 判据：**「弱化的按钮」和「文字链接」传达的是两件事** ——
+  //    前者读作「暂时不可用」，后者读作「次要功能，可以点」。
+  //    恢复购买是后者（Apple 强制要求它**可见、可点**）。
+  Widget _restoreButton(CoEvoTokens t, IapSnapshot snap) => Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          onPressed: snap.purchasing ? null : _restore,
+          style: TextButton.styleFrom(
+            foregroundColor: Color(t.accent.argb32),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            textStyle: const TextStyle(
+              fontFamily: CoFonts.uiSans,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          child: Text(snap.purchasing ? '恢复中…' : '恢复购买'),
+        ),
       );
 
   // ── 法律链接（Apple 强制要求）──────────────────────────────────────
