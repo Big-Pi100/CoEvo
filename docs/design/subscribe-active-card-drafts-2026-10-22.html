@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>订阅页 · 已订阅卡片 · 三方案草稿（2026-10-22）</title>
+<style>
+  :root{
+    --page:#F5F0E8; --card:#FBF7F1; --line:#E3D9C8;
+    --ink:#3A332C; --ink2:#6B6154; --ink3:#8A7F70;
+    --accent:#B4432C; --ok:#3B6D11;
+  }
+  body{margin:0;padding:28px;background:#EDE7DC;color:var(--ink);
+       font-family:-apple-system,"PingFang SC","Helvetica Neue",system-ui,sans-serif;}
+  h1{font-size:17px;font-weight:600;margin:0 0 4px}
+  .sub{font-size:12.5px;color:var(--ink3);margin:0 0 22px;line-height:1.6}
+  .row{display:flex;gap:26px;align-items:flex-start;overflow-x:auto;padding-bottom:14px}
+  .col{flex:0 0 auto;width:340px}
+  .tag{font-size:14px;font-weight:600;margin-bottom:2px}
+  .tag em{font-style:normal;font-size:11px;color:var(--accent);font-weight:600;margin-left:6px}
+  .desc{font-size:11.5px;color:var(--ink3);margin-bottom:12px;line-height:1.5}
+  .phone{background:var(--page);border-radius:26px;padding:22px 18px;min-height:560px;
+         border:1px solid #E0D6C5}
+  .canvas{position:relative}
+  .canvas .hdr{font-size:22px;font-weight:600;letter-spacing:.5px;margin:0 0 16px}
+  .canvas .back{position:absolute;right:0;top:2px;font-size:13px;color:var(--accent)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px 16px}
+  .state{display:flex;align-items:center;gap:9px}
+  .state .ck{color:var(--accent);font-size:16px;line-height:1}
+  .state .t{font-size:15px;font-weight:600;flex:1}
+  .state .cloud{color:var(--ok);font-size:13px}
+  .date{font-size:12.5px;color:var(--ink3);margin-top:8px}
+  .note{font-size:12.5px;color:var(--ink3);line-height:1.55}
+  .link{font-size:12.5px;color:var(--ink3);line-height:1.55}
+  .link a{color:var(--accent);text-decoration:none;font-weight:500}
+  .restore{font-size:13.5px;color:var(--accent);font-weight:500;margin-top:15px;display:inline-block}
+  .legal{margin-top:26px}
+  .legal div{display:flex;justify-content:space-between;font-size:13px;color:var(--ink);
+             padding:9px 0;border-bottom:1px solid rgba(90,80,65,.08)}
+  .legal span{color:var(--accent)}
+  .mt6{margin-top:6px}.mt12{margin-top:12px}.mt14{margin-top:14px}.mt16{margin-top:16px}
+  .mt22{margin-top:22px}
+  .badge{display:inline-block;font-size:11px;background:#EFE3D2;color:#8A5A2B;
+         border-radius:6px;padding:2px 7px;margin-left:8px;font-weight:500}
+  .diff{font-size:11.5px;color:var(--ink2);margin-top:14px;line-height:1.7;
+        border-top:1px dashed #D8CDBA;padding-top:10px}
+  .diff b{font-weight:600;color:var(--ink)}
+</style>
+</head>
+<body>
+<h1>订阅页 · 已订阅卡片 · 三方案草稿</h1>
+<p class="sub">
+  真机截图（build 20）里内容已经不再贴边（padding 已修），剩下的「挤」是<b>卡片里放了 4 行、设计稿只有 3 行</b>。<br>
+  下面三张是按真机宽度（340pt）画的草稿，可直接对比。<b>第 3 行「取消后…」是我加进去的，设计稿没有。</b>
+</p>
+
+<div class="row">
+
+  <div class="col">
+    <div class="tag">方案 A<span class="badge">不推荐</span></div>
+    <div class="desc">删掉第 3 行，回到设计稿的三行</div>
+    <div class="phone">
+      <div class="canvas">
+        <h2 class="hdr">订阅</h2><span class="back">返回</span>
+      </div>
+      <div class="card">
+        <div class="state"><span class="ck">✓</span><span class="t">订阅中</span><span class="cloud">✓</span></div>
+        <div class="date">到期日 2026-11-20</div>
+        <div class="link mt12">管理或取消订阅：<a>Apple ID 设置 → 订阅</a></div>
+      </div>
+      <span class="restore">恢复购买</span>
+      <div class="legal">
+        <div>隐私政策<span>›</span></div>
+        <div>用户协议<span>›</span></div>
+      </div>
+      <div class="diff">
+        <b>好处</b>：最矮最干净，与 10-09 设计稿逐字一致。<br>
+        <b>代价</b>：<b>「取消后仍可用到期末」这句话在 App 里就没了</b>（「我的」页也没有这句）。
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="tag">方案 B</div>
+    <div class="desc">四行都保留，靠间距分组（8/10 → 6/16/12）</div>
+    <div class="phone">
+      <div class="canvas">
+        <h2 class="hdr">订阅</h2><span class="back">返回</span>
+      </div>
+      <div class="card">
+        <div class="state"><span class="ck">✓</span><span class="t">订阅中</span><span class="cloud">✓</span></div>
+        <div class="date mt6">到期日 2026-11-20</div>
+        <div class="note mt16">取消后，当前订阅期结束前仍可使用会员功能。</div>
+        <div class="link mt12">管理或取消订阅：<a>Apple ID 设置 → 订阅</a></div>
+      </div>
+      <span class="restore">恢复购买</span>
+      <div class="legal">
+        <div>隐私政策<span>›</span></div>
+        <div>用户协议<span>›</span></div>
+      </div>
+      <div class="diff">
+        <b>好处</b>：文案一字不删，只调整节奏。<br>
+        <b>代价</b>：卡片高约 30pt；本质是<b>用间距遮掩「两句都在讲取消」</b>。
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="tag">方案 C<em>推荐</em></div>
+    <div class="desc">卡片只留「状态 + 期限」，说明与两个操作移到卡外</div>
+    <div class="phone">
+      <div class="canvas">
+        <h2 class="hdr">订阅</h2><span class="back">返回</span>
+      </div>
+      <div class="card">
+        <div class="state"><span class="ck">✓</span><span class="t">订阅中</span><span class="cloud">✓</span></div>
+        <div class="date">到期日 2026-11-20</div>
+      </div>
+      <div class="note mt14">取消后，当前订阅期结束前仍可使用会员功能。</div>
+      <div class="link mt12">管理或取消订阅：<a>Apple ID 设置 → 订阅</a></div>
+      <span class="restore">恢复购买</span>
+      <div class="legal">
+        <div>隐私政策<span>›</span></div>
+        <div>用户协议<span>›</span></div>
+      </div>
+      <div class="diff">
+        <b>好处</b>：卡片只干一件事（我现在什么状态、什么时候到期）；<b>与未订阅态的页脚说明同性质</b>，位置也一致。<br>
+        <b>代价</b>：要定「管理订阅」与「恢复购买」两个操作的先后与间距。
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
