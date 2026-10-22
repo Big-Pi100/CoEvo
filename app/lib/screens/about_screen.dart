@@ -277,9 +277,13 @@ class AboutScreen extends StatelessWidget {
                       label: '应用名称',
                       value: kCoEvoName),
                   _InfoRow(
-                      labelWidth: labelColumnWidth,
-                      label: '版本',
-                      value: kCoEvoVersion),
+                    labelWidth: labelColumnWidth,
+                    label: '版本',
+                    value: kCoEvoVersion,
+                    // 🔬 2026-10-22 spike 入口：长按版本号进「翻页验证页」。
+                    //    ⚠️ 验完删掉这一行 + 上面的路由与 import。
+                    onLongPress: () => context.push('/spike/paginator'),
+                  ),
                   // 🔑 备案号是**中国区上架的常规要求**，且已真实持有 → 直接放（不是占位）
                   _InfoRow(
                       labelWidth: labelColumnWidth,
@@ -408,6 +412,7 @@ class _InfoRow extends StatelessWidget {
     required this.labelWidth,
     required this.label,
     required this.value,
+    this.onLongPress,
   });
 
   /// label 列的**共用宽度**（调用方用 [_measureLabelColumn] 实测传入；同组各行必须相同）。
@@ -415,6 +420,10 @@ class _InfoRow extends StatelessWidget {
 
   final String label;
   final String value;
+
+  /// 🔬 2026-10-22 spike：长按值触发（只给「版本」行传，用来进翻页验证页）。
+  /// 不传 = 普通文本，行为与原来一致。
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -440,12 +449,17 @@ class _InfoRow extends StatelessWidget {
           // 🔑 值**左对齐**并占满剩余宽度 ⇒ 三行的值从**同一条竖线**开始。
           //    ⚠️ 不再用 `Flexible` + `TextAlign.right`（那是右对齐：右边界齐、起点不齐）。
           Expanded(
-            child: Tw(
-              value,
-              style: TextStyle(
-                fontFamily: CoFonts.uiSans,
-                fontSize: _kBodyFontSize,
-                color: Color(t.ink3.argb32),
+            child: GestureDetector(
+              // 🔬 只对传了 onLongPress 的行生效；其余行它是 null，手势不拦截。
+              onLongPress: onLongPress,
+              behavior: HitTestBehavior.opaque,
+              child: Tw(
+                value,
+                style: TextStyle(
+                  fontFamily: CoFonts.uiSans,
+                  fontSize: _kBodyFontSize,
+                  color: Color(t.ink3.argb32),
+                ),
               ),
             ),
           ),

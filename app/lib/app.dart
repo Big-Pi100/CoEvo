@@ -21,6 +21,7 @@ import 'screens/review_tab_screen.dart';
 import 'screens/review_session_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/reader_screen.dart';
+import 'screens/spike_paginator_screen.dart';
 import 'screens/subscribe_screen.dart';
 import 'screens/notification_panel.dart';
 import 'providers/auth_provider.dart';
@@ -265,6 +266,14 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/subscribe',
       builder: (context, state) => const SubscribeScreen(),
+    ),
+    // 🔬 2026-10-22 spike：翻页阅读器验证页（临时路由，验完删）
+    //
+    // 目的：在真机验证「WebView + foliate 分页」的手感，再决定要不要全量替换。
+    // ⚠️ 它**不影响主流程** —— 入口藏在「关于」页的版本号长按里。
+    GoRoute(
+      path: '/spike/paginator',
+      builder: (context, state) => const SpikePaginatorScreen(),
     ),
     GoRoute(
       path: '/notifications',
