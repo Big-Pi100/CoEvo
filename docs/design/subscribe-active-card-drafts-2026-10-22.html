@@ -37,7 +37,7 @@
   .legal div{display:flex;justify-content:space-between;font-size:13px;color:var(--ink);
              padding:9px 0;border-bottom:1px solid rgba(90,80,65,.08)}
   .legal span{color:var(--accent)}
-  .mt6{margin-top:6px}.mt12{margin-top:12px}.mt14{margin-top:14px}.mt16{margin-top:16px}
+  .mt6{margin-top:6px}.mt8{margin-top:8px}.mt10{margin-top:10px}.mt12{margin-top:12px}.mt14{margin-top:14px}.mt16{margin-top:16px}
   .mt22{margin-top:22px}
   .badge{display:inline-block;font-size:11px;background:#EFE3D2;color:#8A5A2B;
          border-radius:6px;padding:2px 7px;margin-left:8px;font-weight:500}
@@ -47,13 +47,41 @@
 </style>
 </head>
 <body>
-<h1>订阅页 · 已订阅卡片 · 三方案草稿</h1>
+<h1>订阅页 · 已订阅卡片 · 现状 vs 三方案</h1>
 <p class="sub">
-  真机截图（build 20）里内容已经不再贴边（padding 已修），剩下的「挤」是<b>卡片里放了 4 行、设计稿只有 3 行</b>。<br>
-  下面三张是按真机宽度（340pt）画的草稿，可直接对比。<b>第 3 行「取消后…」是我加进去的，设计稿没有。</b>
+  左一是<b>现状（build 20 真机）</b>，按截图 1:1 复现（含真实间距 8 / 8 / 10）。<br>
+  可以看出「挤」不是边距问题（padding 已修好），而是<b>卡片里塞了 4 行、行间距几乎一样 ⇒ 读成一坨</b>。<br>
+  后三张是按真机宽度（340pt）画的方案草稿。<b>第 3 行「取消后…」是设计稿里没有的，是我加的。</b>
 </p>
 
 <div class="row">
+
+  <div class="col">
+    <div class="tag">现状<span class="badge">build 20 真机</span></div>
+    <div class="desc">4 行 · 间距 8 / 8 / 10 —— 三个数几乎相同</div>
+    <div class="phone" style="border-color:#D6A69A">
+      <div class="canvas">
+        <h2 class="hdr">订阅</h2><span class="back">返回</span>
+      </div>
+      <div class="card" style="border-color:#D6A69A">
+        <div class="state"><span class="ck">✓</span><span class="t">订阅中</span><span class="cloud">✓</span></div>
+        <div class="date mt8">到期日 2026-11-20</div>
+        <div class="note mt8">取消后，当前订阅期结束前仍可使用会员功能。</div>
+        <div class="link mt10">管理或取消订阅：<a>Apple ID 设置 → 订阅</a></div>
+      </div>
+      <span class="restore">恢复购买</span>
+      <div class="legal">
+        <div>隐私政策<span>›</span></div>
+        <div>用户协议<span>›</span></div>
+      </div>
+      <div class="diff" style="border-top-color:#D6A69A">
+        <b>问题</b>：<br>
+        ① <b>4 行挤在一张卡</b>：状态 / 期限 / 条款 / 动作，四种性质没有分组<br>
+        ② <b>8 · 8 · 10</b> 三个间距几乎相等 ⇒ 分组等于没做<br>
+        ③ 第 3 行与第 4 行<b>都在讲「取消」</b>，相邻且同字号 ⇒ 读成一句长话
+      </div>
+    </div>
+  </div>
 
   <div class="col">
     <div class="tag">方案 A<span class="badge">不推荐</span></div>
