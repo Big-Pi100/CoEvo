@@ -30,9 +30,25 @@
  */
 var NL = String.fromCharCode(10);
 var __err = document.getElementById('err');
-var __fail = function (m) {
-  try { __err.style.display = 'block'; __err.textContent += String(m) + NL; } catch (_) {}
+var __stage = '';
+var __errLines = [];
+// 🔴 错误面板**只留最近 3 条**：白屏时 17 条脱敏错误会把整屏占满，
+//    反而把「进行到哪一步」挤没了（2026-10-22 真机上就是这样）。
+var __renderDiag = function () {
+  try {
+    __err.style.display = 'block';
+    __err.textContent = ('阶段：' + (__stage || '(none)') + NL +
+      __errLines.join(NL));
+  } catch (_) {}
 };
+var __fail = function (m) {
+  try {
+    __errLines.push(String(m));
+    if (__errLines.length > 3) __errLines.shift();
+    __renderDiag();
+  } catch (_) {}
+};
+var __setStage = function (m) { __stage = m; __renderDiag(); };
 var __post = function (obj) {
   try { if (window.CoEvoBridge) window.CoEvoBridge.postMessage(JSON.stringify(obj)); } catch (_) {}
 };
@@ -50,7 +66,7 @@ window.addEventListener('unhandledrejection', function (e) {
   __fail(detail);
   __post({ type: 'error', detail: detail });
 });
-__post({ type: 'stage', detail: 'boot:1 骨架就绪' });
+__setStage('boot:1 骨架就绪'); __post({ type: 'stage', detail: 'boot:1 骨架就绪' });
 </script>
 
 <script>
@@ -1201,7 +1217,7 @@ class Paginator extends HTMLElement {
 
 customElements.define('foliate-paginator', Paginator)
 
-__post({ type: 'stage', detail: 'boot:2 vendor 执行完毕' });
+__setStage('boot:2 vendor 执行完毕'); __post({ type: 'stage', detail: 'boot:2 vendor 执行完毕' });
 </script>
 
 <script>
@@ -1251,7 +1267,25 @@ function buildDocUrl(bodyHtml) {
     'h2{font-size:' + (t.fs + 2) + 'px;line-height:1.4;margin:0 0 14px;}';
   const html = '<!doctype html><html><head><meta charset="utf-8"><style>' + css +
                '</style></head><body>' + bodyHtml + '</body></html>';
-  return URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+
+  // 🔴🔴 2026-10-22 真机（`JS: Script error. @//0.0.0.0/:0` ×17）：
+  //   错误源的 host 是 `0.0.0.0` —— 那是 **WebView 加载 flutter_assets 的虚拟源**。
+  //   在这种自定义源下 **`URL.createObjectURL(new Blob(...))` 很可能不可用**
+  //   （blob URL 需要一个合法的 opaque/file/http origin 才能被 iframe 加载）。
+  //   ⇒ iframe 加载失败 ⇒ foliate 的 `#view` 建不起来 ⇒ 它的 `ResizeObserver`
+  //     每次布局变化都调 `render()` 并抛错 ⇒ 屏幕上一串脱敏的 `Script error.`。
+  //
+  //   ⇒ 改用 **data: URL**（兼容性最好，不依赖 blob 存储）。
+  //   ⚠️ 必须 base64 且按 UTF-8 编码，否则中文段落会乱码：
+  //      `btoa` 只吃 latin1，所以先 `encodeURIComponent` + `unescape` 转成字节串。
+  try {
+    return 'data:text/html;charset=utf-8;base64,' +
+           btoa(unescape(encodeURIComponent(html)));
+  } catch (e) {
+    __post({ type: 'error', detail: 'data URL 编码失败: ' + e });
+    // 兜底：退回 blob（万一 data URL 太长被拒）
+    return URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  }
 }
 
 function reopen(keep) {
@@ -1283,10 +1317,10 @@ window.__reader = {
     //    （真机没有控制台，`Script error.` 又是脱敏的 ⇒ 只能自己打点）
     var stage = 'start';
     try {
-      __post({ type: 'stage', detail: 'setContent:start' });
+      __setStage('setContent:start'); __post({ type: 'stage', detail: 'setContent:start' });
       var list = JSON.parse(chaptersJson);
       stage = 'parsed(' + (list ? list.length : 'null') + ')';
-      __post({ type: 'stage', detail: stage });
+      __setStage(stage); __post({ type: 'stage', detail: stage });
       if (!list || !list.length) {
         __post({ type: 'error', detail: 'setContent: 章节数组为空' });
         return 0;
@@ -1297,13 +1331,13 @@ window.__reader = {
       stage = 'reopen';
       reopen(false);
       stage = 'reopened';
-      __post({ type: 'stage', detail: stage });
+      __setStage(stage); __post({ type: 'stage', detail: stage });
 
       // 🛟 兜底：有些环境下 `open()` 不会自动加载第一节 ⇒ 主动定位一次。
       //    800ms 后如果还没收到 relocate（说明没渲染），就强制 goTo(0)。
       setTimeout(function () {
         if (!state.ready) {
-          __post({ type: 'stage', detail: 'fallback:goTo(0)' });
+          __setStage('fallback:goTo(0)'); __post({ type: 'stage', detail: 'fallback:goTo(0)' });
           try { pag.goTo(0); } catch (e2) {
             __post({ type: 'error', detail: 'fallback goTo 失败: ' + e2 });
           }
