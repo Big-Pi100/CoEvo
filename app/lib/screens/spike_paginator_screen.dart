@@ -27,6 +27,9 @@ class _SpikePaginatorScreenState extends State<SpikePaginatorScreen> {
   int _themeIdx = 0;
   String? _error;
 
+  /// 顶栏/底栏是否显示 —— **默认隐藏**（白哥：平时看不见，单击正文才弹出）。
+  bool _bars = false;
+
   static const _themes = <({String name, String bg, String fg})>[
     (name: '墨', bg: '#F5F0E8', fg: '#3A332C'),
     (name: '格', bg: '#FBFAF6', fg: '#2E2C28'),
@@ -40,6 +43,7 @@ class _SpikePaginatorScreenState extends State<SpikePaginatorScreen> {
     _c.setChapters(_demoChapters);
     _c.lastError.addListener(_onErr);
     _c.selectedText.addListener(_onSel);
+    _c.tapTick.addListener(_onTap);
   }
 
   void _onErr() {
@@ -51,10 +55,16 @@ class _SpikePaginatorScreenState extends State<SpikePaginatorScreen> {
     if (mounted) setState(() {});
   }
 
+  void _onTap() {
+    if (!mounted) return;
+    setState(() => _bars = !_bars);
+  }
+
   @override
   void dispose() {
     _c.lastError.removeListener(_onErr);
     _c.selectedText.removeListener(_onSel);
+    _c.tapTick.removeListener(_onTap);
     super.dispose();
   }
 
@@ -66,49 +76,91 @@ class _SpikePaginatorScreenState extends State<SpikePaginatorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = _themes[_themeIdx];
+    final bg = _hex(t.bg);
+    final safe = MediaQuery.of(context).padding;
+
+    // 🔴 2026-10-22 白哥：「底部和顶部应该只有单击页面才会弹出以供用户选择，
+    //    而平常是看不见的，用户应该有一个干净的阅读界面不被任何东西打扰。」
+    //
+    // ⇒ 改成 **Stack 覆盖式**：正文永远占满整屏，顶/底栏浮在上面、默认隐藏。
+    //   `AnimatedSlide` 让它们滑出/滑入（不是淡出 —— 滑动更能表达「收起来」）。
+    //   ⚠️ 正文要避开状态栏与 Home indicator（用 `MediaQuery.padding`），
+    //      否则第一行文字会压到灵动岛下面。
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F0E8),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _bar(),
-            Expanded(
+      backgroundColor: bg,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: Padding(
+              padding: EdgeInsets.only(top: safe.top, bottom: safe.bottom),
               child: FoliateReaderView(
                 controller: _c,
                 onError: (m) => setState(() => _error = m),
               ),
             ),
-            _footer(),
-          ],
-        ),
+          ),
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            top: _bars ? 0 : -(safe.top + 64),
+            left: 0,
+            right: 0,
+            child: _bar(t),
+          ),
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            bottom: _bars ? 0 : -(safe.bottom + 150),
+            left: 0,
+            right: 0,
+            child: _footer(bg),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _bar() => Container(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-        color: const Color(0xFFFBF7F1),
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.close, size: 20),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            const Expanded(
-              child: Text('翻页 spike',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-            ),
-            TextButton(
-              onPressed: _cycleTheme,
-              child: Text('主题：${_themes[_themeIdx].name}'),
-            ),
-          ],
+  static Color _hex(String s) {
+    final v = int.parse(s.replaceFirst('#', ''), radix: 16);
+    return Color(0xFF000000 | v);
+  }
+
+  Widget _bar(({String name, String bg, String fg}) t) => SafeArea(
+        bottom: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(6, 6, 10, 10),
+          color: _hex(t.bg),
+          child: Row(
+            children: [
+              IconButton(
+                icon: Icon(Icons.close, size: 20, color: _hex(t.fg)),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              Expanded(
+                child: Text(
+                  '翻页 spike',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: _hex(t.fg),
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: _cycleTheme,
+                child: Text('主题：${t.name}'),
+              ),
+            ],
+          ),
         ),
       );
 
-  Widget _footer() => Container(
+  Widget _footer(Color bg) => SafeArea(
+        top: false,
+        child: Container(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
-        color: const Color(0xFFFBF7F1),
+        color: bg,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -159,6 +211,7 @@ class _SpikePaginatorScreenState extends State<SpikePaginatorScreen> {
               ],
             ),
           ],
+        ),
         ),
       );
 

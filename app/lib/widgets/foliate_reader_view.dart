@@ -39,6 +39,10 @@ class FoliateReaderController {
   final ValueNotifier<String?> selectedText = ValueNotifier<String?>(null);
   final ValueNotifier<String?> lastError = ValueNotifier<String?>(null);
 
+  /// 正文被**单击**了一次（用来切换顶栏/底栏）。
+  /// 🔑 用递增计数而不是 bool：连续单击两次要能各自触发一次 toggle。
+  final ValueNotifier<int> tapTick = ValueNotifier<int>(0);
+
   bool _ready = false;
   List<String> _pendingChapters = const [];
 
@@ -110,6 +114,8 @@ class FoliateReaderController {
           );
         case 'select':
           selectedText.value = (m['text'] as String?)?.trim();
+        case 'tap':
+          tapTick.value = tapTick.value + 1;
         default:
           break;
       }
