@@ -334,6 +334,7 @@ pag.addEventListener('load', function (e) {
     if (!doc || typeof doc.addEventListener !== 'function') return;
     if (doc.__coevoSelBound) return;
     doc.__coevoSelBound = true;
+    bindTapToDoc(doc);
     ['touchstart', 'touchmove', 'touchend'].forEach(function (type) {
       doc.addEventListener(type, function (ev) {
         try {
@@ -347,13 +348,19 @@ pag.addEventListener('load', function (e) {
   }
 });
 
-// 单击正文 → 通知 Flutter 切换顶栏/底栏（白哥：「只有单击页面才会弹出」）。
-// ⚠️ 有选中文字时**不算单击**（那是选词，不是要菜单栏）。
-document.addEventListener('click', function () {
-  var sel = window.getSelection();
-  if (sel && sel.toString().trim()) return;
-  __post({ type: 'tap' });
-});
+// 🔴 2026-10-22 真机：**点击屏幕召唤不出顶栏**。
+//   根因：正文在 **iframe 里**，点击事件**不会跨文档冒泡**到顶层 document
+//   ⇒ 监听顶层 `document` 的 click 永远收不到（和 touch 守卫同一个坑）。
+//   ⇒ 挪进 `load` 回调，注册到 **iframe 的 doc** 上（见下面的 bindToDoc）。
+function bindTapToDoc(doc) {
+  if (!doc || doc.__coevoTapBound) return;
+  doc.__coevoTapBound = true;
+  doc.addEventListener('click', function () {
+    var sel = doc.getSelection ? doc.getSelection() : null;
+    if (sel && sel.toString().trim()) return;   // 选词时不算「单击」
+    __post({ type: 'tap' });
+  }, false);
+}
 
 var __selTimer = 0;
 document.addEventListener('selectionchange', function () {
