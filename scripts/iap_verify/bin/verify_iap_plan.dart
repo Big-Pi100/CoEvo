@@ -1734,7 +1734,31 @@ void main() {
     // 白哥 2026-10-22 真机：支付一次后又弹第二次支付，取消时报
     // `storekit_duplicate_product_object`。根因是 `buy()` 无防重入，
     // 只靠 UI 把按钮变灰（`_emit` → 重建 → 变灰，中间隔一帧）。
-    // ── ㉓ 到期日：必须格式化、且取「较晚」的那个（2026-10-22 两个显示 bug）──
+    // ── ㉔ Clay 卡片必须显式给 padding（否则内容贴边 = 「撑爆了」）──
+  //
+  // 🔴 2026-10-22 白哥连说三次「丑 / 撑爆了」，我前两次都在改文案和排版，
+  //    **从没检查容器自己的内边距**。
+  //    而 `Clay.padding` 的默认值是 `EdgeInsets.zero`（`clay.dart`）——
+  //    不传 ⇒ 内容直接压在圆角上。
+  //
+  // 📌 判据：**「撑爆」先量 padding，再谈文案长短**。
+  //    内容贴边是**容器**的问题；缩文案只是遮掩，而且会把话说残缺。
+  //
+  // ⚠️ 只断言**本页的内容型卡片**（`clay_button` / `clay_field` 这些控件
+  //    内部有自己的 padding 逻辑，不传是对的 —— 不能无脑全扫）。
+  final subSrc = codeOnly(readApp('screens/subscribe_screen.dart'));
+  final clayHeads = RegExp(r'Clay\(').allMatches(subSrc).map((m) {
+    final tail = subSrc.substring(m.start, (m.start + 420).clamp(0, subSrc.length));
+    return tail.split('child:').first;
+  }).toList();
+  check(
+    '㉔-1 订阅页每处 Clay 都自带 padding（控件类除外）',
+    clayHeads.every((h) => h.contains('padding')),
+    '漏 padding ⇒ 内容贴到圆角边缘，看起来「撑爆了」'
+        '（Clay 默认是 EdgeInsets.zero）',
+  );
+
+  // ── ㉓ 到期日：必须格式化、且取「较晚」的那个（2026-10-22 两个显示 bug）──
     //
     // bug A：端侧无权益时退回服务端原串 ⇒ 页面上出现
     //        「到期日 2026-11-20T14:47:31Z」这种 ISO 串（白哥截图）。

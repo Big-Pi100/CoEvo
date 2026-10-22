@@ -807,6 +807,19 @@ class _SubscribeScreenState extends ConsumerState<SubscribeScreen> {
     );
     return Clay(
       borderRadius: BorderRadius.circular(16),
+      padding: const EdgeInsets.fromLTRB(16, 15, 16, 15),
+      // 🔴🔴 2026-10-22：**必须显式给 padding**。
+      //
+      // `Clay.padding` 的默认值是 `EdgeInsets.zero`（见 `clay.dart`）——
+      // 不传的话内容**直接贴在圆角边缘**。白哥连着三次说「丑 / 撑爆了」，
+      // 我前两次都在改文案和排版，**从没检查容器自己的内边距**。
+      //
+      // 现场（截图）：✓ 图标几乎压住左上圆角、「取消后…」左右都顶到边、
+      // 「管理订阅」贴在左下角 —— 那不是「信息太多」，是**没有留白**。
+      //
+      // 📌 判据：**「撑爆」先量 padding，再谈文案长短**。
+      //    内容贴边是**容器**的问题，缩文案只是遮掩（而且会把话说残缺）。
+      // 取值与本页其他卡片一致（16/15/16/15），也与书架卡片同族。
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
