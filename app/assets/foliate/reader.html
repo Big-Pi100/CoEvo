@@ -21,7 +21,40 @@
 <div id="err"></div>
 
 <script>
-/* ── vendor: foliate-js/paginator.js（内联，去掉 export）───────────────
+/* ── ① 诊断骨架（**必须最先执行**）────────────────────────────────────
+ * 🔴 真机白屏只报 `JS: Script error. @0:0` ×17 —— `@0:0` 说明浏览器不给位置：
+ *    因为 `loadFlutterAsset` 走 `loadHTMLString`（baseURL = about:blank）
+ *    ⇒ **opaque origin**，所有 onerror 详情被脱敏。
+ * 对策：诊断代码**单独一块 + 放在 vendor 之前**。浏览器里不同 <script> 块互不
+ *    影响（某块抛错，后面照常执行）⇒ 即使 vendor 崩了也能收到 boot 标记。
+ */
+var NL = String.fromCharCode(10);
+var __err = document.getElementById('err');
+var __fail = function (m) {
+  try { __err.style.display = 'block'; __err.textContent += String(m) + NL; } catch (_) {}
+};
+var __post = function (obj) {
+  try { if (window.CoEvoBridge) window.CoEvoBridge.postMessage(JSON.stringify(obj)); } catch (_) {}
+};
+window.onerror = function (msg, src, line, col, err) {
+  var detail = 'JS: ' + msg + ' @' + line + ':' + col +
+               (err && err.stack ? NL + err.stack.split(NL).slice(0, 4).join(NL) : '');
+  __fail(detail);
+  __post({ type: 'error', detail: detail });
+  return false;
+};
+window.addEventListener('unhandledrejection', function (e) {
+  var r = e.reason;
+  var detail = 'Promise: ' + (r && r.message ? r.message : String(r)) +
+               (r && r.stack ? NL + r.stack.split(NL).slice(0, 4).join(NL) : '');
+  __fail(detail);
+  __post({ type: 'error', detail: detail });
+});
+__post({ type: 'stage', detail: 'boot:1 骨架就绪' });
+</script>
+
+<script>
+/* ── ② vendor: foliate-js/paginator.js（内联，去掉 export）───────────────
  * 上游 https://github.com/johnfactotum/foliate-js
  * ⚠️ 本段由 `scripts/build_foliate_reader.py` 生成，**不要手改**。
  * ⚠️ 上游 README：「not stable, API may change at any time」。
@@ -1168,18 +1201,11 @@ class Paginator extends HTMLElement {
 
 customElements.define('foliate-paginator', Paginator)
 
-/* ── CoEvo 桥 ─────────────────────────────────────────────────────── */
-const __err = document.getElementById('err');
-// 🔴 换行一律用 `String.fromCharCode(10)` 拼 ——
-//    在生成脚本里写 `'\n'` 很容易被解释成**真实的换行**，
-//    那会让 JS 出现「字符串未闭合」的语法错误 ⇒ **整段脚本不执行 ⇒ 白屏**
-//    （2026-10-22 真机就是这样白屏的，而且只报脱敏的 `Script error.`）。
-var NL = String.fromCharCode(10);
-const __fail = (m) => {
-  __err.style.display = 'block';
-  __err.textContent += String(m) + NL;
-};
+__post({ type: 'stage', detail: 'boot:2 vendor 执行完毕' });
+</script>
 
+<script>
+/* ── ③ CoEvo 桥主体 ────────────────────────────────────────────────── */
 // 🔴 2026-10-22：原来的 `(m) => __fail('JS: ' + m)` 只拿到脱敏后的
 //   `"Script error."`（跨域/origin 为 null 时浏览器不给详情）⇒ **等于没有错误信息**。
 //   现在把 msg / 行列 / stack 全都带出来，并且**上报到 Flutter**（真机上没有控制台）。

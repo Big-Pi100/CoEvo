@@ -9,7 +9,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HTML="$ROOT/app/assets/foliate/reader.html"
-TMP="$(mktemp -t foliate.XXXXXX.js)"
+TMP="$ROOT/.tmp_foliate_bundle.js"
 trap 'rm -f "$TMP"' EXIT
 
 python3 - "$HTML" "$TMP" <<'PY'
@@ -23,10 +23,5 @@ open(out, 'w', encoding='utf-8', newline='\n').write(m.group(1))
 print(f'script chars: {len(m.group(1))}')
 PY
 
-if command -v node >/dev/null 2>&1; then
-  node --check "$TMP"
-else
-  # 没有 node 时退到本机 managed 版本
-  node --check "$TMP"
-fi
+node --check "$TMP"
 echo "✅ reader.html 内联 JS 语法通过"
