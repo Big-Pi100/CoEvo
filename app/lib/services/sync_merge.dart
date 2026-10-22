@@ -787,6 +787,8 @@ const Map<String, List<(String table, String column)>> kSyncFieldSources = {
     ('book', 'content_hash'), // 🔴 跨设备身份在 `book` 表，不在 `book_progress`
     ('book_progress', 'chapter_idx'),
     ('book_progress', 'scroll_ratio'),
+    // 🆕 v6（2026-10-23）：字符偏移 —— 翻页阅读器的原生坐标（详见 book_db_schema.sql）
+    ('book_progress', 'char_offset'),
     ('book_progress', 'updated_at'),
   ],
   // 🆕 2026-10-10：查词记录（user.db —— 注意 `word_id` 可空）
@@ -806,6 +808,8 @@ const Map<String, List<(String table, String column)>> kSyncFieldSources = {
     ('book', 'content_hash'),
     ('book_marker', 'chapter_idx'),
     ('book_marker', 'scroll_ratio'),
+    // 🆕 v6（2026-10-23）：字符偏移（与进度同一口径）
+    ('book_marker', 'char_offset'),
     ('book_marker', 'excerpt'),
     ('book_marker', 'created_at'),
     ('book_marker', 'deleted'),
@@ -858,7 +862,13 @@ const Map<String, List<String>> kPushJsonContract = {
     'created_at',
     'updated_at',
   ],
-  'book_progress': ['content_hash', 'chapter_idx', 'scroll_ratio', 'updated_at'],
+  'book_progress': [
+    'content_hash',
+    'chapter_idx',
+    'scroll_ratio',
+    'char_offset',
+    'updated_at',
+  ],
   // 🆕 2026-10-10：与后端 `LookupEventInput` 的字段**逐字一致**
   'lookup_event': [
     'uid',
@@ -875,6 +885,7 @@ const Map<String, List<String>> kPushJsonContract = {
     'content_hash',
     'chapter_idx',
     'scroll_ratio',
+    'char_offset',
     'excerpt',
     'created_at',
     'deleted',

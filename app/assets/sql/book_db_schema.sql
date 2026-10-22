@@ -107,6 +107,24 @@ CREATE TABLE IF NOT EXISTS book_progress (
   book_id      TEXT PRIMARY KEY,
   chapter_idx  INTEGER NOT NULL DEFAULT 0,
   scroll_ratio REAL    NOT NULL DEFAULT 0, -- 章内相对位置 0~1（**不存绝对像素** —— 换设备/换字号后像素值无意义）
+  -- 🆕 v6（2026-10-23）：**字符偏移**（本章纯文本里第几个字符）。
+  --
+  -- # 🔴 为什么必须加它（翻页阅读器带来的）
+  --
+  -- `scroll_ratio` 是**像素**关系，而翻页器切页是**字符**关系 —— 两者不是线性：
+  -- 同一个 `scroll_ratio` 在字号 15 和 24 下会指向**完全不同的句子**。
+  -- 翻页阅读器每页的起点本来就是字符位置 ⇒ 存字符偏移才是**这一层的原生坐标**。
+  --
+  -- # 🔑 为什么是「可空」而不是 NOT NULL
+  --
+  -- 老数据算不出来（当时没记），**必须留 NULL 表示「不知道」** ——
+  -- 拿 0 充当「不知道」会让每本书都跳到开头（那是**信息伪装**）。
+  -- 读端：NULL ⇒ 用 `round(scroll_ratio × 本章字符数)` 兜底，并把换算值写回（渐进补齐）。
+  --
+  -- ⚠️ **口径必须唯一**：这里存的是「HTML 渲染文本」的偏移
+  --    （段落拼接**不含**段落分隔符），与 `buildDocUrl` 生成 HTML 的口径一致。
+  --    两处口径不同 ⇒ 偏移会系统性偏移，且**不会报错**。
+  char_offset  INTEGER,
   updated_at   TEXT NOT NULL,
   FOREIGN KEY (book_id) REFERENCES book(id) ON DELETE CASCADE
 );
@@ -138,6 +156,7 @@ CREATE TABLE IF NOT EXISTS book_progress_pending (
   content_hash TEXT PRIMARY KEY,           -- 按**指纹**存，而不是 book_id（见上）
   chapter_idx  INTEGER NOT NULL,
   scroll_ratio REAL    NOT NULL,
+  char_offset  INTEGER,                    -- 🆕 v6：见 `book_progress` 同名列的说明
   updated_at   TEXT    NOT NULL
 );
 
@@ -181,6 +200,7 @@ CREATE TABLE IF NOT EXISTS book_marker (
   book_id      TEXT NOT NULL,
   chapter_idx  INTEGER NOT NULL,
   scroll_ratio REAL    NOT NULL,           -- 章内相对位置 0~1（**与进度同一套**）
+  char_offset  INTEGER,                    -- 🆕 v6：与 `book_progress.char_offset` 同口径
   -- 摘录：列表里让用户「认出这是哪段」。
   -- ⚠️ **它是近似值** —— 由比例估算而来（比例是**像素**关系、文字是**字符**关系，
   --    两者不是线性），可能差几十到一百多字。设计稿已如实标注。
@@ -224,6 +244,7 @@ CREATE TABLE IF NOT EXISTS book_marker_pending (
   content_hash TEXT NOT NULL,      -- 书的跨设备身份（用来找「本地有没有这本书」）
   chapter_idx  INTEGER NOT NULL,
   scroll_ratio REAL NOT NULL,
+  char_offset  INTEGER,                    -- 🆕 v6
   excerpt      TEXT NOT NULL,
   created_at   TEXT NOT NULL,
   deleted      INTEGER NOT NULL DEFAULT 0

@@ -79,7 +79,7 @@ const String kBookDbSchemaAsset = 'assets/sql/book_db_schema.sql';
 ///    加表却忘升版本 ⇒ 老库（`version == 目标版本`）**不触发 `onUpgrade`** ⇒ 表**永远建不出来**
 ///    （`IF NOT EXISTS` 一句都不会执行）⇒ **静默失败**。
 /// ⚠️ 因此 `verify_bookdb_migration` **必须补 `fromVersion: 4`**（真机此刻所处的版本）。
-const int kBookDbVersion = 5;
+const int kBookDbVersion = 6;
 
 /// 打开（必要时创建）`book.db`。
 ///
@@ -154,6 +154,35 @@ Future<Database> openBookDb({
             column: 'content_hash',
             ddl: 'TEXT',
           );
+        }
+
+        // ── ①b v6（2026-10-23）：四张表补 `char_offset` 列 ──
+        //
+        // 🔴 为什么加它：翻页阅读器的分页是**字符**关系，而 `scroll_ratio` 是**像素**关系
+        //    ⇒ 两者不是线性。同一个比例在字号 15 / 24 下指向不同句子 ⇒
+        //    翻页后必须存「字符偏移」才能准确跳回。
+        //    （详见 `book_db_schema.sql` 里 `book_progress.char_offset` 的长注释）
+        //
+        // ⚠️ 顺序：**必须在重跑脚本之前**（同 v2 的教训 —— 脚本里若有引用新列的索引，
+        //    先跑脚本会 `no such column`）。本版脚本暂时没有引用 `char_offset` 的索引，
+        //    但保持同一顺序，将来加索引时不会埋雷。
+        //
+        // ✅ 四张表都加：进度 / 待认领进度 / 书签 / 待认领书签 ——
+        //    它们是**同一个坐标**的四个落点，只改一半会让同步把 NULL 互相覆盖。
+        if (oldVersion < 6) {
+          for (final t in const [
+            'book_progress',
+            'book_progress_pending',
+            'book_marker',
+            'book_marker_pending',
+          ]) {
+            await addColumnIfMissing(
+              db,
+              table: t,
+              column: 'char_offset',
+              ddl: 'INTEGER',
+            );
+          }
         }
 
         // ── ② **再**重跑全量幂等脚本：建出缺失的表 / 索引 ──
