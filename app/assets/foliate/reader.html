@@ -66,7 +66,8 @@ window.addEventListener('unhandledrejection', function (e) {
   __fail(detail);
   __post({ type: 'error', detail: detail });
 });
-__setStage('boot:1 骨架就绪'); __post({ type: 'stage', detail: 'boot:1 骨架就绪' });
+__setStage('boot:1 bridge=' + (window.CoEvoBridge ? 'YES' : 'NO'));
+__post({ type: 'stage', detail: 'boot:1 骨架就绪 bridge=' + (!!window.CoEvoBridge) });
 </script>
 
 <script>
@@ -1222,6 +1223,12 @@ __setStage('boot:2 vendor 执行完毕'); __post({ type: 'stage', detail: 'boot:
 
 <script>
 /* ── ③ CoEvo 桥主体 ────────────────────────────────────────────────── */
+
+// 🔴 2026-10-22 真机：阶段停在 `boot:2`，说明**块③的部分没跑完**
+//    （`setContent` 的 stage 从没出现 ⇒ Flutter 压根没发内容 ⇒ 白屏）。
+//    ⚠️ 而页面上的「阶段」是 `__setStage` **直接写 DOM** 的，**不经过 bridge** ——
+//    所以「阶段能显示」**不等于**「bridge 能用」。这一行专门把两件事分开：
+__setStage('bridge:start bridge=' + (window.CoEvoBridge ? 'YES' : 'NO'));
 // 🔴 2026-10-22：原来的 `(m) => __fail('JS: ' + m)` 只拿到脱敏后的
 //   `"Script error."`（跨域/origin 为 null 时浏览器不给详情）⇒ **等于没有错误信息**。
 //   现在把 msg / 行列 / stack 全都带出来，并且**上报到 Flutter**（真机上没有控制台）。
@@ -1467,6 +1474,19 @@ document.addEventListener('selectionchange', function () {
   }, 260);
 });
 
+// 供 Flutter **主动轮询**用（不依赖 JS→Flutter 的 push）：
+// 如果 `CoEvoBridge` 注入失败，`ready` 消息永远发不出去 ⇒ 白屏且无提示。
+// ⇒ Flutter 侧在 onPageFinished 后直接 `runJavaScriptReturningResult('window.__bridgePing()')`。
+window.__bridgePing = function () {
+  return JSON.stringify({
+    ok: true,
+    hasBridge: !!window.CoEvoBridge,
+    hasReader: !!window.__reader,
+    stage: __stage,
+  });
+};
+
+__setStage(__stage + ' → ready 已发');
 __post({ type: 'ready' });
 </script>
 </body>

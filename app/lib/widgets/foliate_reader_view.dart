@@ -181,7 +181,13 @@ class _FoliateReaderViewState extends State<FoliateReaderView> {
         widget.controller._onMessage(m.message);
       })
       ..setNavigationDelegate(NavigationDelegate(
-        onPageFinished: (_) {},
+        // 🔴 2026-10-22 真机（白屏）：**不要依赖 JS 主动发 `ready`**。
+        //    `addJavaScriptChannel` 注入的 `window.CoEvoBridge` 在某些情况下拿不到
+        //    （真机上「阶段」能显示是因为它直接写 DOM，**不经过 bridge** ——
+        //     所以「页面有字」不等于「桥能通」）。
+        //    ⇒ 页面加载完由**原生主动轮询** `window.__bridgePing()`，
+        //      拿到 `hasReader: true` 才认为就绪。这样 bridge 通不通都能推进。
+        onPageFinished: (_) => _bootstrap(),
         onWebResourceError: (e) {
           widget.onError?.call('WebView 错误：${e.description}');
         },
@@ -190,6 +196,36 @@ class _FoliateReaderViewState extends State<FoliateReaderView> {
 
     widget.controller._attach(web);
     _web = web;
+  }
+
+  /// 页面加载完后**主动轮询**，直到 `window.__reader` 就绪，再把内容推下去。
+  ///
+  /// 🔑 为什么不是「等 JS 发 ready」：那条路依赖 `CoEvoBridge` 注入成功；
+  ///    真机上曾经出现过「页面能渲染、阶段能更新，但 bridge 从没通」的情况
+  ///    ⇒ `ready` 永远发不出来 ⇒ 白屏且没有任何可观察的异常。
+  ///    轮询是**原生发起的**，不依赖任何 JS→原生的通道。
+  Future<void> _bootstrap() async {
+    final web = _web;
+    if (web == null) return;
+    for (var i = 0; i < 40; i++) {
+      try {
+        final raw = await web.runJavaScriptReturningResult(
+            'window.__bridgePing ? window.__bridgePing() : ""');
+        final txt = raw.toString();
+        if (txt.contains('"hasReader":true')) {
+          widget.controller._ready = true;
+          final pending = widget.controller._pendingChapters;
+          if (pending.isNotEmpty) {
+            await widget.controller._setContent(pending);
+          }
+          return;
+        }
+      } catch (_) {
+        // 还没加载好 —— 继续等（不打断）
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+    }
+    widget.onError?.call('阅读器初始化超时：window.__reader 未就绪');
   }
 
   @override
