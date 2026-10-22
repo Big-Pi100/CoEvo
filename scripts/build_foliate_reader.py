@@ -59,6 +59,18 @@ var __errLines = [];
 //    反而把「进行到哪一步」挤没了（2026-10-22 真机上就是这样）。
 var __renderDiag = function () {
   try {
+    var ok = __errLines.length === 0 && __stage.indexOf('ready') >= 0;
+    if (ok) {
+      // 🔑 渲染成功时诊断条**不该常驻**（会挡住正文底部）。
+      //    显示 1.2 秒让你看到「reopened → ready 已发」，然后自动隐藏。
+      __err.style.display = 'block';
+      __err.textContent = '阶段：' + __stage;
+      clearTimeout(window.__diagHideTimer);
+      window.__diagHideTimer = setTimeout(function () {
+        if (!__errLines.length) __err.style.display = 'none';
+      }, 1200);
+      return;
+    }
     __err.style.display = 'block';
     __err.textContent = ('阶段：' + (__stage || '(none)') + NL +
       __errLines.join(NL));
