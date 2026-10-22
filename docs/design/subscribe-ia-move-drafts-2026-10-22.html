@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>订阅信息架构调整 · 草稿（2026-10-22）</title>
+<style>
+  :root{
+    --page:#F5F0E8; --card:#FBF7F1; --line:#E3D9C8;
+    --ink:#3A332C; --ink2:#6B6154; --ink3:#8A7F70;
+    --accent:#B4432C; --ok:#3B6D11; --moved:#2F6F4E;
+  }
+  body{margin:0;padding:26px;background:#EDE7DC;color:var(--ink);
+       font-family:-apple-system,"PingFang SC","Helvetica Neue",system-ui,sans-serif;}
+  h1{font-size:17px;font-weight:600;margin:0 0 6px}
+  .sub{font-size:12.5px;color:var(--ink3);margin:0 0 20px;line-height:1.7;max-width:1100px}
+  .row{display:flex;gap:24px;align-items:flex-start;overflow-x:auto;padding-bottom:12px}
+  .col{flex:0 0 auto;width:330px}
+  .tag{font-size:13.5px;font-weight:600;margin-bottom:3px}
+  .desc{font-size:11.5px;color:var(--ink3);margin-bottom:10px;line-height:1.5}
+  .phone{background:var(--page);border:1px solid #E0D6C5;border-radius:24px;padding:20px 16px;min-height:560px}
+  .scr-title{font-size:21px;font-weight:600;letter-spacing:.4px;margin:0 0 2px;position:relative}
+  .scr-title .back{position:absolute;right:0;top:4px;font-size:12.5px;color:var(--accent);font-weight:400}
+  .who{font-size:11.5px;color:var(--ink3);margin:0 0 14px}
+  .gl{font-size:11px;color:var(--ink3);margin:16px 0 8px;letter-spacing:.5px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:14px 15px}
+  .state{display:flex;align-items:center;gap:9px}
+  .state .ck{color:var(--accent);font-size:15px;line-height:1}
+  .state .t{font-size:14px;font-weight:600;flex:1}
+  .state .cloud{color:var(--ok);font-size:12px}
+  .date{font-size:12px;color:var(--ink3);margin-top:7px}
+  .row2{display:flex;align-items:center;gap:10px;margin-top:12px}
+  .row2 .ttl{font-size:13.5px;font-weight:500;flex:1}
+  .pill{background:var(--accent);color:#FFF6F0;font-size:11.5px;font-weight:500;
+        border-radius:11px;padding:6px 13px}
+  .nav{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);
+       border-radius:14px;padding:12px 14px;margin-top:10px}
+  .nav .ttl{font-size:13.5px;font-weight:500;flex:1}
+  .nav .sub2{font-size:11px;color:var(--ink3);margin-top:2px}
+  .nav .arrow{color:var(--accent);font-size:15px}
+  .cloudbar{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink3);margin-top:9px}
+  .cloudbar b{color:var(--ok);font-weight:500}
+  .note{font-size:12px;color:var(--ink3);line-height:1.6;margin-top:12px}
+  .note a{color:var(--accent);text-decoration:none;font-weight:500}
+  .legal{margin-top:18px}
+  .legal div{display:flex;justify-content:space-between;font-size:12.5px;padding:8px 0;
+             border-bottom:1px solid rgba(90,80,65,.07)}
+  .legal span{color:var(--accent)}
+  .price{display:flex;gap:10px;margin-top:6px}
+  .pc{flex:1;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px}
+  .pc.on{border:1.5px solid var(--accent)}
+  .pc .p{font-size:19px;font-weight:600}
+  .pc .u{font-size:11px;color:var(--ink3);margin-top:3px}
+  .cta{background:var(--accent);color:#FFF6F0;border-radius:13px;text-align:center;
+       font-size:13.5px;font-weight:500;padding:13px;margin-top:12px}
+  .moved{position:relative}
+  .moved::before{content:"移入";position:absolute;left:-134px;top:10px;font-size:10px;
+                 color:var(--moved);border:1px dashed var(--moved);border-radius:5px;padding:1px 5px}
+  .gone{opacity:.38}
+  .gone::after{content:"移出";font-size:10px;color:#A33;margin-left:6px}
+  .diff{font-size:11.5px;color:var(--ink2);margin-top:14px;line-height:1.75;
+        border-top:1px dashed #D8CDBA;padding-top:10px}
+  .diff b{font-weight:600;color:var(--ink)}
+</style>
+</head>
+<body>
+<h1>订阅信息架构调整 · 草稿</h1>
+<p class="sub">
+  你的意思：<b>「恢复购买」和「历史订单」从「我的」页移到订阅页</b>，让订阅页成为订阅事务的唯一去处。<br>
+  下面三屏：① 我的页（移出后）② 订阅页·已订阅（移入后）③ 订阅页·未订阅（移入后）。<br>
+  ⚠️ 一个待你拍板的点：<b>已订阅态还要不要「恢复购买」</b>——上一轮你已判掉它（没东西可找回），我先按「不要」画。
+</p>
+
+<div class="row">
+
+<div class="col">
+  <div class="tag">① 我的页（移出后）</div>
+  <div class="desc">订阅组只剩「状态 + 云同步」</div>
+  <div class="phone">
+    <h2 class="scr-title">我的</h2>
+    <p class="who">mr.bigpi · 订阅版</p>
+    <div class="gl">记忆（上方不变）</div>
+    <div class="gl">订阅</div>
+    <div class="card">
+      <div class="state"><span class="ck">✓</span><span class="t">订阅状态</span></div>
+      <div class="date" style="color:var(--accent);margin-top:5px">订阅中 · 到期日 2026-11-20</div>
+      <div class="row2"><span class="ttl"></span><span class="pill">管理</span></div>
+    </div>
+    <div class="cloudbar"><b>已同步</b> · 今天 14:41</div>
+    <div class="nav gone"><span class="ttl">恢复购买</span><span class="arrow">›</span></div>
+    <div class="nav gone"><span class="ttl">历史订单 (8)</span><span class="arrow">⌄</span></div>
+    <div class="gl">其他（不变）</div>
+    <div class="diff">
+      <b>改动</b>：删掉两行导航位（虚线框那两行）。<br>
+      <b>入口不受影响</b>：状态卡<b>整行可点</b> → 进订阅页（原本就是，右侧「管理」是跳 Apple）。<br>
+      <b>建议顺手补</b>：状态卡右侧加一个 <b>›</b>，让人看出「这行能点」（现在只有「管理」按钮，容易以为整行不可点）。
+    </div>
+  </div>
+</div>
+
+<div class="col">
+  <div class="tag">② 订阅页 · 已订阅（移入后）</div>
+  <div class="desc">新增「历史订单」；「恢复购买」不显示</div>
+  <div class="phone">
+    <h2 class="scr-title">订阅<span class="back">返回</span></h2>
+    <div class="gl"> </div>
+    <div class="card">
+      <div class="state"><span class="ck">✓</span><span class="t">订阅中</span><span class="cloud">✓</span></div>
+      <div class="date">到期日 2026-11-20</div>
+    </div>
+    <div class="note">取消后，当前订阅期结束前仍可使用会员功能。</div>
+    <div class="note" style="margin-top:8px">管理或取消订阅：<a>Apple ID 设置 → 订阅</a></div>
+
+    <div class="moved">
+      <div class="nav" style="margin-top:18px">
+        <span class="ttl">历史订单 (8)</span><span class="arrow">⌄</span>
+      </div>
+    </div>
+
+    <div class="legal">
+      <div>隐私政策<span>›</span></div>
+      <div>用户协议<span>›</span></div>
+    </div>
+    <div class="diff">
+      <b>为什么已订阅态不放「恢复购买」</b>：你上一轮判断过 —— 已订阅的人没有可找回的东西，
+      点了只会得到「你当前已是订阅状态，无需恢复」。<br>
+      <b>入口仍在</b>：「我的」页那处保留（本次不移），Apple 3.1.1 的恢复机制有保障。<br>
+      <b>历史订单</b>：从「我的」页整块搬过来，交互不变（点击展开/收起）。
+    </div>
+  </div>
+</div>
+
+<div class="col">
+  <div class="tag">③ 订阅页 · 未订阅（移入后）</div>
+  <div class="desc">「恢复购买」+「历史订单」都在这里</div>
+  <div class="phone">
+    <h2 class="scr-title">订阅<span class="back">返回</span></h2>
+    <div class="gl"> </div>
+    <div class="price">
+      <div class="pc"><div class="p">¥6</div><div class="u">每月自动续期</div></div>
+      <div class="pc on"><div class="p">¥58</div><div class="u">每年自动续期</div></div>
+    </div>
+    <div class="cta">立即订阅 · ¥58/年</div>
+
+    <div class="moved">
+      <div class="nav" style="margin-top:16px">
+        <span class="ttl">恢复购买</span><span class="arrow">›</span>
+      </div>
+    </div>
+    <div class="moved">
+      <div class="nav" style="margin-top:8px">
+        <span class="ttl">历史订单 (8)</span><span class="arrow">⌄</span>
+      </div>
+    </div>
+
+    <div class="legal">
+      <div>隐私政策<span>›</span></div>
+      <div>用户协议<span>›</span></div>
+    </div>
+    <div class="diff">
+      <b>未订阅态才有「恢复购买」</b>：这正是它的使用场景（换设备 / 重装后来找回）。<br>
+      <b>历史订单</b>：未登录时不渲染（现状即如此，`user_id` 查不到就没有数据）。<br>
+      <b>顺序</b>：先买 → 找不回来再恢复 → 想知道买过什么看订单。
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>
