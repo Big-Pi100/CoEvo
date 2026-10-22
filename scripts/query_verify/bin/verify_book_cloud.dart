@@ -501,6 +501,33 @@ Future<void> main() async {
   //    将来要补，应该走「注入一个必抛的 readRawBook」而不是注入 upload
   //    （后者被 `switch` 的兜底分支吃掉，异常根本没冒到 run 外面）。
 
+  // ── 🔴 上传失败的文案：会自愈的才可以说「稍后自动同步」（2026-10-22 白哥定）──
+  //
+  // 白哥原话：「你把失败错误提示写成『当前网络繁忙，稍后会自动同步……』不就行了」
+  // ⇒ 对**会自愈**的两类（网络抖动 / 连续失败到上限）用这句；
+  //    但**不会自愈**的四类（缺原始文件 / 超限 / 配额 / 未登录）**绝不能**这么说 ——
+  //    那会变成谎话（用户等一辈子也不会同步）。
+  // 📌 判据：**「会不会自愈」决定文案**。
+  final bookLibSrc = _readLib('screens/book_library_screen.dart');
+  check(
+    '🔴 会自愈的失败 → 「稍后会自动同步」（白哥定的句子）',
+    bookLibSrc.contains('稍后会自动同步'),
+    '缺这句 ⇒ 网络抖动会弹红字，让用户以为坏了（其实什么都没丢）',
+  );
+  check(
+    '…但「缺原始文件」「超过上限」「配额不足」**不得**承诺自动同步',
+    !RegExp(r'noRaw[\s\S]{0,80}稍后会自动同步').hasMatch(bookLibSrc) &&
+        !RegExp(r'tooLarge[\s\S]{0,80}稍后会自动同步').hasMatch(bookLibSrc) &&
+        !RegExp(r'quota[\s\S]{0,80}稍后会自动同步').hasMatch(bookLibSrc),
+    '它们永远不会自愈 ⇒ 这么说是谎话',
+  );
+  check(
+    '🔴 说了「稍后自动同步」就必须真的重试（不能是空头支票）',
+    bookLibSrc.contains('_scheduleSilentRetry(') &&
+        bookLibSrc.contains('Duration(seconds: 15)'),
+    '不重试 ⇒ 文案承诺不兑现',
+  );
+
   check('…且「未上云」计数与队列**同一口径**（`pendingUploadHashes`）',
       prov.contains('pendingUploadCountProvider') &&
           prov.contains('pendingUploadHashes'));

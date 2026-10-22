@@ -581,23 +581,67 @@ class _BookLibraryScreenState extends ConsumerState<BookLibraryScreen> {
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(_uploadResultMessage(r, b.title))));
+      // 🔑 会自愈的那两类：既然文案说了「稍后会自动同步」，就必须**真的**去重试。
+      //    否则那句话是空头支票（本项目判据：不给出口的承诺等于说谎）。
+      if (r == UploadOneResult.failed || r == UploadOneResult.skipped) {
+        _scheduleSilentRetry(b.contentHash);
+      }
     } finally {
       if (mounted) setState(() => _uploadingHash = null);
     }
   }
 
-  /// 上传结果 → **用户能照着做**的一句话。
+  /// 失败后 **15 秒静默重试一次** —— 让「稍后会自动同步」这句话名副其实。
   ///
-  /// 🔴 不能说「上传失败」就完事 —— 那等于把 6 种成因压成一句废话。
+  /// 🔑 为什么是静默：已经告诉用户「稍后会自动同步」了，再弹一个错就是自打嘴巴。
+  /// 🔑 为什么还要下次 kick 兜底：用户可能在 15 秒内就离开书架页
+  ///    （`mounted` 为 false 时这里不会跑）—— 而 `pendingUploadHashes` 只认
+  ///    `blob_size > 0`，那本书**永远还在待传队列里**，下次 kicked 自然会带上它。
+  ///    ⇒ 两条腿：一次即时重试 + 队列兜底。
+  void _scheduleSilentRetry(String contentHash) {
+    Future<void>.delayed(const Duration(seconds: 15), () async {
+      if (!mounted) return;
+      try {
+        final db = await ref.read(bookDbProvider.future);
+        await uploadOneBook(
+          db: db,
+          queue: ref.read(bookUploadQueueProvider),
+          contentHash: contentHash,
+        );
+        // 成功时队列的 `onUploaded` 已写回 `blob_size` 并 bump ⇒ 书架自动刷新
+      } catch (_) {
+        // 静默（见上）。失败的话队列兜底还在。
+      }
+    });
+  }
+
+  /// 上传结果 → **一句话**（要么给动作，要么给安慰）。
+  ///
+  /// # 🔴 分两类，不能混（2026-10-22 白哥定）
+  ///
+  /// **会自愈的**（网络抖动 / 服务端 5xx / 连续失败到上限）：
+  /// 系统本来就会在下次 kick 时重传（`pendingUploadHashes` 只认 `blob_size>0`），
+  /// ⇒ 文案用**白哥定的那一句**：「当前网络繁忙，稍后会自动同步……」
+  /// 弹一个红字「同步失败」只会让用户以为坏掉了，而**其实什么都没丢**。
+  ///
+  /// **不会自愈的**（缺原始文件 / 真的超 50MB / 配额满 / 未登录）：
+  /// 必须**说清是哪一种**，因为它再等一万年也不会好 ——
+  /// 这时若也说「稍后会自动同步」就变成**谎话**（比报错更糟）。
+  ///
+  /// 📌 判据：**「会不会自愈」决定文案**：
+  ///    会自愈 ⇒ 安抚 + 承诺重试；不会自愈 ⇒ 明说原因 + 给动作。
   String _uploadResultMessage(UploadOneResult r, String title) => switch (r) {
         UploadOneResult.uploaded => '《$title》已同步到云端',
+        // ⚠️ 这三条**不会**自愈，必须说清楚（见上）
         UploadOneResult.noRaw =>
-          '《$title》缺少原始文件，无法上传。请重新导入这本书。',
-        UploadOneResult.tooLarge => '《$title》超过单本上限（50 MB），无法上传。',
+          '《$title》缺少原始文件，无法自动同步。请重新导入这本书。',
+        UploadOneResult.tooLarge => '《$title》超过单本上限（50 MB），无法同步。',
         UploadOneResult.quota => '云端空间不足，请先在书架里删除一些书。',
         UploadOneResult.needLogin => '请先登录账号再同步。',
-        UploadOneResult.skipped => '《$title》已连续失败多次，请稍后再试。',
-        UploadOneResult.failed => '《$title》同步失败，请检查网络后重试。',
+        // 🔑 会自愈的三条：白哥定的一句话（见上）
+        UploadOneResult.failed ||
+        UploadOneResult.skipped =>
+          '当前网络繁忙，稍后会自动同步……',
       };
 
   /// 进度条（设计稿 `.bbar`：4px 高、圆角 2、槽 `sunken`、填充 `accent`）。
