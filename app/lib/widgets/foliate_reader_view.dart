@@ -101,6 +101,9 @@ class FoliateReaderController {
   bool _ready = false;
   List<String> _pendingChapters = const [];
 
+  /// 内容就绪后要跳到的**章节下标**（0 = 从头）。
+  int _pendingStartAt = 0;
+
   bool get isReady => _ready;
 
   void _attach(FoliateWebHost web) {
@@ -114,9 +117,32 @@ class FoliateReaderController {
     await _web!.runJavaScript('window.__reader.setContent(${jsonEncode(json)});');
   }
 
-  Future<void> setChapters(List<String> chapters) async {
+  /// 把**整本书的章节**交给分页器。
+  ///
+  /// # 🔴 为什么必须一次传全（2026-10-23 白哥报「章末翻不动 + 满屏红字」）
+  ///
+  /// foliate 把 `sections` 当**定长数组**：翻到末页再往后它会取 `sections[N+1]`。
+  /// 只传当前一章 ⇒ `sections[1]` 是 `undefined` ⇒
+  /// `Promise: undefined is not an object (evaluating 'this.sections[index].load')`
+  /// ⇒ 翻页卡住 + 报错刷屏。
+  ///
+  /// `sections[i].load` 由 foliate **懒调用**（翻到才建 iframe），
+  /// 所以预生成 N 个 HTML 只是内存里存字符串，不会一次性渲染。
+  ///
+  /// [startAt] 是**章节下标**（不是页码）。
+  Future<void> setChapters(List<String> chapters, {int startAt = 0}) async {
     _pendingChapters = chapters;
-    if (_ready) await _setContent(chapters);
+    _pendingStartAt = startAt;
+    if (_ready) {
+      await _setContent(chapters);
+      if (startAt > 0) await goToChapter(startAt);
+    }
+  }
+
+  /// 跳到指定章节 —— 所有章节都已在分页器里，**不需要重灌内容**。
+  Future<void> goToChapter(int index) async {
+    if (_web == null || !_ready) return;
+    await _web!.runJavaScript('window.__reader.goTo($index);');
   }
 
   /// 换主题 + 字号 + 行距 + 边距（三档主题由调用方换算成具体颜色）。

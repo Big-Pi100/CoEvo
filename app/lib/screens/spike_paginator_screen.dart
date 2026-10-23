@@ -150,7 +150,7 @@ class _SpikePaginatorScreenState
       _loading = false;
       _error = null;
     });
-    await _loadChapter(0);
+    await _loadWholeBook();
   }
 
   /// 选书 —— 🔑 必须能选：书架里可能同时有 **EPUB**（结构规范）和 **TXT**（结构松散），
@@ -199,19 +199,51 @@ class _SpikePaginatorScreenState
     );
   }
 
-  Future<void> _loadChapter(int idx) async {
+  /// 当前书的所有章节原文（索引 = 章节 idx）。
+  /// 划线定位要用它（`locateSelection` 在**明文**里找选中片段，不是 HTML）。
+  List<ChapterText> _chapters = const [];
+
+  /// 加载**整本书**并一次性交给分页器。
+  ///
+  /// # 🔴 为什么不再「一次一章」（2026-10-23 白哥报「章末翻不动、还刷红字」）
+  ///
+  /// foliate 把 `sections` 当**定长数组**：翻到末页再往后它就取 `sections[N+1]`。
+  /// 只传一章 ⇒ `sections[1]` 是 `undefined` ⇒
+  /// `Promise: undefined is not an object (evaluating 'this.sections[index].load')`
+  /// ⇒ 卡住 + 满屏报错。
+  ///
+  /// ⇒ 必须**一次传全**；`sections[i].load` 由 foliate **懒调用**（翻到才建 iframe），
+  ///   所以预生成 N 个 HTML 字符串不会一次性渲染，只是内存里存着。
+  Future<void> _loadWholeBook({int startAt = 0}) async {
     final id = _bookId;
     if (id == null) return;
     final db = await ref.read(bookDbProvider.future);
-    final ch = await loadChapter(db, bookId: id, idx: idx);
-    if (ch == null || !mounted) return;
+    final all = await loadAllChapters(db, bookId: id);
+    if (all.isEmpty || !mounted) return;
+    setState(() {
+      _chapters = all;
+      _chapterIdx = startAt.clamp(0, all.length - 1);
+      _chapterTitle = all[_chapterIdx].chapterTitle;
+      _chapterPlainText = all[_chapterIdx].text;
+    });
+    await _c.setChapters(
+      [for (final ch in all) _textToHtml(ch.text, ch.chapterTitle)],
+      startAt: _chapterIdx,
+    );
+  }
+
+  /// 跳到指定章节（目录点击用）。
+  ///
+  /// ⚠️ 现在**不需要**重新灌内容 —— 所有章节都已经在分页器里，
+  ///    只要 `goTo({index})` 就行（这也是「章节已经全传」带来的好处）。
+  Future<void> _goToChapter(int idx) async {
+    if (idx < 0 || idx >= _chapters.length) return;
     setState(() {
       _chapterIdx = idx;
-      _chapterTitle = ch.chapterTitle;
-      // 🔑 划线定位要用**章节原文**（不是 HTML）—— `locateSelection` 在明文里找选中片段
-      _chapterPlainText = ch.text;
+      _chapterTitle = _chapters[idx].chapterTitle;
+      _chapterPlainText = _chapters[idx].text;
     });
-    await _c.setChapters([_textToHtml(ch.text, ch.chapterTitle)]);
+    await _c.goToChapter(idx);
   }
 
   /// 纯文本 → HTML。
@@ -268,20 +300,38 @@ class _SpikePaginatorScreenState
   /// 🔑 为什么节流：翻页很快，每页都写库会白白刷盘（而且 `saveProgress`
   ///    还要镜像到 `book_progress_pending`，两次写）。
   void _onPosition() {
+    final pos = _c.position.value;
+
+    // 🔴 **跨章翻页必须同步当前章**（2026-10-23 改成「一次传整本书」之后新增）。
+    //    `pos.sectionIndex` 就是章节下标 —— 用它更新 `_chapterIdx` / 划线的原文，
+    //    否则翻到第 3 章了，进度还写在第 1 章、划线定位也在第 1 章的文本里找。
+    if (pos.sectionIndex != _chapterIdx &&
+        pos.sectionIndex >= 0 &&
+        pos.sectionIndex < _chapters.length) {
+      final ch = _chapters[pos.sectionIndex];
+      setState(() {
+        _chapterIdx = pos.sectionIndex;
+        _chapterTitle = ch.chapterTitle;
+        _chapterPlainText = ch.text;
+      });
+    }
+
     final id = _bookId;
     if (id == null) return;
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 1200), () async {
-      final pos = _c.position.value;
+      final p2 = _c.position.value;
       try {
         final db = await ref.read(bookDbProvider.future);
         await saveProgress(
           db,
           bookId: id,
-          chapterIdx: _chapterIdx,
-          charOffset: pos.charOffset,   // ← 本次新增的坐标
+          // ⚠️ 这里必须用**位置里的章号**，不能用 `_chapterIdx` 的旧值：
+          //    节流 1.2s 内可能已经翻过章了。
+          chapterIdx: p2.sectionIndex,
+          charOffset: p2.charOffset,
         );
-        if (mounted) setState(() => _lastSaved = pos.charOffset);
+        if (mounted) setState(() => _lastSaved = p2.charOffset);
       } catch (e) {
         if (mounted) setState(() => _error = '写进度失败：$e');
       }
@@ -782,7 +832,7 @@ class _SpikePaginatorScreenState
               ),
               onTap: () {
                 Navigator.of(ctx).pop();
-                _loadChapter(idx);
+                _goToChapter(idx);
               },
             );
           },

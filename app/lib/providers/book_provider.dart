@@ -209,6 +209,52 @@ Future<ChapterText?> loadChapter(
   );
 }
 
+/// 一次读出**整本书的所有章节**（按 `idx` 升序）。
+///
+/// # 🔑 为什么需要它（2026-10-23，白哥报「章末翻不动、只有目录能跳」）
+///
+/// foliate 的分页器把 `sections` 当成**一个固定长度的数组**：
+/// 翻到第 N 节的最后一页再往后，它会去取 `sections[N+1]`。
+/// 我们此前只传了**当前一章** ⇒ `sections[1]` 是 `undefined`
+/// ⇒ `undefined.load()` 抛 `Promise: undefined is not an object`
+/// ⇒ 翻页卡住、还刷一屏红字。
+///
+/// ⇒ **必须一次传全**。`sections[i].load` 由 foliate **懒调用**（翻到才生成 iframe），
+///    所以预生成 30 个 HTML 字符串的内存开销是可接受的（每章 = 内容 + ~1.5KB CSS）。
+///
+/// ⚠️ 大书（100+ 章）会占几 MB 字符串 —— 真遇到再改「分窗预取」，
+///    但那要求 foliate 支持动态扩 sections（它不支持），所以届时得换思路。
+Future<List<ChapterText>> loadAllChapters(
+  Database db, {
+  required String bookId,
+}) async {
+  final books = await db.query('book',
+      columns: ['title', 'chapter_count'],
+      where: 'id = ?',
+      whereArgs: [bookId],
+      limit: 1);
+  if (books.isEmpty) return const [];
+  final title = books.first['title'] as String;
+  final count = (books.first['chapter_count'] as int?) ?? 0;
+
+  final rows = await db.query('book_chapter',
+      columns: ['idx', 'title', 'text'],
+      where: 'book_id = ?',
+      whereArgs: [bookId],
+      orderBy: 'idx ASC');
+
+  return [
+    for (final r in rows)
+      ChapterText(
+        bookTitle: title,
+        chapterTitle: r['title'] as String?,
+        text: (r['text'] as String?) ?? '',
+        idx: (r['idx'] as int?) ?? 0,
+        chapterCount: count,
+      ),
+  ];
+}
+
 /// 记阅读进度（upsert —— `book_progress` 主键是 `book_id`，一本书一条）。
 ///
 /// ⚠️ 调用方**不该 await 它**：记进度失败**不该阻止用户继续读**。
