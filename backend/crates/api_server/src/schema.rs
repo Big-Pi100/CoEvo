@@ -1172,6 +1172,16 @@ CREATE TABLE IF NOT EXISTS sync_book_progress (
     scroll_ratio REAL    NOT NULL DEFAULT 0,       -- 章内相对位置 0~1（不存绝对像素）
     updated_at   TEXT    NOT NULL,
     received_at  TEXT    NOT NULL,
+    -- 🆕 2026-10-23 字符偏移（本章纯文本第几个字符）。
+    --
+    -- 🔴 为什么加：翻页阅读器的分页是**字符**关系，`scroll_ratio` 是**像素**关系，
+    --    两者不是线性 —— 同一比例在字号 15/24 下指向不同句子。
+    --    端侧 `book_progress.char_offset` 同口径（见 `book_db_schema.sql`）。
+    --
+    -- 🔑 可空：老客户端不推该字段 ⇒ NULL；读端回退到 `scroll_ratio`。
+    -- ⚠️ 列放在**末尾** —— 与老库 `ALTER TABLE ... ADD COLUMN` 追加的位置一致
+    --    （新库/老库列顺序必须一致，同 `sync_highlight.translation` 的先例）。
+    char_offset  INTEGER,
     PRIMARY KEY (user_id, content_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_sync_book_progress_pull ON sync_book_progress(user_id, received_at);
@@ -1277,6 +1287,9 @@ CREATE TABLE IF NOT EXISTS sync_book_marker (
     created_at   TEXT    NOT NULL,
     deleted      INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
     received_at  TEXT    NOT NULL,
+    -- 🆕 2026-10-23 字符偏移（与 `sync_book_progress.char_offset` 同口径）；可空。
+    -- ⚠️ 同样放**末尾**，与老库 ALTER 追加位置一致。
+    char_offset  INTEGER,
     PRIMARY KEY (user_id, id)
 );
 CREATE INDEX IF NOT EXISTS idx_sync_book_marker_pull ON sync_book_marker(user_id, received_at);
@@ -1531,6 +1544,13 @@ fn run_migrations_inner(conn: &rusqlite::Connection) -> Result<(), String> {
         "ALTER TABLE marketing_campaigns ADD COLUMN min_member_count INTEGER DEFAULT 1",
         // 🔴 2026-09-29 已退役：defer_queue（V5/V6）—— 复习推迟调度改在端侧
         // ── 🆕 2026-09-29 邮箱注册 ──
+        // ── 🆕 2026-10-23 翻页阅读器：进度/书签的**字符偏移** ──
+        //    🔴 为什么必须加：分页是字符关系、`scroll_ratio` 是像素关系（非线性）。
+        //    ⚠️ 可空 + 无 DEFAULT：老数据算不出来必须留 NULL（拿 0 冒充「知道」
+        //       会让每本书都跳回开头）。读端用 `round(ratio × 本章字符数)` 兜底。
+        //    ⚠️ 新库走 `SCHEMA_SQL` 已含此列 ⇒ 这里报 `duplicate column` ⇒ 容错放行。
+        "ALTER TABLE sync_book_progress ADD COLUMN char_offset INTEGER",
+        "ALTER TABLE sync_book_marker ADD COLUMN char_offset INTEGER",
         // ① 先加列（新库走 `SCHEMA_SQL` 已含此列 → 这里报 `duplicate column` → 容错放行）
         "ALTER TABLE users ADD COLUMN email TEXT DEFAULT NULL",
         // ② 再加索引 —— 🔑 **必须排在 ① 之后**：索引引用列，列得先存在，

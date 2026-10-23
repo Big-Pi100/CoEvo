@@ -146,6 +146,15 @@ pub struct BookProgressInput {
     pub chapter_idx: i64,
     pub scroll_ratio: f64,
     pub updated_at: String,
+    /// 🆕 2026-10-23 字符偏移（本章纯文本第几个字符）。
+    ///
+    /// 🔴 为什么加：翻页阅读器的分页是**字符**关系，`scroll_ratio` 是**像素**关系，
+    ///    两者不是线性 —— 同一比例在字号 15/24 下指向不同句子。
+    ///
+    /// 🔑 `Option` + `default`：**老客户端不推这个字段**（`None`）—— 服务端存 NULL，
+    ///    读端回退到 `scroll_ratio`。这样新旧版本可以同时在线。
+    #[serde(default)]
+    pub char_offset: Option<i64>,
 }
 
 /// 书单条目（**元数据**；文件本体走独立端点，见 `book_blob_handler`）。
@@ -208,6 +217,9 @@ pub struct BookMarkerInput {
     pub created_at: String,
     #[serde(default)]
     pub deleted: i64,
+    /// 🆕 2026-10-23 字符偏移（与 `BookProgressInput::char_offset` 同口径）；老客户端为 `None`。
+    #[serde(default)]
+    pub char_offset: Option<i64>,
 }
 
 /// 成就解锁记录（`unlocked_at` 取**较早** = 首次解锁时刻）。
@@ -340,6 +352,8 @@ pub struct BookProgressOut {
     pub chapter_idx: i64,
     pub scroll_ratio: f64,
     pub updated_at: String,
+    /// 🆕 2026-10-23 字符偏移；老数据为 `None`（端侧回退到 `scroll_ratio` 换算）。
+    pub char_offset: Option<i64>,
 }
 
 /// 书单条目（回应给端侧）。
@@ -384,6 +398,8 @@ pub struct BookMarkerOut {
     pub excerpt: String,
     pub created_at: String,
     pub deleted: i64,
+    /// 🆕 2026-10-23 字符偏移（与进度同口径）；老数据为 `None`。
+    pub char_offset: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -803,13 +819,20 @@ pub fn push_changes(
         stats.book_progress += tx
             .execute(
                 "INSERT INTO sync_book_progress
-                   (user_id, content_hash, chapter_idx, scroll_ratio, updated_at, received_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                   (user_id, content_hash, chapter_idx, scroll_ratio, updated_at, received_at,
+                    char_offset)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                  ON CONFLICT (user_id, content_hash) DO UPDATE SET
                    chapter_idx  = excluded.chapter_idx,
                    scroll_ratio = excluded.scroll_ratio,
                    updated_at   = excluded.updated_at,
-                   received_at  = excluded.received_at
+                   received_at  = excluded.received_at,
+                   -- 🆕 2026-10-23：`COALESCE` 而不是直接赋值 ——
+                   --   老客户端推上来时 `char_offset` 是 NULL，直接赋值会把
+                   --   **新客户端刚写好的精确值清空**（一端用旧版就能毁掉另一端的精度）。
+                   --   📌 判据：**新字段的写入要「有值才覆盖」**，不能跟着整行覆盖。
+                   char_offset  = COALESCE(excluded.char_offset,
+                                           sync_book_progress.char_offset)
                  WHERE excluded.updated_at > sync_book_progress.updated_at",
                 params![
                     &uid,
@@ -817,7 +840,8 @@ pub fn push_changes(
                     p.chapter_idx,
                     p.scroll_ratio,
                     &p.updated_at,
-                    &received_at
+                    &received_at,
+                    p.char_offset
                 ],
             )
             .map_err(|e| AppError::Internal(format!("upsert book_progress: {e}")))?;
@@ -910,8 +934,8 @@ pub fn push_changes(
             .execute(
                 "INSERT INTO sync_book_marker
                    (user_id, id, content_hash, chapter_idx, scroll_ratio, excerpt,
-                    created_at, deleted, received_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                    created_at, deleted, received_at, char_offset)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                  ON CONFLICT (user_id, id) DO UPDATE SET
                    deleted      = MAX(excluded.deleted, sync_book_marker.deleted),
                    content_hash = CASE WHEN excluded.created_at < sync_book_marker.created_at
@@ -926,6 +950,11 @@ pub fn push_changes(
                    excerpt      = CASE WHEN excluded.created_at < sync_book_marker.created_at
                                        THEN excluded.excerpt
                                        ELSE sync_book_marker.excerpt END,
+                   -- 🆕 2026-10-23 字符偏移：与 `scroll_ratio` **完全同构**（取较早那端）。
+                   --    📌 判据：同族字段（同一坐标）必须同一处理，否则位置和偏移会指向不同页。
+                   char_offset  = CASE WHEN excluded.created_at < sync_book_marker.created_at
+                                       THEN excluded.char_offset
+                                       ELSE sync_book_marker.char_offset END,
                    created_at   = MIN(excluded.created_at, sync_book_marker.created_at),
                    received_at  = excluded.received_at
                  WHERE excluded.created_at < sync_book_marker.created_at
@@ -939,7 +968,8 @@ pub fn push_changes(
                     &m.excerpt,
                     &m.created_at,
                     m.deleted,
-                    &received_at
+                    &received_at,
+                    m.char_offset
                 ],
             )
             .map_err(|e| AppError::Internal(format!("upsert book_marker: {e}")))?;
@@ -1211,7 +1241,7 @@ pub fn pull_changes(
     {
         let mut stmt = conn
             .prepare(
-                "SELECT content_hash, chapter_idx, scroll_ratio, updated_at
+                "SELECT content_hash, chapter_idx, scroll_ratio, updated_at, char_offset
                    FROM sync_book_progress
                   WHERE user_id = ?1 AND received_at > ?2
                   ORDER BY received_at ASC",
@@ -1224,6 +1254,7 @@ pub fn pull_changes(
                     chapter_idx: r.get(1)?,
                     scroll_ratio: r.get(2)?,
                     updated_at: r.get(3)?,
+                    char_offset: r.get(4)?,
                 })
             })
             .map_err(|e| AppError::Internal(format!("query pull bp: {e}")))?;
@@ -1299,7 +1330,8 @@ pub fn pull_changes(
     {
         let mut stmt = conn
             .prepare(
-                "SELECT id, content_hash, chapter_idx, scroll_ratio, excerpt, created_at, deleted
+                "SELECT id, content_hash, chapter_idx, scroll_ratio, excerpt, created_at, deleted,
+                        char_offset
                    FROM sync_book_marker
                   WHERE user_id = ?1 AND received_at > ?2
                   ORDER BY received_at ASC",
@@ -1315,6 +1347,7 @@ pub fn pull_changes(
                     excerpt: r.get(4)?,
                     created_at: r.get(5)?,
                     deleted: r.get(6)?,
+                    char_offset: r.get(7)?,
                 })
             })
             .map_err(|e| AppError::Internal(format!("query pull marker: {e}")))?;
