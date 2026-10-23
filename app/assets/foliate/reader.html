@@ -1256,9 +1256,26 @@ const state = {
 
 function buildDocUrl(bodyHtml) {
   const t = state.theme;
+  // 🔴🔴 2026-10-23 白哥问「字体还没跟现在的统一对吧」—— **对，之前没统一**。
+  //
+  // 原来写的是 `-apple-system, "PingFang SC", serif`（系统字体），
+  // 而正式阅读器正文用的是 **Literata**（`CoFonts.latinSerif`）+ 中文 **NotoSansSC**。
+  // ⇒ 字形完全不同，翻页版看起来是「另一本书」。
+  //
+  // 🔑 用 `@font-face` 引用**包里已有的**字体文件（`assets/fonts/` 已经打包，
+  //    这里只是相对路径引用 ⇒ **包体不增加**）。
+  //    `reader.html` 在 `assets/foliate/`，字体在 `assets/fonts/` ⇒ 相对路径 `../fonts/`。
+  //    ⚠️ 子文档（srcdoc）的 base URL 继承父文档 ⇒ 相对路径同样有效。
+  // ⚠️ `font-display: swap`：字体没到之前先用回退字体显示，**不阻塞首屏**。
   const css =
+    "@font-face{font-family:'Literata';src:url('../fonts/Literata-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}" +
+    "@font-face{font-family:'Literata';src:url('../fonts/Literata-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}" +
+    "@font-face{font-family:'Literata';src:url('../fonts/Literata-Italic.ttf') format('truetype');font-weight:400;font-style:italic;font-display:swap}" +
+    "@font-face{font-family:'NotoSansSC';src:url('../fonts/NotoSansSC-Regular.ttf') format('truetype');font-weight:400;font-display:swap}" +
+    "@font-face{font-family:'NotoSansSC';src:url('../fonts/NotoSansSC-Bold.ttf') format('truetype');font-weight:700;font-display:swap}" +
     'html,body{margin:0;padding:0;background:' + t.bg + ';color:' + t.fg + ';}' +
-    'body{font-family:-apple-system,"PingFang SC",serif;}' +
+    // 🔑 顺序：Literata 先、NotoSansSC 兜中文（Literata 无中文字形，会自动落到后者）
+    "body{font-family:'Literata','NotoSansSC',serif;}" +
     'p{margin:0 0 ' + (t.fs * 0.8).toFixed(1) + 'px;font-size:' + t.fs + 'px;' +
     'line-height:' + t.lh + ';text-align:justify;-webkit-hyphens:auto;' +
     // 🔴 2026-10-22 真机：**不要加 `orphans/widows`**。
@@ -1527,6 +1544,22 @@ function onPagLoad(e) {
     if (doc.__coevoSelBound) return;
     doc.__coevoSelBound = true;
     bindTapToDoc(doc);
+
+    // 🔍 字体是否**真的加载成功**（2026-10-23：白哥问「字体还没统一对吧」）。
+    //    `font-display: swap` 会在失败时**静默回退**系统衬线 ⇒ 光看字形很难判断，
+    //    尤其在不等宽字体上。这里直接把 `document.fonts.check()` 的结果报给 Flutter。
+    try {
+      if (doc.fonts && doc.fonts.ready) {
+        doc.fonts.ready.then(function () {
+          var okLit = doc.fonts.check('16px Literata');
+          var okCjk = doc.fonts.check('16px NotoSansSC');
+          __post({ type: 'fonts',
+                   detail: 'Literata=' + (okLit ? 'OK' : 'MISS') +
+                           ' NotoCJK=' + (okCjk ? 'OK' : 'MISS') +
+                           ' count=' + doc.fonts.size });
+        });
+      }
+    } catch (_) {}
     ['touchstart', 'touchmove', 'touchend'].forEach(function (type) {
       doc.addEventListener(type, function (ev) {
         try {

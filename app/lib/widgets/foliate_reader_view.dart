@@ -46,6 +46,10 @@ class FoliateReaderController {
   /// JS 侧「进行到哪一步」—— 白屏时看它就知道卡在哪（真机没有控制台）。
   final ValueNotifier<String> lastStage = ValueNotifier<String>('');
 
+  /// 字体加载结果（`Literata=OK NotoCJK=OK count=5`）。
+  /// 🔑 用 `font-display: swap` 时加载失败会**静默回退**，光看字形判断不了。
+  final ValueNotifier<String> fontsStatus = ValueNotifier<String>('');
+
   bool _ready = false;
   List<String> _pendingChapters = const [];
 
@@ -125,6 +129,8 @@ class FoliateReaderController {
           lastError.value = (m['detail'] as String?) ?? 'JS 未知错误';
         case 'stage':
           lastStage.value = (m['detail'] as String?) ?? '';
+        case 'fonts':
+          fontsStatus.value = (m['detail'] as String?) ?? '';
         default:
           break;
       }

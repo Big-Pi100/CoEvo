@@ -379,6 +379,14 @@ class _SpikePaginatorScreenState
                 style: const TextStyle(fontSize: 10, color: Color(0xFF8A7F70)),
               ),
             ),
+            // 字体加载结果（`swap` 会静默回退，必须显式看）
+            ValueListenableBuilder<String>(
+              valueListenable: _c.fontsStatus,
+              builder: (_, fs, __) => Text(
+                fs.isEmpty ? '' : '字体：$fs',
+                style: const TextStyle(fontSize: 10, color: Color(0xFF8A7F70)),
+              ),
+            ),
             ValueListenableBuilder<FoliatePosition>(
               valueListenable: _c.position,
               builder: (_, p, __) => Text(
