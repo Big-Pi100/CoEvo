@@ -1296,9 +1296,7 @@ function buildDocUrl(bodyHtml) {
     // ① `text-align`：正式页是 `Text.rich`，**不设 textAlign** ⇒ 默认**左对齐**。
     //    我之前写 `justify` ⇒ 右边是齐的，而正式页右边**参差** ⇒ 一眼能看出不同。
     // ② `hyphens`：Flutter **不做自动断词** ⇒ 不能有连字符。
-    // ③ 段距：正式页一个 `Text` 里的 `
-
-` = **一个空行**（≈ 2 × 行高）。
+    // ③ 段距：正式页一个 `Text` 里的两个换行 = **一个空行**（≈ 2 x 行高）。
     //    用 `margin-bottom: 行高` 等价（A 末行底 + 行高 + B 首行顶 ≈ 空一行）。
     //    ⚠️ 我之前写 `fs*0.8 = 13.6px`，比正式页**小一半多**。
     'p{margin:0 0 ' + (t.fs * t.lh).toFixed(1) + 'px;font-size:' + t.fs + 'px;' +
