@@ -348,6 +348,13 @@ class _SpikePaginatorScreenState
       onOpenChapters: _chapters.isEmpty ? null : _openChapters,
     );
     if (!mounted) return;
+
+    // 🔴 2026-10-24 白哥真机反馈：「再次点击空处的时候，顶栏没有和面板一起收起」
+    //    ⇒ 面板关闭（点遮罩 / 下滑 / 点 ×）之后，**顶栏也要收起来**，
+    //    让界面回到「只有正文 + 页码条」的干净态。
+    //    ⚠️ 原来只有「点正文」才收顶栏，走「点遮罩关面板」这条路时顶栏会留着。
+    if (_bars) setState(() => _bars = false);
+
     // 面板关掉后**同步底色 + 字号**给 WebView（它内部的 CSS 是独立的）
     final idx = switch (ref.read(themeProvider).theme) {
       ReadingTheme.ink => 0,
