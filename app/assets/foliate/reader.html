@@ -1413,10 +1413,21 @@ window.__reader = {
     //   （干净、彻底，且字号调整不频繁）。
     if (__doc) {
       try {
-        __doc.documentElement.style.background = state.theme.bg;
-        __doc.documentElement.style.color = state.theme.fg;
-        __doc.body.style.background = state.theme.bg;
-        __doc.body.style.color = state.theme.fg;
+        // 🔴🔴 2026-10-23 真机：**只有正文变了、外围留一圈旧色**（截图里的「差异化框体」）。
+        //
+        // 根因：foliate 的 `setStylesImportant()` 给 `documentElement` / `body` 设的
+        //   `background` / `color` 是**带 `!important` 的**；
+        //   普通 `el.style.background = x` **不带 important ⇒ 被压制、无效**。
+        //   ⇒ 第一次切换看起来「生效」是因为 iframe 文档里的 `<style>` 本身就是新主题色
+        //     （`__doc` 还没建好时走的另一条路），之后就被 `!important` 锁死了。
+        //
+        // ⇒ 必须同样用 `setProperty(..., 'important')`。
+        //   ⚠️ 同时改 `documentElement` 与 `body`：前者管「栏间距/页边距」那圈底色，
+        //      后者管正文块 —— 只改一个就会露出「一圈不同的框」。
+        __doc.documentElement.style.setProperty('background', state.theme.bg, 'important');
+        __doc.documentElement.style.setProperty('color', state.theme.fg, 'important');
+        __doc.body.style.setProperty('background', state.theme.bg, 'important');
+        __doc.body.style.setProperty('color', state.theme.fg, 'important');
       } catch (_) {}
     }
 

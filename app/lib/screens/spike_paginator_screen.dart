@@ -331,29 +331,36 @@ class _SpikePaginatorScreenState
             // 🔴 2026-10-23 白哥：**不要上一章/下一章**（那两行又占地方，
             //    而且点了不翻页 —— 因为 `goTo` 撞了 `#index` 相同的分支）。
             //    ⇒ 翻页行**中间**放「目录」，点开弹章节列表。
+            // 🔴 2026-10-23 白哥：三个按钮**等宽、都用中文**（原来目录是图标、
+            //    宽度还比另外两个窄 ⇒ 「搞了个差异化」）。
             Row(
               children: [
                 Expanded(
+                  flex: 1,
                   child: OutlinedButton(
                     onPressed: _c.previousPage,
+                    style: _navBtnStyle(),
                     child: const Text('上一页'),
                   ),
                 ),
-                const SizedBox(width: 8),
-                // 目录 —— 真书时才有（演示文本没有章节可跳）
-                if (_bookId != null)
-                  OutlinedButton(
-                    onPressed: _openChapters,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      minimumSize: const Size(0, 40),
-                    ),
-                    child: const Icon(Icons.list, size: 20),
-                  ),
-                if (_bookId != null) const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 Expanded(
+                  flex: 1,
+                  child: OutlinedButton(
+                    onPressed: _bookId == null ? null : _openChapters,
+                    style: _navBtnStyle(),
+                    child: const Text('目录'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 1,
                   child: FilledButton(
                     onPressed: _c.nextPage,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(44),
+                      textStyle: const TextStyle(fontSize: 14),
+                    ),
                     child: const Text('下一页'),
                   ),
                 ),
@@ -362,6 +369,14 @@ class _SpikePaginatorScreenState
           ],
         ),
         ),
+      );
+
+  /// 「上一页 / 目录」共用的描边按钮样式 —— **和「下一页」同高同字号**，
+  /// 三个等宽靠外层 `Expanded(flex: 1)` 保证。
+  ButtonStyle _navBtnStyle() => OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(44),
+        textStyle: const TextStyle(fontSize: 14),
+        padding: EdgeInsets.zero,
       );
 
   /// 章节目录（底部弹层）—— 真书才有。
