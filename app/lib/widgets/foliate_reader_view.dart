@@ -123,14 +123,19 @@ class FoliateReaderController {
   Future<void> setTheme({
     required String background,
     required String foreground,
+    /// 🆕 2026-10-23：链接色（朱砂）。正式页的链接就是朱砂 + 下划线，
+    /// 不传的话 WebView 会用浏览器默认蓝色 —— 一眼就能看出是「另一套排版」。
+    String accent = '#B4432C',
     double fontSize = 17,
     double lineHeight = 1.75,
-    double margin = 20,
+    /// 🔴 边距必须与正式页一致：`CoSpacing.xxl = 24`（原来我写的 20 是猜的）
+    double margin = 24,
   }) async {
     if (_web == null || !_ready) return;
     final t = jsonEncode(jsonEncode({
       'bg': background,
       'fg': foreground,
+      'accent': accent,
       'fs': fontSize,
       'lh': lineHeight,
       'margin': margin,

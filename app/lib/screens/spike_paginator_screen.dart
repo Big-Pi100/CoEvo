@@ -66,10 +66,21 @@ class _SpikePaginatorScreenState
   /// 顶栏/底栏是否显示 —— **默认隐藏**（白哥：平时看不见，单击正文才弹出）。
   bool _bars = false;
 
-  static const _themes = <({String name, String bg, String fg})>[
-    (name: '墨', bg: '#F5F0E8', fg: '#3A332C'),
-    (name: '格', bg: '#FBFAF6', fg: '#2E2C28'),
-    (name: '夜', bg: '#1C1B19', fg: '#D9D3C7'),
+  /// 🔴 **三档色值直接取 `coevo_tokens.dart` 的真实值**（2026-10-23 白哥指出
+  /// 「跟现在运行中的完全不一样」—— 主因就是我自己猜了色值）：
+  ///
+  /// | 档 | `read`（正文底）| `ink`（文字）| `accent`（链接）|
+  /// |---|---|---|---|
+  /// | 墨 | `#FAF8F4` | `#24211C` | `#B4432C` |
+  /// | 格 | `#FFFFFF` | `#0A0A0A` | `#B4432C` |
+  /// | 夜 | `#14161C` | `#EDEBE6` | `#DB7E6B`（深底版亮朱砂）|
+  ///
+  /// ⚠️ 原来写的是 `#F5F0E8 / #3A332C` 之类 —— **全是我编的**，底色和字色都不对，
+  ///    所以观感「完全是另一个 App」。
+  static const _themes = <({String name, String bg, String fg, String accent})>[
+    (name: '墨', bg: '#FAF8F4', fg: '#24211C', accent: '#B4432C'),
+    (name: '格', bg: '#FFFFFF', fg: '#0A0A0A', accent: '#B4432C'),
+    (name: '夜', bg: '#14161C', fg: '#EDEBE6', accent: '#DB7E6B'),
   ];
 
   @override
@@ -286,7 +297,12 @@ class _SpikePaginatorScreenState
   Future<void> _cycleTheme() async {
     setState(() => _themeIdx = (_themeIdx + 1) % _themes.length);
     final t = _themes[_themeIdx];
-    await _c.setTheme(background: t.bg, foreground: t.fg);
+    await _c.setTheme(
+      background: t.bg,
+      foreground: t.fg,
+      accent: t.accent,
+      margin: 24,   // = CoSpacing.xxl（正式页正文边距）
+    );
   }
 
   @override
@@ -358,7 +374,7 @@ class _SpikePaginatorScreenState
     return Color(0xFF000000 | v);
   }
 
-  Widget _bar(({String name, String bg, String fg}) t) => SafeArea(
+  Widget _bar(({String name, String bg, String fg, String accent}) t) => SafeArea(
         bottom: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(6, 6, 10, 10),

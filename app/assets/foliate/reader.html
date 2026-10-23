@@ -1262,7 +1262,7 @@ __setStage('bridge:start bridge=' + (window.CoEvoBridge ? 'YES' : 'NO'));
 var pag = document.getElementById('pag');
 const state = {
   chapters: [], secIndex: 0, pageInSec: 0, fraction: 0, ready: false, charOffset: 0,
-  theme: { bg: '#F5F0E8', fg: '#3A332C', fs: 17, lh: 1.75, margin: 20 },
+  theme: { bg: '#F5F0E8', fg: '#3A332C', accent: '#B4432C', fs: 17, lh: 1.75, margin: 20 },
 };
 
 function buildDocUrl(bodyHtml) {
@@ -1295,7 +1295,22 @@ function buildDocUrl(bodyHtml) {
     //    白哥看到的就是「每页都填不满，底下空四分之一」。
     // 📌 判据：**印刷排版规则不能直接搬到分页阅读器**（页高差一个量级）。
     '}' +
-    'h2{font-size:' + (t.fs + 2) + 'px;line-height:1.4;margin:0 0 14px;}';
+    // 🔴 2026-10-23：**之前只给了 `p` 和 `h2` 样式**，其余标签（书名 `<h1>`、链接 `<a>`、
+    //    `<strong>` / `<em>`）走浏览器默认 —— 和正式页一比就露馅：
+    //    书名变小、链接变蓝、加粗不明显。
+    //    ⇒ 按正式页的层级补齐（层级不可反转：h1 > h2 > h3 > 正文）。
+    //    ⚠️ 颜色用 `accent`（朱砂），因为正式页的链接就是朱砂 + 下划线
+    //      （截图里 "The Project Gutenberg eBook of ..." 那行）。
+    'a{color:' + (t.accent || '#B4432C') + ';text-decoration:underline;}' +
+    'h1{font-size:' + (t.fs + 8) + 'px;line-height:1.35;font-weight:700;margin:0 0 16px;}' +
+    'h2{font-size:' + (t.fs + 2) + 'px;line-height:1.4;font-weight:600;margin:0 0 14px;}' +
+    'h3{font-size:' + (t.fs + 1) + 'px;line-height:1.4;font-weight:600;margin:0 0 12px;}' +
+    'strong,b{font-weight:700;}' +
+    'em,i{font-style:italic;}' +
+    'blockquote{margin:0 0 ' + (t.fs * 0.9).toFixed(1) + 'px;padding-left:14px;' +
+    'border-left:2px solid rgba(0,0,0,.12);}' +
+    'img{max-width:100%;height:auto;}' +
+    'hr{border:0;border-top:1px solid rgba(0,0,0,.12);margin:' + (t.fs * 0.9).toFixed(1) + 'px 0;}';
   const html = '<!doctype html><html><head><meta charset="utf-8"><style>' + css +
                '</style></head><body>' + bodyHtml + '</body></html>';
 
