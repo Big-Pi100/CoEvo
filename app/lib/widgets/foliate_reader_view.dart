@@ -37,6 +37,13 @@ class FoliateReaderController {
   final ValueNotifier<FoliatePosition> position =
       ValueNotifier(const FoliatePosition());
   final ValueNotifier<String?> selectedText = ValueNotifier<String?>(null);
+
+  /// 🆕 2026-10-23：选区**文本 + 矩形**（矩形用于把菜单摆在选区上方）。
+  ///
+  /// ⚠️ 坐标是 **iframe 内的 CSS px**，不是屏幕坐标 —— 调用方要自己加上
+  ///    WebView 在屏幕里的偏移（我们外层有 `Padding(top: safeArea.top)`）。
+  final ValueNotifier<FoliateSelection?> selection =
+      ValueNotifier<FoliateSelection?>(null);
   final ValueNotifier<String?> lastError = ValueNotifier<String?>(null);
 
   /// 正文被**单击**了一次（用来切换顶栏/底栏）。
@@ -122,7 +129,19 @@ class FoliateReaderController {
             totalChars: (m['total'] as num?)?.toInt() ?? 0,
           );
         case 'select':
-          selectedText.value = (m['text'] as String?)?.trim();
+          final text = (m['text'] as String?)?.trim();
+          selectedText.value = text;
+          if (text == null || text.isEmpty) {
+            selection.value = null;
+          } else {
+            selection.value = FoliateSelection(
+              text: text,
+              x: (m['x'] as num?)?.toDouble() ?? 0,
+              y: (m['y'] as num?)?.toDouble() ?? 0,
+              w: (m['w'] as num?)?.toDouble() ?? 0,
+              h: (m['h'] as num?)?.toDouble() ?? 0,
+            );
+          }
         case 'tap':
           tapTick.value = tapTick.value + 1;
         case 'error':
@@ -140,6 +159,27 @@ class FoliateReaderController {
       lastError.value = '桥消息解析失败：$e';
     }
   }
+}
+
+/// 一次选词的结果（文本 + 在 iframe 里的矩形）。
+@immutable
+class FoliateSelection {
+  const FoliateSelection({
+    required this.text,
+    required this.x,
+    required this.y,
+    required this.w,
+    required this.h,
+  });
+
+  final String text;
+  final double x;
+  final double y;
+  final double w;
+  final double h;
+
+  @override
+  String toString() => 'sel("$text" @$x,$y ${w}x$h)';
 }
 
 @immutable

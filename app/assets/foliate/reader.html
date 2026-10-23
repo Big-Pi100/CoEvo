@@ -1618,6 +1618,10 @@ bindPaginator(pag);
 function bindTapToDoc(doc) {
   if (!doc || doc.__coevoTapBound) return;
   doc.__coevoTapBound = true;
+  // 🔕 长按选词时 iOS 会弹系统菜单（Copy / Look Up / Translate）——
+  //    我们在 Flutter 层另画了自己的 `SelectionMenu`。这里先拦一道 contextmenu，
+  //    能挡掉一部分平台；挡不掉的部分会被 Flutter 的浮层**盖在上面**（Stack 层级更高）。
+  doc.addEventListener('contextmenu', function (ev) { ev.preventDefault(); }, true);
   doc.addEventListener('click', function () {
     var sel = doc.getSelection ? doc.getSelection() : null;
     if (sel && sel.toString().trim()) return;   // 选词时不算「单击」

@@ -3,8 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:flutter/services.dart';
+
 import '../providers/book_provider.dart';
+import '../services/word_lookup.dart';
 import '../widgets/foliate_reader_view.dart';
+import '../widgets/selection_menu.dart';
 
 /// 🔬 翻页阅读器 **spike 页面**（2026-10-22）。
 ///
@@ -43,6 +47,10 @@ class _SpikePaginatorScreenState
 
   /// 最近一次写进库的字符偏移（显示在底部，用来肉眼确认链路通了）
   int? _lastSaved;
+
+  /// 点过菜单项后临时收起（否则菜单会一直挂在原文上）。
+  /// 下次选区变化（`selection` 变新对象）时重置。
+  bool _hideSelectionMenu = false;
 
   /// 顶栏/底栏是否显示 —— **默认隐藏**（白哥：平时看不见，单击正文才弹出）。
   bool _bars = false;
@@ -211,12 +219,18 @@ class _SpikePaginatorScreenState
   }
 
   void _onSel() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    // 选区一变（新对象）⇒ 菜单重新出现
+    setState(() => _hideSelectionMenu = false);
   }
 
   void _onTap() {
     if (!mounted) return;
-    setState(() => _bars = !_bars);
+    // 点空白：先收浮层，再切栏（同一手势不重复做两件相反的事）
+    setState(() {
+      _hideSelectionMenu = true;
+      _bars = !_bars;
+    });
   }
 
   Timer? _saveTimer;
@@ -299,6 +313,9 @@ class _SpikePaginatorScreenState
               ),
             ),
           ),
+          // 🆕 划词浮层（2026-10-23）—— 复用正式页的 `SelectionMenu`（同一个 UI，
+          //    「长什么样」不重写），只是锚点从 `SelectableRegion` 换成了 WebView 的选区矩形。
+          _selectionLayer(safe.top),
           AnimatedPositioned(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
@@ -501,6 +518,53 @@ class _SpikePaginatorScreenState
         textStyle: const TextStyle(fontSize: 14),
         padding: EdgeInsets.zero,
       );
+
+  /// 划词浮层：把 `SelectionMenu` 摆在选区**上方**（放不下就放下方）。
+  ///
+  /// ⚠️ 坐标换算：`selection` 里的 x/y 是 **iframe 内的 CSS px**，
+  ///    而 WebView 在 `Positioned.fill` + `Padding(top: safeTop)` 里
+  ///    ⇒ 屏幕 y 要加 `safeTop`。**左右不加**（没有横向 padding）。
+  ///    这是首版近似值，真机若偏高/偏低，只需要调这里的偏移常量。
+  Widget _selectionLayer(double safeTop) {
+    return ValueListenableBuilder<FoliateSelection?>(
+      valueListenable: _c.selection,
+      builder: (_, sel, __) {
+        if (sel == null || _hideSelectionMenu) return const SizedBox.shrink();
+        const menuH = 56.0;
+        const gap = 8.0;
+        final screenTop = sel.y + safeTop;
+        final above = screenTop - menuH - gap >= safeTop;
+        final top = above ? screenTop - menuH - gap : screenTop + sel.h + gap;
+        final left = sel.x.clamp(8.0, MediaQuery.of(context).size.width - 8.0);
+        return Positioned(
+          left: left,
+          top: top,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: SelectionMenu(items: [
+              SelectionMenuItem(
+                label: '查词',
+                icon: Icons.menu_book_outlined,
+                onTap: () {
+                  setState(() => _hideSelectionMenu = true);
+                  // ⚠️ 书不是「文章」⇒ `articleId: null`（不记痕迹，与正式书库页同一口径）
+                  lookupWord(context, ref, sel.text, articleId: null);
+                },
+              ),
+              SelectionMenuItem(
+                label: '复制',
+                icon: Icons.content_copy_outlined,
+                onTap: () async {
+                  setState(() => _hideSelectionMenu = true);
+                  await Clipboard.setData(ClipboardData(text: sel.text));
+                },
+              ),
+            ]),
+          ),
+        );
+      },
+    );
+  }
 
   /// 章节目录（底部弹层）—— 真书才有。
   Future<void> _openChapters() async {
