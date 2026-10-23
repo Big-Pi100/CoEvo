@@ -5,8 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flutter/services.dart';
 
+import 'package:uuid/uuid.dart';
+
 import '../providers/book_provider.dart';
+import '../services/highlight_enqueue.dart';
+import '../services/highlight_repository.dart';
+import '../services/highlight_span.dart';
+import '../providers/user_db_provider.dart';
 import '../services/word_lookup.dart';
+import '../widgets/translation_sheet.dart';
 import '../widgets/foliate_reader_view.dart';
 import '../widgets/selection_menu.dart';
 
@@ -47,6 +54,9 @@ class _SpikePaginatorScreenState
 
   /// 最近一次写进库的字符偏移（显示在底部，用来肉眼确认链路通了）
   int? _lastSaved;
+
+  /// 本章**原文**（划线定位用：`locateSelection(plainText: ..., picked: ...)`）。
+  String? _chapterPlainText;
 
   /// 点过菜单项后临时收起（否则菜单会一直挂在原文上）。
   /// 下次选区变化（`selection` 变新对象）时重置。
@@ -182,6 +192,8 @@ class _SpikePaginatorScreenState
     setState(() {
       _chapterIdx = idx;
       _chapterTitle = ch.chapterTitle;
+      // 🔑 划线定位要用**章节原文**（不是 HTML）—— `locateSelection` 在明文里找选中片段
+      _chapterPlainText = ch.text;
     });
     await _c.setChapters([_textToHtml(ch.text, ch.chapterTitle)]);
   }
@@ -563,6 +575,31 @@ class _SpikePaginatorScreenState
               lookupWord(context, ref, sel.text, articleId: null);
             },
           ),
+          // 🆕 翻译 —— 复用正式页同一个浮动面板 `showTranslationSheet`
+          //    （`sourceLabel` 传书名，面板上会显示「翻译 · 书名」；拿不到就传 null）
+          SelectionMenuItem(
+            label: '翻译',
+            icon: Icons.translate,
+            onTap: () {
+              setState(() => _hideSelectionMenu = true);
+              showTranslationSheet(
+                context,
+                text: sel.text,
+                sourceLabel: _bookTitle,
+              );
+            },
+          ),
+          // 🆕 划线 —— 只有拿到「正文来源」时才出现（拿不到就不渲染，
+          //    免得出现一个点了没反应的按钮）
+          if (_bookId != null && _chapterPlainText != null)
+            SelectionMenuItem(
+              label: '划线',
+              icon: Icons.edit_outlined,
+              onTap: () {
+                setState(() => _hideSelectionMenu = true);
+                _enqueueHighlight(sel.text);
+              },
+            ),
           SelectionMenuItem(
             label: '复制',
             icon: Icons.content_copy_outlined,
@@ -574,6 +611,43 @@ class _SpikePaginatorScreenState
         ]),
       ),
     ];
+  }
+
+  /// 划线入队（书）—— 与正式页**同一套服务**（`enqueueHighlight` + `locateSelection`）。
+  ///
+  /// 🔴 这里是 spike 里**唯一需要自己拼**的一段（正式页的 `_enqueueHighlight` 是私有方法，
+  ///    且带 toast / 写笔记入口）。核心逻辑（定位 + 写库）全部走公开 API，没有复制实现。
+  Future<void> _enqueueHighlight(String text) async {
+    final id = _bookId;
+    final plain = _chapterPlainText;
+    if (id == null || plain == null) return;
+    // 在**本章原文**里定位选中的片段 ⇒ start/end 偏移（找不到返回 -1，语义是「位置未知」）
+    final span = locateSelection(plainText: plain, picked: text);
+    var ok = false;
+    try {
+      final db = await ref.read(userDbProvider.future);
+      final r = await enqueueHighlight(
+        db: db,
+        uuid: const Uuid().v4(),
+        sourceType: HighlightSourceType.book,
+        sourceId: id,
+        chapterIdx: _chapterIdx,
+        startOffset: span.start,
+        endOffset: span.end,
+        text: text,
+      );
+      ok = r == HighlightEnqueueResult.ok;
+    } catch (e) {
+      debugPrint('[spike] 划线入队失败：$e');
+    }
+    if (!mounted) return;
+    setState(() => _error = ok ? null : '划线没存上，请再试一次');
+    if (ok) {
+      ref.read(userDbRevisionProvider.notifier).bump();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已加入记忆 · 复习里会再见')),
+      );
+    }
   }
 
   /// 章节目录（底部弹层）—— 真书才有。
