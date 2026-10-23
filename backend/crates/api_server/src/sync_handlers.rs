@@ -2275,6 +2275,7 @@ mod tests {
             chapter_idx: 3,
             scroll_ratio: 0.2,
             updated_at: "2026-10-01T00:00:00Z".into(),
+            char_offset: None,
         }];
         push_changes(&conn, "u1", "devA", RECV1, &a).unwrap();
 
@@ -2284,6 +2285,7 @@ mod tests {
             chapter_idx: 9,
             scroll_ratio: 0.8,
             updated_at: "2026-10-05T00:00:00Z".into(),
+            char_offset: None,
         }];
         push_changes(&conn, "u1", "devB", RECV2, &b).unwrap();
 
@@ -2299,6 +2301,7 @@ mod tests {
             chapter_idx: 1,
             scroll_ratio: 0.1,
             updated_at: "2026-10-05T00:00:00Z".into(),
+            char_offset: None,
         }];
         push_changes(&conn, "u1", "devC", RECV2, &c).unwrap();
         let out2 = pull_changes(&conn, "u1", ALL, "").unwrap();
@@ -2527,6 +2530,7 @@ mod tests {
                 excerpt: "一段摘录".into(),
                 created_at: created.into(),
                 deleted,
+                char_offset: None,
             }
         }
 
@@ -2564,6 +2568,7 @@ mod tests {
             excerpt: "被改写".into(),
             created_at: "2026-10-09T00:00:00.000Z".into(),
             deleted: 1,
+            char_offset: None,
         }];
         push_changes(&conn, "u1", "devB", RECV2, &b2).unwrap();
         let out3 = pull_changes(&conn, "u1", ALL, "").unwrap();
@@ -2687,6 +2692,7 @@ mod tests {
                 excerpt: "e".into(),
                 created_at: "2026-10-01T00:00:00Z".into(),
                 deleted: 0,
+                char_offset: None,
             }];
             p.achievement_unlocks = vec![AchievementUnlockInput {
                 key: "same-key".into(),
