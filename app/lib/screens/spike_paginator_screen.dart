@@ -13,6 +13,7 @@ import '../services/highlight_repository.dart';
 import '../services/highlight_span.dart';
 import '../services/picked_text.dart';
 import '../providers/user_db_provider.dart';
+import '../services/tts_service.dart';
 import '../services/word_lookup.dart';
 import '../widgets/translation_sheet.dart';
 import '../widgets/foliate_reader_view.dart';
@@ -428,6 +429,38 @@ class _SpikePaginatorScreenState
                   ],
                 ),
               ),
+              // 🔴 2026-10-23 白哥定：**朗读键放右上角**（原来在正式页的底栏中间）。
+              //    行为照抄正式页：`isSpeaking(整章原文)` 判状态、停止用 `stop()`
+              //    （语义是「整章读完」，不是 togglePlay）。
+              //    ⚠️ 用 `ref.watch` 而不是包一层 `Consumer` —— `_bar` 由 `build` 调用，
+              //       直接 watch 就够（正式页的 `_footer` 也是这么写的）。
+              if (_chapterPlainText != null)
+                Builder(builder: (_) {
+                  final tts = ref.watch(ttsServiceProvider);
+                  final plain = _chapterPlainText!;
+                  final speaking = tts.isSpeaking(plain);
+                  return InkWell(
+                    onTap: () {
+                      if (speaking) {
+                        tts.stop();
+                      } else {
+                        tts.speakLong(plain);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 6),
+                      child: Icon(
+                        speaking
+                            ? Icons.stop_circle_outlined
+                            : Icons.play_circle_outline,
+                        size: 22,
+                        color: _hex(t.accent),
+                      ),
+                    ),
+                  );
+                }),
               TextButton(
                 onPressed: _cycleTheme,
                 child: Text('主题：${t.name}'),
