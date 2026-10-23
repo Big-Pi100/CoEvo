@@ -11,6 +11,7 @@ import '../providers/book_provider.dart';
 import '../services/highlight_enqueue.dart';
 import '../services/highlight_repository.dart';
 import '../services/highlight_span.dart';
+import '../services/picked_text.dart';
 import '../providers/user_db_provider.dart';
 import '../services/word_lookup.dart';
 import '../widgets/translation_sheet.dart';
@@ -566,32 +567,46 @@ class _SpikePaginatorScreenState
         left: left,
         top: top,
         child: SelectionMenu(items: [
-          SelectionMenuItem(
-            label: '查词',
-            icon: Icons.menu_book_outlined,
-            onTap: () {
-              setState(() => _hideSelectionMenu = true);
-              // ⚠️ 书不是「文章」⇒ `articleId: null`（不记痕迹，与正式书库页同一口径）
-              lookupWord(context, ref, sel.text, articleId: null);
-            },
-          ),
-          // 🆕 翻译 —— 复用正式页同一个浮动面板 `showTranslationSheet`
-          //    （`sourceLabel` 传书名，面板上会显示「翻译 · 书名」；拿不到就传 null）
-          SelectionMenuItem(
-            label: '翻译',
-            icon: Icons.translate,
-            onTap: () {
-              setState(() => _hideSelectionMenu = true);
-              showTranslationSheet(
-                context,
-                text: sel.text,
-                sourceLabel: _bookTitle,
-              );
-            },
-          ),
-          // 🆕 划线 —— 只有拿到「正文来源」时才出现（拿不到就不渲染，
-          //    免得出现一个点了没反应的按钮）
-          if (_bookId != null && _chapterPlainText != null)
+          // 🔴🔴 **还原正式页的逻辑**（2026-10-23 白哥指出「下栏弹窗和原来的不一样」）：
+          //
+          // 第一项是「查词」**或**「翻译」—— **二选一，不是并列两个**。
+          // 判据 `classifyPicked(text)`：单个可查的英文词 ⇒ 查词；其余（多词/纯符号/
+          // 非拉丁）⇒ 翻译。理由是词库只收纯词形，拿一句话去查词必然未命中、
+          // 还会触发一次在线制卡被服务端 400 拒掉。
+          if (_pickedKind(sel.text) == PickedKind.word)
+            SelectionMenuItem(
+              label: '查词',
+              icon: Icons.menu_book_outlined,
+              onTap: () {
+                setState(() => _hideSelectionMenu = true);
+                // ⚠️ 书不是「文章」⇒ `articleId: null`（不记痕迹，与正式书库页同一口径）
+                lookupWord(context, ref, sel.text, articleId: null);
+              },
+            )
+          else
+            SelectionMenuItem(
+              label: '翻译',
+              icon: Icons.translate,
+              onTap: () {
+                setState(() => _hideSelectionMenu = true);
+                showTranslationSheet(
+                  context,
+                  text: sel.text,
+                  // 来源标题可选 —— 拿不到就传 null，浮层退化为只写「翻译」
+                  sourceLabel: _bookTitle,
+                  // 🔴 **这个参数决定面板里有没有「划线记住这段」按钮**（白哥要的）
+                  //    原判据：`highlightSource == null ? null : ...`
+                  //    ⇒ 拿不到正文来源就**不传**（否则按钮点了会静默失败）。
+                  onRemember: _canHighlight
+                      ? (String? translation) {
+                          _enqueueHighlight(sel.text, translation: translation);
+                        }
+                      : null,
+                );
+              },
+            ),
+          // 划线 —— 只有拿到「正文来源」时才出现（同正式页 `highlightSource != null`）
+          if (_canHighlight)
             SelectionMenuItem(
               label: '划线',
               icon: Icons.edit_outlined,
@@ -613,11 +628,19 @@ class _SpikePaginatorScreenState
     ];
   }
 
+  /// 能否划线（同正式页的 `highlightSource != null` 判据）。
+  /// 拿不到书 / 章节原文 ⇒ 定位不了 ⇒ **不显示「划线」也不传 `onRemember`**。
+  bool get _canHighlight => _bookId != null && _chapterPlainText != null;
+
+  /// 选中的是「一个词」还是「一段话」—— 决定第一项是「查词」还是「翻译」。
+  /// 直接复用正式页的纯函数（**不重写**，避免两处判据漂移）。
+  static PickedKind _pickedKind(String text) => classifyPicked(text);
+
   /// 划线入队（书）—— 与正式页**同一套服务**（`enqueueHighlight` + `locateSelection`）。
   ///
   /// 🔴 这里是 spike 里**唯一需要自己拼**的一段（正式页的 `_enqueueHighlight` 是私有方法，
   ///    且带 toast / 写笔记入口）。核心逻辑（定位 + 写库）全部走公开 API，没有复制实现。
-  Future<void> _enqueueHighlight(String text) async {
+  Future<void> _enqueueHighlight(String text, {String? translation}) async {
     final id = _bookId;
     final plain = _chapterPlainText;
     if (id == null || plain == null) return;
@@ -635,6 +658,10 @@ class _SpikePaginatorScreenState
         startOffset: span.start,
         endOffset: span.end,
         text: text,
+        // 🔑 从翻译面板那条路来的时候**带着刚翻出来的译文** ——
+        //    不接住它就是白花（用户为这段文字付了额度），
+        //    复习时也只有骨架没有译文提示。这是白哥 2026-10-11 真机反馈过的问题。
+        translation: translation,
       );
       ok = r == HighlightEnqueueResult.ok;
     } catch (e) {
