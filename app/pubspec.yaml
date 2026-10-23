@@ -26,6 +26,15 @@ dependencies:
   #    ⚠️ 版本约束放宽到 ^4.9.0（Flutter 3.41 / Dart 3.11 满足）；真正确认由 CI 的
   #    `flutter pub get` 完成 —— 本机跑不了 flutter 命令。
   webview_flutter: ^4.9.0
+  # 🔬 2026-10-23：换成 inappwebview —— **它有一个官方的 `disableContextMenu`**，
+  #    iOS 上直接生效（不用自绘 PlatformView、不用写 Swift）。
+  #    这是「去掉系统编辑菜单」唯一的现成开关：
+  #    `InAppWebViewSettings(disableContextMenu: true)`。
+  #    实测来源：pub.dev 的 API 文档明确标注 iOS 为官方支持平台。
+  #    ⚠️ 它的 JS 桥是 `window.flutter_inappwebview.callHandler(name, ...)`，
+  #       与 `webview_flutter` 的 `window.<channel>.postMessage(...)` **不同** ⇒
+  #       `reader.html` 里的 `__post` 已改成**双通道**（两套都支持，可平滑回退）。
+  flutter_inappwebview: ^6.1.5
   path_provider: ^2.1.0
   image_picker: ^1.1.2
   flutter_math_fork: ^0.7.4

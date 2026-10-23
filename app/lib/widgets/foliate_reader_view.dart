@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 /// 翻页阅读器的 **spike 外壳**（2026-10-22）。
 ///
@@ -31,8 +31,49 @@ import 'package:webview_flutter/webview_flutter.dart';
 /// final c = FoliateReaderController();
 /// FoliateReaderView(controller: c, chapters: ['<p>…</p>', '…'])
 /// ```
+/// \`flutter_inappwebview\` 的薄封装 —— 只包我们真正用到的 3 个能力。
+///
+/// # 🔑 为什么从 \`webview_flutter\` 换到它（2026-10-23）
+///
+/// 需求：**长按选词时不要出现 iOS 的系统编辑菜单**（Copy / Look Up / Translate），
+/// 只留我们自己的「查词 / 复制 / 划线 / 翻译」。
+///
+/// 那个菜单**只能用子类化 \`WKWebView\` + 重写 \`buildMenu(with:)\` 去掉**
+/// （\`contextmenu\` 事件无效；\`-webkit-user-select: none\` 会连选择一起废掉）。
+/// \`webview_flutter\` 4.14.1 是 Pigeon 架构，\`WKWebView\` 由 Dart 侧创建，
+/// **Swift 侧没有子类化入口** ⇒ 自绘 PlatformView 的路走了 5 次 CI 未能定位失败，已回滚。
+///
+/// \`flutter_inappwebview\` 有现成开关，且 **pub.dev 明确标注 iOS 为官方支持平台**：
+/// \`\`\`dart
+/// InAppWebViewSettings(disableContextMenu: true)
+/// \`\`\`
+/// ⇒ 一行配置，不写任何原生代码。
+class InAppWebViewHost implements FoliateWebHost {
+  InAppWebViewHost(this._c);
+  final InAppWebViewController _c;
+
+  @override
+  Future<void> loadAsset(String relativePath) =>
+      _c.loadFile(assetFilePath: relativePath);
+
+  @override
+  Future<void> runJavaScript(String js) => _c.evaluateJavascript(source: js);
+
+  @override
+  Future<Object?> runJavaScriptReturning(String js) =>
+      _c.evaluateJavascript(source: js);
+}
+
+/// 底层 WebView 的能力接口（只有一个实现，但留着是为了**不把包的类型泄漏到 controller**——
+/// 将来若再换包，只改这一层）。
+abstract class FoliateWebHost {
+  Future<void> loadAsset(String relativePath);
+  Future<void> runJavaScript(String js);
+  Future<Object?> runJavaScriptReturning(String js);
+}
+
 class FoliateReaderController {
-  WebViewController? _web;
+  FoliateWebHost? _web;
 
   final ValueNotifier<FoliatePosition> position =
       ValueNotifier(const FoliatePosition());
@@ -62,7 +103,7 @@ class FoliateReaderController {
 
   bool get isReady => _ready;
 
-  void _attach(WebViewController web) {
+  void _attach(FoliateWebHost web) {
     _web = web;
   }
 
@@ -109,8 +150,8 @@ class FoliateReaderController {
 
   Future<String?> debugStatus() async {
     if (_web == null || !_ready) return null;
-    return _web!.runJavaScriptReturningResult('window.__reader.status();')
-        as String?;
+    final raw = await _web!.runJavaScriptReturning('window.__reader.status();');
+    return raw as String?;
   }
 
   void _onMessage(String raw) {
@@ -229,48 +270,58 @@ class FoliateReaderView extends StatefulWidget {
 }
 
 class _FoliateReaderViewState extends State<FoliateReaderView> {
-  WebViewController? _web;
-
   @override
-  void initState() {
-    super.initState();
-    final web = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      // 🔑 必须设置背景色为透明 —— 否则默认白底会在主题切换瞬间闪一下。
-      ..setBackgroundColor(const Color(0x00000000))
-      ..addJavaScriptChannel('CoEvoBridge', onMessageReceived: (m) {
-        widget.controller._onMessage(m.message);
-      })
-      ..setNavigationDelegate(NavigationDelegate(
-        // 🔴 2026-10-22 真机（白屏）：**不要依赖 JS 主动发 `ready`**。
-        //    `addJavaScriptChannel` 注入的 `window.CoEvoBridge` 在某些情况下拿不到
-        //    （真机上「阶段」能显示是因为它直接写 DOM，**不经过 bridge** ——
-        //     所以「页面有字」不等于「桥能通」）。
-        //    ⇒ 页面加载完由**原生主动轮询** `window.__bridgePing()`，
-        //      拿到 `hasReader: true` 才认为就绪。这样 bridge 通不通都能推进。
-        onPageFinished: (_) => _bootstrap(),
-        onWebResourceError: (e) {
-          widget.onError?.call('WebView 错误：${e.description}');
-        },
-      ))
-      ..loadFlutterAsset('assets/foliate/reader.html');
-
-    widget.controller._attach(web);
-    _web = web;
+  Widget build(BuildContext context) {
+    return InAppWebView(
+      // 🔑 `initialFile` 直接吃 pubspec 里声明的 asset 路径。
+      //    它的 base URL 是 `.../flutter_assets/assets/foliate/reader.html`
+      //    ⇒ `reader.html` 里 `../fonts/*.ttf` 的相对路径可用（同源）。
+      initialFile: 'assets/foliate/reader.html',
+      initialSettings: InAppWebViewSettings(
+        // 🔴🔴 **这一行就是整个换包的目的**：去掉 iOS 长按的系统编辑菜单
+        //    （Copy / Look Up / Translate）。pub.dev 标注 iOS 为官方支持平台。
+        disableContextMenu: true,
+        // 但不能连「选词」一起关 —— 划词是核心功能
+        isTextInteractionEnabled: true,
+        javaScriptEnabled: true,
+        transparentBackground: true,
+        allowsLinkPreview: false,
+        supportZoom: false,
+        // 阅读器自己管翻页，不要 WebView 的滚动
+        disableVerticalScroll: true,
+        disableHorizontalScroll: true,
+      ),
+      onWebViewCreated: (c) {
+        c.addJavaScriptHandler(
+          handlerName: 'CoEvoBridge',
+          callback: (args) {
+            if (args.isEmpty) return null;
+            final body = args.first;
+            widget.controller
+                ._onMessage(body is String ? body : jsonEncode(body));
+            return null;
+          },
+        );
+        widget.controller._attach(InAppWebViewHost(c));
+      },
+      onLoadStop: (_, __) => _bootstrap(),
+      onReceivedError: (_, __, error) {
+        widget.onError?.call('WebView 错误：${error.description}');
+      },
+    );
   }
 
   /// 页面加载完后**主动轮询**，直到 `window.__reader` 就绪，再把内容推下去。
   ///
-  /// 🔑 为什么不是「等 JS 发 ready」：那条路依赖 `CoEvoBridge` 注入成功；
-  ///    真机上曾经出现过「页面能渲染、阶段能更新，但 bridge 从没通」的情况
-  ///    ⇒ `ready` 永远发不出来 ⇒ 白屏且没有任何可观察的异常。
+  /// 🔑 为什么不「等 JS 发 ready」：那条路依赖 JS→原生通道（`callHandler`）建好；
+  ///    真机曾出现「页面能渲染但通道从没通」⇒ 白屏且没有任何可观察的异常。
   ///    轮询是**原生发起的**，不依赖任何 JS→原生的通道。
   Future<void> _bootstrap() async {
-    final web = _web;
-    if (web == null) return;
+    final host = widget.controller._web;
+    if (host == null) return;
     for (var i = 0; i < 40; i++) {
       try {
-        final raw = await web.runJavaScriptReturningResult(
+        final raw = await host.runJavaScriptReturning(
             'window.__bridgePing ? window.__bridgePing() : ""');
         final txt = raw.toString();
         if (txt.contains('"hasReader":true')) {
@@ -287,12 +338,5 @@ class _FoliateReaderViewState extends State<FoliateReaderView> {
       await Future<void>.delayed(const Duration(milliseconds: 120));
     }
     widget.onError?.call('阅读器初始化超时：window.__reader 未就绪');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final web = _web;
-    if (web == null) return const SizedBox.shrink();
-    return WebViewWidget(controller: web);
   }
 }

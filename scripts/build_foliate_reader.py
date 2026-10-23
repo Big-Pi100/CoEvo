@@ -85,7 +85,18 @@ var __fail = function (m) {
 };
 var __setStage = function (m) { __stage = m; __renderDiag(); };
 var __post = function (obj) {
-  try { if (window.CoEvoBridge) window.CoEvoBridge.postMessage(JSON.stringify(obj)); } catch (_) {}
+  // 🔑 **双通道**：两个 WebView 包的 JS 桥不一样 ——
+  //   · `webview_flutter`：`window.CoEvoBridge.postMessage(str)`（注入的 channel）
+  //   · `flutter_inappwebview`：`window.flutter_inappwebview.callHandler('CoEvoBridge', str)`
+  //   ⇒ 两套都试，谁在就用谁。这样换包/回滚都不用改 JS。
+  try {
+    var s = JSON.stringify(obj);
+    if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
+      window.flutter_inappwebview.callHandler('CoEvoBridge', s);
+    } else if (window.CoEvoBridge) {
+      window.CoEvoBridge.postMessage(s);
+    }
+  } catch (_) {}
 };
 window.onerror = function (msg, src, line, col, err) {
   // 🔕 过滤浏览器**已知无害**的告警：`ResizeObserver loop completed with undelivered
