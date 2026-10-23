@@ -1498,6 +1498,11 @@ window.__reader = {
   },
 };
 
+// 选词防抖的 timer（`bindToDoc` 里的 selectionchange 用它）。
+// 🔑 `var` 声明会提升，但**赋值不会** —— 放在文件后面对 `clearTimeout(undefined)` 无害，
+//    真正的隐患是「被误认为未定义」。提前到使用点之前，读代码时不用来回找。
+var __selTimer = 0;
+
 /// 当前可见范围**起点**在「正文纯文本」里的字符偏移。
 ///
 /// # 🔴 口径（必须与 `_textToHtml` 一致，否则偏移系统性错位且**不会报错**）
@@ -1578,7 +1583,7 @@ function onPagLoad(e) {
     if (typeof doc.addEventListener !== 'function') return;
     if (doc.__coevoSelBound) return;
     doc.__coevoSelBound = true;
-    bindTapToDoc(doc);
+    bindToDoc(doc);
 
     // 🔍 字体是否**真的加载成功**（2026-10-23：白哥问「字体还没统一对吧」）。
     //    `font-display: swap` 会在失败时**静默回退**系统衬线 ⇒ 光看字形很难判断，
@@ -1615,13 +1620,32 @@ bindPaginator(pag);
 //   根因：正文在 **iframe 里**，点击事件**不会跨文档冒泡**到顶层 document
 //   ⇒ 监听顶层 `document` 的 click 永远收不到（和 touch 守卫同一个坑）。
 //   ⇒ 挪进 `load` 回调，注册到 **iframe 的 doc** 上（见下面的 bindToDoc）。
-function bindTapToDoc(doc) {
+function bindToDoc(doc) {
   if (!doc || doc.__coevoTapBound) return;
   doc.__coevoTapBound = true;
+
   // 🔕 长按选词时 iOS 会弹系统菜单（Copy / Look Up / Translate）——
   //    我们在 Flutter 层另画了自己的 `SelectionMenu`。这里先拦一道 contextmenu，
   //    能挡掉一部分平台；挡不掉的部分会被 Flutter 的浮层**盖在上面**（Stack 层级更高）。
   doc.addEventListener('contextmenu', function (ev) { ev.preventDefault(); }, true);
+
+  // 🔴 选区变化**必须绑在这个 doc 上**（正文在 iframe 里，顶层 document 收不到）。
+  doc.addEventListener('selectionchange', function () {
+    clearTimeout(__selTimer);
+    __selTimer = setTimeout(function () {
+      var sel = doc.getSelection ? doc.getSelection() : null;
+      var text = (sel && sel.toString ? sel.toString() : '').trim();
+      if (!text) {
+        __post({ type: 'select', text: '' });   // 清空 ⇒ Flutter 收起菜单
+        return;
+      }
+      var r = null;
+      try { r = sel.getRangeAt(0).getBoundingClientRect(); } catch (_) {}
+      __post({ type: 'select', text: text,
+               x: r ? r.left : 0, y: r ? r.top : 0,
+               w: r ? r.width : 0, h: r ? r.height : 0 });
+    }, 260);
+  });
   doc.addEventListener('click', function () {
     var sel = doc.getSelection ? doc.getSelection() : null;
     if (sel && sel.toString().trim()) return;   // 选词时不算「单击」
@@ -1629,20 +1653,15 @@ function bindTapToDoc(doc) {
   }, false);
 }
 
-var __selTimer = 0;
-document.addEventListener('selectionchange', function () {
-  clearTimeout(__selTimer);
-  __selTimer = setTimeout(function () {
-    var sel = window.getSelection();
-    var text = (sel && sel.toString ? sel.toString() : '').trim();
-    if (!text) return;
-    var r = null;
-    try { r = sel.getRangeAt(0).getBoundingClientRect(); } catch (_) {}
-    __post({ type: 'select', text: text,
-             x: r ? r.left : 0, y: r ? r.top : 0,
-             w: r ? r.width : 0, h: r ? r.height : 0 });
-  }, 260);
-});
+// 🔴🔴 2026-10-23 真机：**长按选词后只有系统菜单，我们的菜单不出现**。
+//
+// 根因（**第三次踩同一个坑**）：`selectionchange` 监听的还是**顶层 document**，
+//   而正文在 **iframe 里** —— 选区变化**不跨文档冒泡**（同 click / touch 那两次）。
+//   ⇒ 事件没到、`select` 消息没发、`controller.selection` 一直是 null、菜单不渲染。
+//
+// ⇒ 已挪进 `bindToDoc(doc)`，注册到 **iframe 的 doc** 上。
+// 📌 判据（该固化了）：**凡是「发生在正文里」的事件（click / touch / selectionchange），
+//    一律绑 iframe 的 doc，不要绑顶层 document**。
 
 // 供 Flutter **主动轮询**用（不依赖 JS→Flutter 的 push）：
 // 如果 `CoEvoBridge` 注入失败，`ready` 消息永远发不出去 ⇒ 白屏且无提示。
