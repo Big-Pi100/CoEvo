@@ -540,117 +540,67 @@ class _SpikePaginatorScreenState
       );
 
 
+  /// 底栏 —— **只有一行页码**（2026-10-23 白哥定：
+  /// 「底部除了页码信息什么都不要，目录放在底部弹窗里，翻页按钮不要了」）。
+  ///
+  /// 交互：**点页码 → 弹章节目录**（目录本身就是底部弹层）。
+  ///
+  /// ⚠️ 保留 `_error` 那一块：出错必须可见（真机没有控制台）。
+  ///    其余诊断（阶段 / 字体 / char_offset / 选词回显）都是验证期临时用的，删掉。
   Widget _footer(Color bg) => SafeArea(
         top: false,
         child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
-        color: bg,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Text('⚠️ $_error',
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11, color: Color(0xFFB4432C))),
-              ),
-            // 白屏时看这一行就知道 JS 卡在哪一步（真机没有控制台）
-            ValueListenableBuilder<String>(
-              valueListenable: _c.lastStage,
-              builder: (_, st, __) => Text(
-                st.isEmpty ? '' : 'JS 阶段：$st',
-                style: const TextStyle(fontSize: 10, color: Color(0xFF8A7F70)),
-              ),
-            ),
-            // 🆕 v6：写库确认（肉眼验证 char_offset 链路通没通）
-            if (_lastSaved != null)
-              Text(
-                '已存 char_offset = $_lastSaved',
-                style: const TextStyle(fontSize: 10, color: Color(0xFF3B6D11)),
-              ),
-            // 字体加载结果（`swap` 会静默回退，必须显式看）
-            ValueListenableBuilder<String>(
-              valueListenable: _c.fontsStatus,
-              builder: (_, fs, __) => Text(
-                fs.isEmpty ? '' : '字体：$fs',
-                style: const TextStyle(fontSize: 10, color: Color(0xFF8A7F70)),
-              ),
-            ),
-            ValueListenableBuilder<FoliatePosition>(
-              valueListenable: _c.position,
-              builder: (_, p, __) => Text(
-                '第 ${p.sectionIndex + 1} 节 · 节内第 ${p.pageInSection} 页 · ${(p.fraction * 100).toStringAsFixed(0)}%',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF6B6154)),
-              ),
-            ),
-            const SizedBox(height: 6),
-            ValueListenableBuilder<String?>(
-              valueListenable: _c.selectedText,
-              builder: (_, s, __) => Text(
-                s == null || s.isEmpty ? '长按正文选一个词试试' : '选中的词：$s',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: s == null || s.isEmpty
-                      ? const Color(0xFF8A7F70)
-                      : const Color(0xFFB4432C),
+          padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+          color: bg,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text('⚠️ $_error',
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFFB4432C))),
                 ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            // 🔴 2026-10-23 白哥：**不要上一章/下一章**（那两行又占地方，
-            //    而且点了不翻页 —— 因为 `goTo` 撞了 `#index` 相同的分支）。
-            //    ⇒ 翻页行**中间**放「目录」，点开弹章节列表。
-            // 🔴 2026-10-23 白哥：三个按钮**等宽、都用中文**（原来目录是图标、
-            //    宽度还比另外两个窄 ⇒ 「搞了个差异化」）。
-            Row(
-              children: [
-                Expanded(
-                  flex: 1,
-                  child: OutlinedButton(
-                    onPressed: _c.previousPage,
-                    style: _navBtnStyle(),
-                    child: const Text('上一页'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 1,
-                  child: OutlinedButton(
-                    onPressed: _bookId == null ? null : _openChapters,
-                    style: _navBtnStyle(),
-                    child: const Text('目录'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 1,
-                  child: FilledButton(
-                    onPressed: _c.nextPage,
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(44),
-                      textStyle: const TextStyle(fontSize: 14),
+              ValueListenableBuilder<FoliatePosition>(
+                valueListenable: _c.position,
+                builder: (_, p, __) {
+                  // 章号用「当前位置的 sectionIndex」而不是 `_chapterIdx`
+                  // —— 跨章翻页时后者由 `_onPosition` 异步同步，这里直接用前者更准
+                  final sec = p.sectionIndex + 1;
+                  final total = _chapters.isNotEmpty
+                      ? _chapters.length
+                      : (_chapterCount > 0 ? _chapterCount : 1);
+                  final pct =
+                      (p.fraction * 100).clamp(0, 100).toStringAsFixed(0);
+                  return InkWell(
+                    onTap: _chapters.isEmpty ? null : _openChapters,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      child: Text(
+                        '$sec / $total　·　$pct%',
+                        style: TextStyle(
+                          fontFamily: CoFonts.uiSans,
+                          fontSize: 12,
+                          color: _hex(_themes[_themeIdx].fg)
+                              .withValues(alpha: 0.55),
+                        ),
+                      ),
                     ),
-                    child: const Text('下一页'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       );
 
-  /// 「上一页 / 目录」共用的描边按钮样式 —— **和「下一页」同高同字号**，
-  /// 三个等宽靠外层 `Expanded(flex: 1)` 保证。
-  ButtonStyle _navBtnStyle() => OutlinedButton.styleFrom(
-        minimumSize: const Size.fromHeight(44),
-        textStyle: const TextStyle(fontSize: 14),
-        padding: EdgeInsets.zero,
-      );
+
+
 
   /// 划词浮层：把 `SelectionMenu` 摆在选区**上方**（放不下就放下方）。
   ///
