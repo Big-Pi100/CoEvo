@@ -325,11 +325,22 @@ window.__reader = {
       } catch (_) {}
     }
 
-    var needsRelayout = (next.fs !== undefined && next.fs !== oldFs) ||
-                        (next.lh !== undefined && next.lh !== oldLh);
-    if (needsRelayout) {
-      // 让 Flutter 侧知道「这次得整页 reload」（见 reader.html 顶部注释）
-      __post({ type: 'relayoutNeeded' });
+    // 🔴🔴 2026-10-23 真机（第二次报）：**只改 CSS 不够 —— 正文外仍留一圈旧色**。
+    //
+    // 根因：foliate 在 shadow DOM 里有一层 `#background`（铺在 iframe 后面，
+    //   填满 iframe 之外的区域）。它的颜色是在 `#beforeRender` 里**从 iframe 文档
+    //   的背景色读出来**的：
+    //   ```js
+    //   this.#background.style.background = getBackground(this.#view.document)
+    //   ```
+    //   ⇒ 只改 iframe 内的 CSS **不会更新它** ⇒ 正文块四周露出**上一套主题的底色**。
+    //   shadow root 是 `closed`，我们**改不到那一层**。
+    //
+    // ⇒ 唯一干净的办法：**换一个新 paginator 重排一次**（`reopen` 会 `newPaginator()`，
+    //   新实例的 `#index` 是 -1，不会撞「同 index 不加载」那个坑）。
+    //   代价：每次切主题重排 ~100–200ms —— 切主题不是高频操作，可以接受。
+    if (state.chapters.length) {
+      reopen(true);   // keep=true：停在同一章
     }
     return true;
   },
