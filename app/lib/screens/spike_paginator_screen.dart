@@ -315,7 +315,8 @@ class _SpikePaginatorScreenState
           ),
           // 🆕 划词浮层（2026-10-23）—— 复用正式页的 `SelectionMenu`（同一个 UI，
           //    「长什么样」不重写），只是锚点从 `SelectableRegion` 换成了 WebView 的选区矩形。
-          _selectionLayer(safe.top),
+          //    ⚠️ 展开成 List：空态时**一个子节点都不加**（见 `_selectionWidgets` 的长注释）。
+          ..._selectionWidgets(safe.top),
           AnimatedPositioned(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
@@ -525,45 +526,54 @@ class _SpikePaginatorScreenState
   ///    而 WebView 在 `Positioned.fill` + `Padding(top: safeTop)` 里
   ///    ⇒ 屏幕 y 要加 `safeTop`。**左右不加**（没有横向 padding）。
   ///    这是首版近似值，真机若偏高/偏低，只需要调这里的偏移常量。
-  Widget _selectionLayer(double safeTop) {
-    return ValueListenableBuilder<FoliateSelection?>(
-      valueListenable: _c.selection,
-      builder: (_, sel, __) {
-        if (sel == null || _hideSelectionMenu) return const SizedBox.shrink();
-        const menuH = 56.0;
-        const gap = 8.0;
-        final screenTop = sel.y + safeTop;
-        final above = screenTop - menuH - gap >= safeTop;
-        final top = above ? screenTop - menuH - gap : screenTop + sel.h + gap;
-        final left = sel.x.clamp(8.0, MediaQuery.of(context).size.width - 8.0);
-        return Positioned(
-          left: left,
-          top: top,
-          child: Align(
-            alignment: Alignment.topLeft,
-            child: SelectionMenu(items: [
-              SelectionMenuItem(
-                label: '查词',
-                icon: Icons.menu_book_outlined,
-                onTap: () {
-                  setState(() => _hideSelectionMenu = true);
-                  // ⚠️ 书不是「文章」⇒ `articleId: null`（不记痕迹，与正式书库页同一口径）
-                  lookupWord(context, ref, sel.text, articleId: null);
-                },
-              ),
-              SelectionMenuItem(
-                label: '复制',
-                icon: Icons.content_copy_outlined,
-                onTap: () async {
-                  setState(() => _hideSelectionMenu = true);
-                  await Clipboard.setData(ClipboardData(text: sel.text));
-                },
-              ),
-            ]),
+  /// 划词浮层 —— **返回 List**（没有选区时是空列表）。
+  ///
+  /// # 🔴🔴 为什么必须返回 List（2026-10-23 真机「彻底白屏」的教训）
+  ///
+  /// `Stack` 的尺寸由**非定位子节点**决定。我第一版让它在没有选区时返回裸的
+  /// `SizedBox.shrink()` —— 那是个**非定位子节点、尺寸 0**
+  /// ⇒ 整个 `Stack` 塌成 `0×0` ⇒ **WebView 和上下栏全部消失**（纯白，连诊断条都没了）。
+  ///
+  /// ⇒ 现在**空态返回空列表**（`Stack(children: [..._selectionWidgets()])`），
+  ///   连子节点都不存在，**不可能影响 Stack 尺寸**。
+  ///
+  /// # 坐标换算
+  /// `selection.x/y` 是 **iframe 内的 CSS px**；WebView 在
+  /// `Positioned.fill` + `Padding(top: safeTop)` 里 ⇒ 屏幕 y 要加 `safeTop`，左右不加。
+  List<Widget> _selectionWidgets(double safeTop) {
+    final sel = _c.selection.value;
+    if (sel == null || _hideSelectionMenu) return const [];
+    const menuH = 56.0;
+    const gap = 8.0;
+    final screenTop = sel.y + safeTop;
+    final above = screenTop - menuH - gap >= safeTop;
+    final top = above ? screenTop - menuH - gap : screenTop + sel.h + gap;
+    final left = sel.x.clamp(8.0, MediaQuery.of(context).size.width - 8.0);
+    return [
+      Positioned(
+        left: left,
+        top: top,
+        child: SelectionMenu(items: [
+          SelectionMenuItem(
+            label: '查词',
+            icon: Icons.menu_book_outlined,
+            onTap: () {
+              setState(() => _hideSelectionMenu = true);
+              // ⚠️ 书不是「文章」⇒ `articleId: null`（不记痕迹，与正式书库页同一口径）
+              lookupWord(context, ref, sel.text, articleId: null);
+            },
           ),
-        );
-      },
-    );
+          SelectionMenuItem(
+            label: '复制',
+            icon: Icons.content_copy_outlined,
+            onTap: () async {
+              setState(() => _hideSelectionMenu = true);
+              await Clipboard.setData(ClipboardData(text: sel.text));
+            },
+          ),
+        ]),
+      ),
+    ];
   }
 
   /// 章节目录（底部弹层）—— 真书才有。
