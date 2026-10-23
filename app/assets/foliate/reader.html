@@ -624,11 +624,13 @@ class Paginator extends HTMLElement {
             grid-column: 2 / 5;
             grid-row: 2;
             overflow: hidden;
+            scroll-behavior: smooth;
         }
         :host([flow="scrolled"]) #container {
             grid-column: 1 / -1;
             grid-row: 1 / -1;
             overflow: auto;
+            scroll-behavior: smooth;
         }
         #header {
             grid-column: 3 / 4;
@@ -1299,8 +1301,13 @@ function buildDocUrl(bodyHtml) {
     // ③ 段距：正式页一个 `Text` 里的两个换行 = **一个空行**（≈ 2 x 行高）。
     //    用 `margin-bottom: 行高` 等价（A 末行底 + 行高 + B 首行顶 ≈ 空一行）。
     //    ⚠️ 我之前写 `fs*0.8 = 13.6px`，比正式页**小一半多**。
+    // 🔴 2026-10-23 白哥：「之前审定的排版是**两端对齐、首行缩进**的」。
+    //    ⚠️ 我上一轮照 `Text.rich` 的默认值改成了 `left` —— 那只是**代码没设**，
+    //    不等于「审定的就是左对齐」。审定的是两端对齐 + 首行缩进。
+    //    · `text-align: justify` —— 两端对齐（中英都适用）
+    //    · `text-indent: 2em` —— 首行缩进两字（中文书习惯；英文书 2em 也可接受）
     'p{margin:0 0 ' + (t.fs * t.lh).toFixed(1) + 'px;font-size:' + t.fs + 'px;' +
-    'line-height:' + t.lh + ';text-align:left;' +
+    'line-height:' + t.lh + ';text-align:justify;text-indent:2em;' +
     // 🔴 2026-10-22 真机：**不要加 `orphans/widows`**。
     //    它们是印刷规则（「段落末尾不足 2 行就整段推到下一页」），
     //    在**短页**（手机一屏只有十几行）上会制造大片页尾留白 ——

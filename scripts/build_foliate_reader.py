@@ -193,8 +193,13 @@ function buildDocUrl(bodyHtml) {
     // ③ 段距：正式页一个 `Text` 里的两个换行 = **一个空行**（≈ 2 x 行高）。
     //    用 `margin-bottom: 行高` 等价（A 末行底 + 行高 + B 首行顶 ≈ 空一行）。
     //    ⚠️ 我之前写 `fs*0.8 = 13.6px`，比正式页**小一半多**。
+    // 🔴 2026-10-23 白哥：「之前审定的排版是**两端对齐、首行缩进**的」。
+    //    ⚠️ 我上一轮照 `Text.rich` 的默认值改成了 `left` —— 那只是**代码没设**，
+    //    不等于「审定的就是左对齐」。审定的是两端对齐 + 首行缩进。
+    //    · `text-align: justify` —— 两端对齐（中英都适用）
+    //    · `text-indent: 2em` —— 首行缩进两字（中文书习惯；英文书 2em 也可接受）
     'p{margin:0 0 ' + (t.fs * t.lh).toFixed(1) + 'px;font-size:' + t.fs + 'px;' +
-    'line-height:' + t.lh + ';text-align:left;' +
+    'line-height:' + t.lh + ';text-align:justify;text-indent:2em;' +
     // 🔴 2026-10-22 真机：**不要加 `orphans/widows`**。
     //    它们是印刷规则（「段落末尾不足 2 行就整段推到下一页」），
     //    在**短页**（手机一屏只有十几行）上会制造大片页尾留白 ——
@@ -648,6 +653,23 @@ def main() -> None:
     if _OLD_RENDER not in js:
         raise SystemExit('❌ vendor 里找不到 `render(layout)` 的开头，null 守卫 patch 失效')
     js = js.replace(_OLD_RENDER, _NEW_RENDER, 1)
+
+    # 🆕 2026-10-23 白哥：「翻页能不能加卷页动画，视觉舒服一点」。
+    #
+    # 🔑 foliate 的翻页**不是 transform 位移，而是 `#container.scrollLeft`**（overflow:hidden +
+    #    程序滚动）。所以加 `transform` 动画没用；**加 `scroll-behavior: smooth` 才对** ——
+    #    它只影响**程序滚动**，用户拖拽/手势不受影响（这正是我们要的）。
+    #    ⚠️ 时长由浏览器定（约 300ms），CSS 不能精确控制。
+    # ⚠️ 严格说这是**滑动过渡**，不是真正的「纸张卷曲」（那要 WebGL，成本完全不同）。
+    for _old_css, _new_css in [
+        ("#container {\n            grid-column: 2 / 5;\n            grid-row: 2;\n            overflow: hidden;\n        }",
+         "#container {\n            grid-column: 2 / 5;\n            grid-row: 2;\n            overflow: hidden;\n            scroll-behavior: smooth;\n        }"),
+        ("#container {\n            grid-column: 1 / -1;\n            grid-row: 1 / -1;\n            overflow: auto;\n        }",
+         "#container {\n            grid-column: 1 / -1;\n            grid-row: 1 / -1;\n            overflow: auto;\n            scroll-behavior: smooth;\n        }"),
+    ]:
+        if _old_css not in js:
+            raise SystemExit('❌ vendor 里找不到 #container 的 CSS，scroll-behavior patch 失效')
+        js = js.replace(_old_css, _new_css, 1)
 
     _OLD_SRC = "this.#iframe.src = src"
     _NEW_SRC = (
