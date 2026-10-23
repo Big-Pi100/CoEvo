@@ -12,6 +12,7 @@ import '../services/highlight_enqueue.dart';
 import '../services/highlight_repository.dart';
 import '../services/highlight_span.dart';
 import '../services/picked_text.dart';
+import '../providers/reading_settings_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/user_db_provider.dart';
 import '../services/tts_service.dart';
@@ -62,6 +63,10 @@ class _SpikePaginatorScreenState
 
   /// 本章**原文**（划线定位用：`locateSelection(plainText: ..., picked: ...)`）。
   String? _chapterPlainText;
+
+  /// 当前正文字号 —— 来自 `readingSettingsProvider`（默认 17，范围 15–24）。
+  /// 改它之后必须把内容**重排**（`setTheme` 内部会重建分页器）。
+  double _fontSize = 17;
 
   /// 点过菜单项后临时收起（否则菜单会一直挂在原文上）。
   /// 下次选区变化（`selection` 变新对象）时重置。
@@ -220,15 +225,34 @@ class _SpikePaginatorScreenState
     final db = await ref.read(bookDbProvider.future);
     final all = await loadAllChapters(db, bookId: id);
     if (all.isEmpty || !mounted) return;
+
+    // 🔑 打开书时**先按用户当前的设置**（底色 + 字号）初始化，
+    //    否则「上次调到 20 号字，这次打开还是 17」。
+    final idx = switch (ref.read(themeProvider).theme) {
+      ReadingTheme.ink => 0,
+      ReadingTheme.grid => 1,
+      ReadingTheme.night => 2,
+    };
     setState(() {
       _chapters = all;
       _chapterIdx = startAt.clamp(0, all.length - 1);
       _chapterTitle = all[_chapterIdx].chapterTitle;
       _chapterPlainText = all[_chapterIdx].text;
+      _themeIdx = idx;
+      _fontSize = ref.read(readingSettingsProvider).fontSize.toDouble();
     });
     await _c.setChapters(
       [for (final ch in all) _textToHtml(ch.text, ch.chapterTitle)],
       startAt: _chapterIdx,
+    );
+    // 内容设好之后再套主题/字号（`setTheme` 内部会重建分页器，但 `state.chapters` 已存住）
+    final th = _themes[_themeIdx];
+    await _c.setTheme(
+      background: th.bg,
+      foreground: th.fg,
+      accent: th.accent,
+      fontSize: _fontSize,
+      margin: 24,
     );
   }
 
@@ -477,20 +501,32 @@ class _SpikePaginatorScreenState
                 onTap: () async {
                   await showReadingSettingsPanel(context, showTrace: false);
                   if (!mounted) return;
-                  // `ReadingTheme` 是枚举（ink/grid/night），**没有 label 字段**
-                  // ⇒ 直接用 switch 映射到 `_themes` 的下标（顺序必须一致）
+                  // 🔴 面板关掉后**必须把两项都同步给 WebView**：
+                  //    · 底色（themeProvider）· 字号（readingSettingsProvider）
+                  //    WebView 里的 CSS 是独立的，不同步 = 「面板里改了，正文不变」。
+                  //
+                  //    ⚠️ 原来只同步了底色，而且写了 `if (idx == _themeIdx) return;`
+                  //    ⇒ **只调字号（不动底色）时直接 return，什么都不做**。
+                  //    白哥截图里的面板第一项就是字号 ⇒ 这个 bug 一眼就会被撞上。
                   final idx = switch (ref.read(themeProvider).theme) {
                     ReadingTheme.ink => 0,
                     ReadingTheme.grid => 1,
                     ReadingTheme.night => 2,
                   };
-                  if (idx == _themeIdx) return;
-                  setState(() => _themeIdx = idx);
+                  final fs = ref.read(readingSettingsProvider).fontSize.toDouble();
+                  final themeChanged = idx != _themeIdx;
+                  final sizeChanged = fs != _fontSize;
+                  if (!themeChanged && !sizeChanged) return;
+                  setState(() {
+                    _themeIdx = idx;
+                    _fontSize = fs;
+                  });
                   final th = _themes[idx];
                   await _c.setTheme(
                     background: th.bg,
                     foreground: th.fg,
                     accent: th.accent,
+                    fontSize: fs,
                     margin: 24,
                   );
                 },
