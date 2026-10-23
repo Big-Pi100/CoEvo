@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../providers/book_provider.dart';
 import '../widgets/foliate_reader_view.dart';
 
 /// 🔬 翻页阅读器 **spike 页面**（2026-10-22）。
@@ -15,17 +17,27 @@ import '../widgets/foliate_reader_view.dart';
 ///
 /// ⚠️ 内置文本是**手写的英文长文**（与真书同样是 `<p>` 段落结构），
 ///    目的是能把页数撑到 6 页以上，好看清分页是否连续。
-class SpikePaginatorScreen extends StatefulWidget {
+class SpikePaginatorScreen extends ConsumerStatefulWidget {
   const SpikePaginatorScreen({super.key});
 
   @override
-  State<SpikePaginatorScreen> createState() => _SpikePaginatorScreenState();
+  ConsumerState<SpikePaginatorScreen> createState() =>
+      _SpikePaginatorScreenState();
 }
 
-class _SpikePaginatorScreenState extends State<SpikePaginatorScreen> {
+class _SpikePaginatorScreenState
+    extends ConsumerState<SpikePaginatorScreen> {
   final _c = FoliateReaderController();
   int _themeIdx = 0;
   String? _error;
+
+  // ── 真书（2026-10-23：从演示文本改为读 `book.db` 的第一本书）──
+  String? _bookTitle;
+  String? _chapterTitle;
+  int _chapterIdx = 0;
+  int _chapterCount = 0;
+  String? _bookId;
+  bool _loading = true;
 
   /// 顶栏/底栏是否显示 —— **默认隐藏**（白哥：平时看不见，单击正文才弹出）。
   bool _bars = false;
@@ -39,12 +51,93 @@ class _SpikePaginatorScreenState extends State<SpikePaginatorScreen> {
   @override
   void initState() {
     super.initState();
-    // 等 WebView 的 ready 消息到达后再喂内容（controller 内部会缓存）。
-    _c.setChapters(_demoChapters);
     _c.lastError.addListener(_onErr);
     _c.selectedText.addListener(_onSel);
     _c.tapTick.addListener(_onTap);
+    _loadRealBook();
   }
+
+  /// 读 `book.db` 里**第一本书的第一章** —— 换成真书才看得出真实排版/性能。
+  ///
+  /// ⚠️ 演示文本留着不删：书架是空的时候还得有东西可翻（否则这个验证页直接白屏）。
+  Future<void> _loadRealBook() async {
+    try {
+      final db = await ref.read(bookDbProvider.future);
+      final rows = await db.query('book',
+          columns: ['id', 'title', 'chapter_count'],
+          orderBy: 'added_at DESC',
+          limit: 1);
+      if (rows.isEmpty) {
+        // 书架为空 ⇒ 退回演示文本（并在底部提示）
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _error = '书架为空，正在用演示文本';
+          });
+          await _c.setChapters(_demoChapters);
+        }
+        return;
+      }
+      final id = rows.first['id'] as String;
+      final count = (rows.first['chapter_count'] as int?) ?? 0;
+      if (!mounted) return;
+      setState(() {
+        _bookId = id;
+        _bookTitle = rows.first['title'] as String?;
+        _chapterCount = count;
+        _loading = false;
+      });
+      await _loadChapter(0);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = '读真书失败：$e';
+        });
+      }
+      await _c.setChapters(_demoChapters);
+    }
+  }
+
+  Future<void> _loadChapter(int idx) async {
+    final id = _bookId;
+    if (id == null) return;
+    final db = await ref.read(bookDbProvider.future);
+    final ch = await loadChapter(db, bookId: id, idx: idx);
+    if (ch == null || !mounted) return;
+    setState(() {
+      _chapterIdx = idx;
+      _chapterTitle = ch.chapterTitle;
+    });
+    await _c.setChapters([_textToHtml(ch.text, ch.chapterTitle)]);
+  }
+
+  /// 纯文本 → HTML。
+  ///
+  /// 🔴 **这是 `char_offset` 口径的唯一来源**：偏移按这里生成的文本算
+  /// （段落之间**不含分隔符**）。将来换成 `char_offset` 精确计算时，
+  /// 反查必须用**同一份 HTML** —— 否则偏移会系统性错位**且不会报错**。
+  static String _textToHtml(String text, String? chapterTitle) {
+    final buf = StringBuffer();
+    // ⚠️ 标题不进正文（`char_offset` 只算正文段落）——
+    //    所以标题单独用 `<h2 class="ch-title">`，偏移计算时按 class 跳过。
+    if (chapterTitle != null && chapterTitle.trim().isNotEmpty) {
+      buf.write('<h2 class="ch-title">${_escape(chapterTitle.trim())}</h2>');
+    }
+    final paras = text
+        .split(RegExp(r'\n\s*\n'))
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty);
+    for (final p in paras) {
+      buf.write('<p>${_escape(p)}</p>');
+    }
+    return buf.toString();
+  }
+
+  static String _escape(String s) => s
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
 
   void _onErr() {
     final e = _c.lastError.value;
@@ -94,9 +187,20 @@ class _SpikePaginatorScreenState extends State<SpikePaginatorScreen> {
           Positioned.fill(
             child: Padding(
               padding: EdgeInsets.only(top: safe.top, bottom: safe.bottom),
-              child: FoliateReaderView(
-                controller: _c,
-                onError: (m) => setState(() => _error = m),
+              child: Stack(
+                children: [
+                  FoliateReaderView(
+                    controller: _c,
+                    onError: (m) => setState(() => _error = m),
+                  ),
+                  if (_loading)
+                    Center(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _hex(t.fg).withValues(alpha: 0.4),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -138,13 +242,32 @@ class _SpikePaginatorScreenState extends State<SpikePaginatorScreen> {
                 onPressed: () => Navigator.of(context).pop(),
               ),
               Expanded(
-                child: Text(
-                  '翻页 spike',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: _hex(t.fg),
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _bookTitle ?? '翻页 spike（演示文本）',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: _hex(t.fg),
+                      ),
+                    ),
+                    if (_bookId != null)
+                      Text(
+                        '第 ${_chapterIdx + 1}/$_chapterCount 章'
+                        '${_chapterTitle == null ? '' : ' · $_chapterTitle'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: _hex(t.fg).withValues(alpha: 0.6),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               TextButton(
@@ -220,6 +343,30 @@ class _SpikePaginatorScreenState extends State<SpikePaginatorScreen> {
                 ),
               ],
             ),
+            // 真书时才有章节导航（验证「翻到章末」与多章节切换）
+            if (_bookId != null) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: _chapterIdx > 0
+                          ? () => _loadChapter(_chapterIdx - 1)
+                          : null,
+                      child: const Text('上一章', style: TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                  Expanded(
+                    child: TextButton(
+                      onPressed: _chapterIdx + 1 < _chapterCount
+                          ? () => _loadChapter(_chapterIdx + 1)
+                          : null,
+                      child: const Text('下一章', style: TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
         ),
