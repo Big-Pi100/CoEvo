@@ -12,11 +12,14 @@ import '../services/highlight_enqueue.dart';
 import '../services/highlight_repository.dart';
 import '../services/highlight_span.dart';
 import '../services/picked_text.dart';
+import '../providers/theme_provider.dart';
 import '../providers/user_db_provider.dart';
 import '../services/tts_service.dart';
 import '../services/word_lookup.dart';
 import '../widgets/translation_sheet.dart';
 import '../widgets/foliate_reader_view.dart';
+import '../theme/coevo_tokens.dart';
+import '../widgets/reading_settings_panel.dart';
 import '../widgets/selection_menu.dart';
 
 /// 🔬 翻页阅读器 **spike 页面**（2026-10-22）。
@@ -295,16 +298,6 @@ class _SpikePaginatorScreenState
     super.dispose();
   }
 
-  Future<void> _cycleTheme() async {
-    setState(() => _themeIdx = (_themeIdx + 1) % _themes.length);
-    final t = _themes[_themeIdx];
-    await _c.setTheme(
-      background: t.bg,
-      foreground: t.fg,
-      accent: t.accent,
-      margin: 24,   // = CoSpacing.xxl（正式页正文边距）
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -375,65 +368,92 @@ class _SpikePaginatorScreenState
     return Color(0xFF000000 | v);
   }
 
+  /// 上栏 —— **结构与「热点阅读页」的 `_ReaderBar` 完全一致**（2026-10-23 白哥定：
+  /// 「三个阅读页的上栏都不一样，为什么不都和热点阅读页一致？」）。
+  ///
+  /// 权威是 `reader_screen.dart` 的 `_ReaderBar`（591–730）：
+  /// `Padding(20,0,20,14)` + Row：`‹`(19, ink3) · 标题(12.5, w600, ink2) ·
+  /// `Tt`(20, ink2) · 朗读(22) · 书签。
+  ///
+  /// ⚠️ **spike 暂时没有书签**（要写 `book_marker` 表，正式页已有实现）——
+  ///    接正式页时补上，这里不放假按钮。
   Widget _bar(({String name, String bg, String fg, String accent}) t) => SafeArea(
         bottom: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(6, 6, 10, 10),
-          color: _hex(t.bg),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
           child: Row(
             children: [
-              IconButton(
-                icon: Icon(Icons.close, size: 20, color: _hex(t.fg)),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    InkWell(
-                      onTap: _loading ? null : _openBookPicker,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              _bookTitle ?? '翻页 spike（演示文本）',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: _hex(t.fg),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          // 小三角暗示「可点，能换书」
-                          Icon(Icons.unfold_more,
-                              size: 14, color: _hex(t.fg).withValues(alpha: 0.5)),
-                        ],
-                      ),
+              // 返回 —— 字形只有 19px，用 Padding 撑热区（不影响行高）
+              InkWell(
+                onTap: () => Navigator.of(context).maybePop(),
+                borderRadius: BorderRadius.circular(22),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      vertical: 10, horizontal: 8),
+                  child: Text(
+                    '‹',
+                    style: TextStyle(
+                      fontSize: 19,
+                      height: 1,
+                      color: _hex(t.fg).withValues(alpha: 0.55),
                     ),
-                    if (_bookId != null)
-                      Text(
-                        '第 ${_chapterIdx + 1}/$_chapterCount 章'
-                        '${_chapterTitle == null ? '' : ' · $_chapterTitle'}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: _hex(t.fg).withValues(alpha: 0.6),
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
               ),
-              // 🔴 2026-10-23 白哥定：**朗读键放右上角**（原来在正式页的底栏中间）。
-              //    行为照抄正式页：`isSpeaking(整章原文)` 判状态、停止用 `stop()`
-              //    （语义是「整章读完」，不是 togglePlay）。
-              //    ⚠️ 用 `ref.watch` 而不是包一层 `Consumer` —— `_bar` 由 `build` 调用，
-              //       直接 watch 就够（正式页的 `_footer` 也是这么写的）。
+              const SizedBox(width: 6),
+              // 标题 —— 与 `_ReaderBar` 同款：12.5 / w600 / ink2
+              Expanded(
+                child: InkWell(
+                  onTap: _loading ? null : _openBookPicker,
+                  child: Text(
+                    _bookTitle ?? '翻页 spike',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: _hex(t.fg).withValues(alpha: 0.72),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Tt（阅读设置）—— 正式页打开 `showReadingSettingsPanel`
+              InkWell(
+                // 🔴 面板关闭后必须**把主题同步给 WebView** ——
+                //    面板改的是全局 `themeProvider`，而 WebView 内的 CSS 是独立的，
+                //    不同步的话「在面板里换底色，正文不变」（静默失效）。
+                onTap: () async {
+                  await showReadingSettingsPanel(context, showTrace: false);
+                  if (!mounted) return;
+                  // `ReadingTheme` 是枚举（ink/grid/night），**没有 label 字段**
+                  // ⇒ 直接用 switch 映射到 `_themes` 的下标（顺序必须一致）
+                  final idx = switch (ref.read(themeProvider).theme) {
+                    ReadingTheme.ink => 0,
+                    ReadingTheme.grid => 1,
+                    ReadingTheme.night => 2,
+                  };
+                  if (idx == _themeIdx) return;
+                  setState(() => _themeIdx = idx);
+                  final th = _themes[idx];
+                  await _c.setTheme(
+                    background: th.bg,
+                    foreground: th.fg,
+                    accent: th.accent,
+                    margin: 24,
+                  );
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 6),
+                  child: Icon(Icons.format_size,
+                      size: 20, color: _hex(t.fg).withValues(alpha: 0.72)),
+                ),
+              ),
+              const SizedBox(width: 6),
+              // 朗读（右上角）—— 行为照抄正式页：isSpeaking(整章) 判状态、stop() 停止
               if (_chapterPlainText != null)
                 Builder(builder: (_) {
                   final tts = ref.watch(ttsServiceProvider);
@@ -450,25 +470,25 @@ class _SpikePaginatorScreenState
                     borderRadius: BorderRadius.circular(8),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 6),
+                          horizontal: 6, vertical: 6),
                       child: Icon(
                         speaking
                             ? Icons.stop_circle_outlined
                             : Icons.play_circle_outline,
                         size: 22,
-                        color: _hex(t.accent),
+                        color: speaking
+                            ? _hex(t.accent)
+                            : _hex(t.fg).withValues(alpha: 0.72),
                       ),
                     ),
                   );
                 }),
-              TextButton(
-                onPressed: _cycleTheme,
-                child: Text('主题：${t.name}'),
-              ),
+              const SizedBox(width: 8),
             ],
           ),
         ),
       );
+
 
   Widget _footer(Color bg) => SafeArea(
         top: false,
