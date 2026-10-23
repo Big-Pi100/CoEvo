@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 /// 翻页阅读器的 **spike 外壳**（2026-10-22）。
@@ -31,8 +34,64 @@ import 'package:webview_flutter/webview_flutter.dart';
 /// final c = FoliateReaderController();
 /// FoliateReaderView(controller: c, chapters: ['<p>…</p>', '…'])
 /// ```
+/// 「底层 WebView 宿主」的抽象 —— **两套实现**：
+///
+/// | 实现 | 用在哪 | 为什么 |
+/// |---|---|---|
+/// | [FlutterWebViewHost] | 非 iOS | 沿用 `webview_flutter`，零改动 |
+/// | [NativeWebViewHost] | **iOS** | 走我们自绘的 `WKWebView` 子类（见 `ios/Runner/CoEvoWebView.swift`）|
+///
+/// # 🔴 为什么 iOS 必须自绘（2026-10-23）
+///
+/// iOS 长按选词会弹**系统菜单**（Copy / Look Up / Translate），盖住我们的菜单。
+/// 它**无法用 JS 关**（不是 DOM 事件），只能用 `-webkit-user-select: none` ——
+/// 但那会把「选择能力」一起废掉（划词就没了）。
+/// 唯一正解是子类化 `WKWebView` + `buildMenu(with:)` 移除 `.standardEdit`，
+/// 而 `webview_flutter` 4.14.1 是 Pigeon 架构（`WKWebView` 由 Dart 侧创建），
+/// **Swift 侧没有可改的实例化点** ⇒ 只能自绘 PlatformView。
+abstract class FoliateWebHost {
+  Future<void> loadAsset(String relativePath);
+  Future<void> runJavaScript(String js);
+  Future<Object?> runJavaScriptReturning(String js);
+}
+
+/// 非 iOS：`webview_flutter` 的薄封装。
+class FlutterWebViewHost implements FoliateWebHost {
+  FlutterWebViewHost(this._c);
+  final WebViewController _c;
+
+  @override
+  Future<void> loadAsset(String relativePath) =>
+      _c.loadFlutterAsset(relativePath);
+
+  @override
+  Future<void> runJavaScript(String js) => _c.runJavaScript(js);
+
+  @override
+  Future<Object?> runJavaScriptReturning(String js) =>
+      _c.runJavaScriptReturningResult(js);
+}
+
+/// iOS：自绘 `CoEvoWKWebView` 的通道封装（`ios/Runner/CoEvoWebView.swift`）。
+class NativeWebViewHost implements FoliateWebHost {
+  NativeWebViewHost(this._channel);
+  final MethodChannel _channel;
+
+  @override
+  Future<void> loadAsset(String relativePath) =>
+      _channel.invokeMethod<void>('loadAsset', {'path': relativePath});
+
+  @override
+  Future<void> runJavaScript(String js) =>
+      _channel.invokeMethod<void>('runJavaScript', {'js': js});
+
+  @override
+  Future<Object?> runJavaScriptReturning(String js) =>
+      _channel.invokeMethod<Object?>('runJavaScriptReturning', {'js': js});
+}
+
 class FoliateReaderController {
-  WebViewController? _web;
+  FoliateWebHost? _web;
 
   final ValueNotifier<FoliatePosition> position =
       ValueNotifier(const FoliatePosition());
@@ -62,7 +121,7 @@ class FoliateReaderController {
 
   bool get isReady => _ready;
 
-  void _attach(WebViewController web) {
+  void _attach(FoliateWebHost web) {
     _web = web;
   }
 
@@ -109,8 +168,8 @@ class FoliateReaderController {
 
   Future<String?> debugStatus() async {
     if (_web == null || !_ready) return null;
-    return _web!.runJavaScriptReturningResult('window.__reader.status();')
-        as String?;
+    final raw = await _web!.runJavaScriptReturning('window.__reader.status();');
+    return raw as String?;
   }
 
   void _onMessage(String raw) {
@@ -231,47 +290,71 @@ class FoliateReaderView extends StatefulWidget {
 class _FoliateReaderViewState extends State<FoliateReaderView> {
   WebViewController? _web;
 
+  bool get _useNative => !kIsWeb && Platform.isIOS;
+
   @override
   void initState() {
     super.initState();
-    final web = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      // 🔑 必须设置背景色为透明 —— 否则默认白底会在主题切换瞬间闪一下。
-      ..setBackgroundColor(const Color(0x00000000))
-      ..addJavaScriptChannel('CoEvoBridge', onMessageReceived: (m) {
-        widget.controller._onMessage(m.message);
-      })
-      ..setNavigationDelegate(NavigationDelegate(
-        // 🔴 2026-10-22 真机（白屏）：**不要依赖 JS 主动发 `ready`**。
-        //    `addJavaScriptChannel` 注入的 `window.CoEvoBridge` 在某些情况下拿不到
-        //    （真机上「阶段」能显示是因为它直接写 DOM，**不经过 bridge** ——
-        //     所以「页面有字」不等于「桥能通」）。
-        //    ⇒ 页面加载完由**原生主动轮询** `window.__bridgePing()`，
-        //      拿到 `hasReader: true` 才认为就绪。这样 bridge 通不通都能推进。
-        onPageFinished: (_) => _bootstrap(),
-        onWebResourceError: (e) {
-          widget.onError?.call('WebView 错误：${e.description}');
-        },
-      ))
-      ..loadFlutterAsset('assets/foliate/reader.html');
+    if (_useNative) {
+      // iOS：什么都不做 —— 真正的实例在 `onPlatformViewCreated` 里拿到。
+      // （PlatformView 由原生侧创建，Dart 只能等它的 viewId）
+    } else {
+      final web = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setBackgroundColor(const Color(0x00000000))
+        ..addJavaScriptChannel('CoEvoBridge', onMessageReceived: (m) {
+          widget.controller._onMessage(m.message);
+        })
+        ..setNavigationDelegate(NavigationDelegate(
+          onPageFinished: (_) => _bootstrap(),
+          onWebResourceError: (e) {
+            widget.onError?.call('WebView 错误：${e.description}');
+          },
+        ))
+        ..loadFlutterAsset('assets/foliate/reader.html');
 
-    widget.controller._attach(web);
-    _web = web;
+      widget.controller._attach(FlutterWebViewHost(web));
+      _web = web;
+    }
+  }
+
+  /// iOS 的 PlatformView 创建完成 → 建通道 → 绑消息 → 触发加载。
+  Future<void> _onNativeViewCreated(int viewId) async {
+    final ch = MethodChannel('coevo/webview/$viewId');
+    ch.setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'message':
+          // 原生把 `CoEvoBridge.postMessage(body)` 的 body 原样转过来
+          final body = call.arguments;
+          widget.controller
+              ._onMessage(body is String ? body : jsonEncode(body));
+        case 'pageFinished':
+          await _bootstrap();
+        case 'error':
+          widget.onError?.call('WebView 错误：${call.arguments}');
+        default:
+          break;
+      }
+      return null;
+    });
+
+    widget.controller._attach(NativeWebViewHost(ch));
+    await ch.invokeMethod<void>(
+        'loadAsset', {'path': 'assets/foliate/reader.html'});
   }
 
   /// 页面加载完后**主动轮询**，直到 `window.__reader` 就绪，再把内容推下去。
   ///
-  /// 🔑 为什么不是「等 JS 发 ready」：那条路依赖 `CoEvoBridge` 注入成功；
-  ///    真机上曾经出现过「页面能渲染、阶段能更新，但 bridge 从没通」的情况
-  ///    ⇒ `ready` 永远发不出来 ⇒ 白屏且没有任何可观察的异常。
+  /// 🔑 为什么不「等 JS 发 ready」：那条路依赖 `CoEvoBridge` 注入成功；
+  ///    真机曾出现「页面能渲染但 bridge 从没通」⇒ `ready` 永远发不出去 ⇒ 白屏且无提示。
   ///    轮询是**原生发起的**，不依赖任何 JS→原生的通道。
   Future<void> _bootstrap() async {
-    final web = _web;
-    if (web == null) return;
+    final host = widget.controller._web;
+    if (host == null) return;
     for (var i = 0; i < 40; i++) {
       try {
-        final raw = await web.runJavaScriptReturningResult(
-            'window.__bridgePing ? window.__bridgePing() : ""');
+        final raw = await host
+            .runJavaScriptReturning('window.__bridgePing ? window.__bridgePing() : ""');
         final txt = raw.toString();
         if (txt.contains('"hasReader":true')) {
           widget.controller._ready = true;
@@ -291,6 +374,14 @@ class _FoliateReaderViewState extends State<FoliateReaderView> {
 
   @override
   Widget build(BuildContext context) {
+    if (_useNative) {
+      return UiKitView(
+        viewType: 'coevo/foliate',
+        onPlatformViewCreated: _onNativeViewCreated,
+        creationParams: const <String, dynamic>{},
+        creationParamsCodec: const StandardMessageCodec(),
+      );
+    }
     final web = _web;
     if (web == null) return const SizedBox.shrink();
     return WebViewWidget(controller: web);

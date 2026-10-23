@@ -12,6 +12,20 @@ import UIKit
   /// 🆕 端侧翻译通道（iOS 18+ 才注册，见 `setupTranslateChannel`）
   private var translateChannel: FlutterMethodChannel?
 
+  /// 🆕 2026-10-23 自绘 WebView（翻页阅读器用）。
+  ///
+  /// 唯一目的：**去掉 iOS 的系统编辑菜单**（Copy / Look Up / Translate），
+  /// 让划词只出现我们自己的菜单。系统菜单只能通过子类化 `WKWebView` +
+  /// 重写 `buildMenu(with:)` 去掉，而 `webview_flutter` 不给这个钩子
+  /// ⇒ 只能自己写 PlatformView（见 `CoEvoWebView.swift` 的长注释）。
+  private func setupFoliateWebView() {
+    guard let registrar = self.registrar(forPlugin: "CoEvoWebView") else { return }
+    registrar.register(
+      CoEvoWebViewFactory(messenger: registrar.messenger()),
+      withId: "coevo/foliate"
+    )
+  }
+
   /// 待处理的外部文件 URL。
   /// 采用「缓存 + 信号」模型：Swift 只负责攒着，由 Dart 侧主动拉取（pull），
   /// 避免冷启动时 Flutter engine 尚未就绪导致推送丢失。
@@ -25,6 +39,7 @@ import UIKit
 
     setupChannel()
     setupTranslateChannel()
+    setupFoliateWebView()
 
     // 冷启动：文件随 launchOptions 传入（此时 engine 未就绪，只缓存）
     if let url = launchOptions?[.url] as? URL {
