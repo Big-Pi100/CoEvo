@@ -37,9 +37,16 @@ final class CoEvoWKWebView: WKWebView {
   /// 🔑 `.standardEdit` 是 Copy / Look Up / Translate 所在组；
   ///    `.share` 是 iOS 18 上「拷贝高亮标记的链接」那一项。
   ///    见 CSDN / StackOverflow 上对 `buildMenu(with:)` 的实测（2023–2024 多篇一致）。
-  // ⚠️ `UIMenuBuilder` 是 **iOS 14+**（不是 16）。标错版本会让我们在最需要的那批
-  //    老设备上**根本不生效**，而且很难发现（没有报错）。
-  @available(iOS 14.0, *)
+  // 🔴🔴 **不要加 `@available` 标注**（2026-10-23 踩了，CI 报
+  //    "Overriding 'buildMenu' must be as available as declaration it overrides"）。
+  //
+  // `UIResponder.buildMenu(with:)` 与 `UIMenuBuilder` 都是 **iOS 13+**，
+  // 我们的 deployment target 也是 13 ⇒ 直接 `override` 即可。
+  // 加 `@available(iOS 14)` 反而比父类**更窄**，Swift 不允许。
+  //
+  // ⚠️ 更阴的是：**这个错误被 flutter 的 `Failed to build iOS app` 摘要盖住了**，
+  //    外层只显示「需要 Development Team」那种误导性文案，
+  //    真正的 `Swift Compiler Error` 在日志里靠前几行。**查构建失败要往下翻原始错误**。
   override func buildMenu(with builder: UIMenuBuilder) {
     super.buildMenu(with: builder)
     builder.remove(menu: .standardEdit)
