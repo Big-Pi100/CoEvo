@@ -1262,7 +1262,10 @@ __setStage('bridge:start bridge=' + (window.CoEvoBridge ? 'YES' : 'NO'));
 var pag = document.getElementById('pag');
 const state = {
   chapters: [], secIndex: 0, pageInSec: 0, fraction: 0, ready: false, charOffset: 0,
-  theme: { bg: '#F5F0E8', fg: '#3A332C', accent: '#B4432C', fs: 17, lh: 1.75, margin: 20 },
+  // 🆕 `hl` = 划线下划线色 —— 必须用 `accentBright`（**亮调**），不是 `accent`。
+  //    依据 `book_reader_screen._bodySpans`：「细线与描边用亮调，accent 是实心填充色」。
+  theme: { bg: '#FAF8F4', fg: '#24211C', accent: '#B4432C', accentBright: '#C4533A',
+           hl: '#C4533A', fs: 17, lh: 1.75, margin: 24 },
 };
 
 function buildDocUrl(bodyHtml) {
@@ -1287,8 +1290,19 @@ function buildDocUrl(bodyHtml) {
     'html,body{margin:0;padding:0;background:' + t.bg + ';color:' + t.fg + ';}' +
     // 🔑 顺序：Literata 先、NotoSansSC 兜中文（Literata 无中文字形，会自动落到后者）
     "body{font-family:'Literata','NotoSansSC',serif;}" +
-    'p{margin:0 0 ' + (t.fs * 0.8).toFixed(1) + 'px;font-size:' + t.fs + 'px;' +
-    'line-height:' + t.lh + ';text-align:justify;-webkit-hyphens:auto;' +
+    // 🔴🔴 2026-10-23 白哥：「你自己不会看代码吗？权威在哪？」
+    //    下面三行全部按 `book_reader_screen.dart` 的**实际实现**对齐，不再是我凭感觉定的：
+    //
+    // ① `text-align`：正式页是 `Text.rich`，**不设 textAlign** ⇒ 默认**左对齐**。
+    //    我之前写 `justify` ⇒ 右边是齐的，而正式页右边**参差** ⇒ 一眼能看出不同。
+    // ② `hyphens`：Flutter **不做自动断词** ⇒ 不能有连字符。
+    // ③ 段距：正式页一个 `Text` 里的 `
+
+` = **一个空行**（≈ 2 × 行高）。
+    //    用 `margin-bottom: 行高` 等价（A 末行底 + 行高 + B 首行顶 ≈ 空一行）。
+    //    ⚠️ 我之前写 `fs*0.8 = 13.6px`，比正式页**小一半多**。
+    'p{margin:0 0 ' + (t.fs * t.lh).toFixed(1) + 'px;font-size:' + t.fs + 'px;' +
+    'line-height:' + t.lh + ';text-align:left;' +
     // 🔴 2026-10-22 真机：**不要加 `orphans/widows`**。
     //    它们是印刷规则（「段落末尾不足 2 行就整段推到下一页」），
     //    在**短页**（手机一屏只有十几行）上会制造大片页尾留白 ——
@@ -1302,9 +1316,9 @@ function buildDocUrl(bodyHtml) {
     //    ⚠️ 颜色用 `accent`（朱砂），因为正式页的链接就是朱砂 + 下划线
     //      （截图里 "The Project Gutenberg eBook of ..." 那行）。
     'a{color:' + (t.accent || '#B4432C') + ';text-decoration:underline;}' +
-    'h1{font-size:' + (t.fs + 8) + 'px;line-height:1.35;font-weight:700;margin:0 0 16px;}' +
-    'h2{font-size:' + (t.fs + 2) + 'px;line-height:1.4;font-weight:600;margin:0 0 14px;}' +
-    'h3{font-size:' + (t.fs + 1) + 'px;line-height:1.4;font-weight:600;margin:0 0 12px;}' +
+    'h1{font-size:' + (t.fs + 8) + 'px;line-height:1.35;font-weight:700;margin:0 0 ' + (t.fs * t.lh).toFixed(1) + 'px;}' +
+    'h2{font-size:' + (t.fs + 2) + 'px;line-height:1.4;font-weight:600;margin:0 0 ' + (t.fs * t.lh).toFixed(1) + 'px;}' +
+    'h3{font-size:' + (t.fs + 1) + 'px;line-height:1.4;font-weight:600;margin:0 0 ' + (t.fs * t.lh).toFixed(1) + 'px;}' +
     'strong,b{font-weight:700;}' +
     'em,i{font-style:italic;}' +
     'blockquote{margin:0 0 ' + (t.fs * 0.9).toFixed(1) + 'px;padding-left:14px;' +
