@@ -13,8 +13,10 @@ import '../services/highlight_repository.dart';
 import '../services/highlight_span.dart';
 import '../services/picked_text.dart';
 import '../providers/user_db_provider.dart';
+import '../services/tts_service.dart';
 import '../services/word_lookup.dart';
 import '../widgets/translation_sheet.dart';
+import '../theme/coevo_tokens.dart';
 import '../widgets/foliate_reader_view.dart';
 import '../widgets/selection_menu.dart';
 
@@ -428,6 +430,35 @@ class _SpikePaginatorScreenState
                   ],
                 ),
               ),
+              // 🔴 2026-10-23 白哥定：**朗读键放右上角**（原来在底栏中间）。
+              //    行为与正式页一致：`isSpeaking(整章原文)` 判断状态、
+              //    停止用 `stop()`（语义是「整章读完」），不是 togglePlay。
+              if (_chapterPlainText != null)
+                Consumer(builder: (ctx2, ref2, _) {
+                  final tts = ref2.watch(ttsServiceProvider);
+                  final plain = _chapterPlainText!;
+                  return InkWell(
+                    onTap: () {
+                      if (tts.isSpeaking(plain)) {
+                        tts.stop();
+                      } else {
+                        tts.speakLong(plain);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      child: Icon(
+                        tts.isSpeaking(plain)
+                            ? Icons.stop_circle_outlined
+                            : Icons.play_circle_outline,
+                        size: 22,
+                        color: _hex(t.accent),
+                      ),
+                    ),
+                  );
+                }),
               TextButton(
                 onPressed: _cycleTheme,
                 child: Text('主题：${t.name}'),
@@ -483,70 +514,38 @@ class _SpikePaginatorScreenState
               ),
             ),
             const SizedBox(height: 6),
-            ValueListenableBuilder<String?>(
-              valueListenable: _c.selectedText,
-              builder: (_, s, __) => Text(
-                s == null || s.isEmpty ? '长按正文选一个词试试' : '选中的词：$s',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: s == null || s.isEmpty
-                      ? const Color(0xFF8A7F70)
-                      : const Color(0xFFB4432C),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            // 🔴 2026-10-23 白哥：**不要上一章/下一章**（那两行又占地方，
-            //    而且点了不翻页 —— 因为 `goTo` 撞了 `#index` 相同的分支）。
-            //    ⇒ 翻页行**中间**放「目录」，点开弹章节列表。
-            // 🔴 2026-10-23 白哥：三个按钮**等宽、都用中文**（原来目录是图标、
-            //    宽度还比另外两个窄 ⇒ 「搞了个差异化」）。
-            Row(
-              children: [
-                Expanded(
-                  flex: 1,
-                  child: OutlinedButton(
-                    onPressed: _c.previousPage,
-                    style: _navBtnStyle(),
-                    child: const Text('上一页'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 1,
-                  child: OutlinedButton(
-                    onPressed: _bookId == null ? null : _openChapters,
-                    style: _navBtnStyle(),
-                    child: const Text('目录'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 1,
-                  child: FilledButton(
-                    onPressed: _c.nextPage,
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(44),
-                      textStyle: const TextStyle(fontSize: 14),
+            // 🔴 2026-10-23 白哥定：**底部除了页码信息什么都不要**。
+            //    · 翻页按钮删掉（靠左右滑动）
+            //    · 上一章/下一章删掉（目录里跳）
+            //    · 诊断行删掉（验证期结束）
+            //    ⇒ 只剩一行页码；**点它弹出章节目录**（目录本身就是底部弹层）。
+            ValueListenableBuilder<FoliatePosition>(
+              valueListenable: _c.position,
+              builder: (_, p2, __) {
+                final sec = p2.sectionIndex + 1;
+                final secs = _chapterCount > 0 ? _chapterCount : 1;
+                final pct = (p2.fraction * 100).clamp(0, 100).toStringAsFixed(0);
+                return InkWell(
+                  onTap: _bookId == null ? null : _openChapters,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    child: Text(
+                      '$sec / $secs　·　$pct%',
+                      style: TextStyle(
+                        fontFamily: CoFonts.uiSans,
+                        fontSize: 12,
+                        color: _hex(_themes[_themeIdx].fg).withValues(alpha: 0.55),
+                      ),
                     ),
-                    child: const Text('下一页'),
                   ),
-                ),
-              ],
+                );
+              },
+            ),
             ),
           ],
         ),
         ),
-      );
-
-  /// 「上一页 / 目录」共用的描边按钮样式 —— **和「下一页」同高同字号**，
-  /// 三个等宽靠外层 `Expanded(flex: 1)` 保证。
-  ButtonStyle _navBtnStyle() => OutlinedButton.styleFrom(
-        minimumSize: const Size.fromHeight(44),
-        textStyle: const TextStyle(fontSize: 14),
-        padding: EdgeInsets.zero,
       );
 
   /// 划词浮层：把 `SelectionMenu` 摆在选区**上方**（放不下就放下方）。
