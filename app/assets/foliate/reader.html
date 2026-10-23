@@ -65,6 +65,10 @@ var __post = function (obj) {
   try { if (window.CoEvoBridge) window.CoEvoBridge.postMessage(JSON.stringify(obj)); } catch (_) {}
 };
 window.onerror = function (msg, src, line, col, err) {
+  // 🔕 过滤浏览器**已知无害**的告警：`ResizeObserver loop completed with undelivered
+  //    notifications` 是观察者回调里又改了布局时的标准提示（Chrome/Safari 都会报），
+  //    与我们代码无关。不过滤的话底部会常驻一条红字，把真错误盖住。
+  if (typeof msg === 'string' && msg.indexOf('ResizeObserver loop') >= 0) return false;
   var detail = 'JS: ' + msg + ' @' + line + ':' + col +
                (err && err.stack ? NL + err.stack.split(NL).slice(0, 4).join(NL) : '');
   __fail(detail);
@@ -385,6 +389,7 @@ class View {
     }
     render(layout) {
         if (!layout) return
+        if (!this.document) return  // 元素已被替换/销毁（newPaginator）
         this.#column = layout.flow !== 'scrolled'
         this.#layout = layout
         if (this.#column) this.columnize(layout)
@@ -1241,7 +1246,9 @@ __setStage('boot:2 vendor 执行完毕'); __post({ type: 'stage', detail: 'boot:
 //    ⚠️ 而页面上的「阶段」是 `__setStage` **直接写 DOM** 的，**不经过 bridge** ——
 //    所以「阶段能显示」**不等于**「bridge 能用」。这一行专门把两件事分开：
 __setStage('bridge:start bridge=' + (window.CoEvoBridge ? 'YES' : 'NO'));
-const pag = document.getElementById('pag');
+// 🔴🔴 2026-10-23：`pag` **必须可替换** —— 见 `newPaginator()` 的长注释。
+//    （原来 `const pag` 只能指向页面里那个唯一的 `<foliate-paginator>`）
+var pag = document.getElementById('pag');
 const state = {
   chapters: [], secIndex: 0, pageInSec: 0, fraction: 0, ready: false,
   theme: { bg: '#F5F0E8', fg: '#3A332C', fs: 17, lh: 1.75, margin: 20 },
@@ -1282,7 +1289,37 @@ function buildDocUrl(bodyHtml) {
   return 'srcdoc:' + encodeURIComponent(html);
 }
 
+/// 换一个**全新的** `<foliate-paginator>` 元素，返回它。
+///
+/// # 🔴 为什么必须整个换掉（2026-10-23，白哥报「切章不翻页 / 换主题排版错乱」）
+///
+/// foliate 的 `#goTo` 有两个分支：
+/// ```js
+/// if (index === this.#index) await this.#display({ index, anchor, select })  // ← 没有 src！
+/// else await this.#display(...this.sections[index].load()...)
+/// ```
+/// `#index` 是**私有状态**，`open()` **不会重置它**。
+/// ⇒ 换章节时（新章节也是 index 0）`#index` 已经是 0 ⇒ 走**第一分支**
+///   ⇒ `#display` 拿不到 `src` ⇒ **不加载新文档** ⇒ 屏幕上还是旧章节 = 「点目录没反应」。
+///
+/// 同理：`setTheme` 里原来重开一次，也撞这个分支 ⇒ 旧 view 被 `open()` 重置、
+/// 新文档又不加载 ⇒ **剩下一个尺寸错乱的空壳**（截图里的「排版缩成一小块」）。
+///
+/// 没有公开 API 能重置 `#index` ⇒ **只能换一个新元素**（新实例的 `#index` 是 -1）。
+function newPaginator() {
+  var fresh = document.createElement('foliate-paginator');
+  fresh.id = 'pag';
+  fresh.setAttribute('flow', 'paginated');
+  var old = document.getElementById('pag');
+  if (old && old.parentNode) old.parentNode.replaceChild(fresh, old);
+  else document.body.appendChild(fresh);
+  pag = fresh;
+  bindPaginator(fresh);
+  return fresh;
+}
+
 function reopen(keep) {
+  newPaginator();
   pag.open({
     dir: '',
     sections: state.chapters.map(function (html) {
@@ -1305,15 +1342,11 @@ function reopen(keep) {
   // 🔴🔴 2026-10-22 本地 headless 复现出来的**真正白屏原因**：
   //   foliate 的 `open(book)` **只设置字段**（`this.bookDir` / `this.sections`），
   //   **不做任何渲染**；iframe 是在 `goTo()` → `#display()` → `#createView()` 里才建的。
-  //   ⇒ 只 `open()` 不 `goTo()` = **永远没有 iframe** = 白屏，且**不报任何错**
-  //     （我重构时把 build 23 里的 `pag.goTo(0)` 弄丢了，之后五轮都在猜别的）。
+  //   ⇒ 只 `open()` 不 `goTo()` = **永远没有 iframe** = 白屏，且**不报任何错**。
   // 📌 判据：**「初始化了」≠「渲染了」** —— 上游方法只设状态时，必须再找它的第一步渲染入口。
-  // 🔴🔴🔴 2026-10-22 **最后一个、也是最隐蔽的 bug**：
-  //   foliate 的 `goTo(target)` 签名是 `const resolved = await target;
-  //   if (this.#canGoToIndex(resolved.index)) ...` —— 它要的是 **`{index, anchor}` 对象**，
-  //   **不是页码数字**！传 `0` ⇒ `resolved = 0` ⇒ `resolved.index = undefined`
-  //   ⇒ `#canGoToIndex(undefined)` = false ⇒ **静默 return，什么都不做**。
-  //   表现：`goTo(0)` 的 Promise **正常 resolve**、**零报错**、**永远没有 iframe** = 白屏。
+  // 🔴🔴🔴 `goTo(target)` 要的是 **`{index, anchor}` 对象**，**不是页码数字**！
+  //   传 `0` ⇒ `resolved = 0` ⇒ `resolved.index = undefined` ⇒ `#canGoToIndex` = false
+  //   ⇒ **静默 return**，Promise 正常 resolve、零报错、**永远没有 iframe**。
   // 📌 判据：**调用上游 API 前先读它的参数形状** —— 「没报错」不等于「生效了」。
   pag.goTo({ index: keep ? state.secIndex : 0 });
 }
@@ -1358,22 +1391,41 @@ window.__reader = {
     }
   },
   setTheme: function (t) {
-    Object.assign(state.theme, JSON.parse(t));
+    var next = JSON.parse(t);
+    var oldFs = state.theme.fs, oldLh = state.theme.lh;
+    Object.assign(state.theme, next);
     document.body.style.background = state.theme.bg;
 
-    // 🔴 2026-10-22 真机：换主题后**整页排版缩成一个小方块**。
+    // 🔴🔴 2026-10-23 真机：**换主题后排版缩成一小块**（白哥截图）。
     //
-    // 根因：`setAttribute('margin', …)` 会**同步触发** `attributeChangedCallback`
-    //   → `render()`（用**旧 iframe、旧 layout** 重排一次），紧接着 `open()` 又
-    //   重建 iframe 并再排一次 —— 两次排版叠在一起，且第一次用的是
-    //   **还没生效的 CSS 变量**（`--_margin`/`--_max-inline-size`）⇒ 栏宽算错。
+    // 根因不是 CSS —— 是 `reopen(true)` 里的 `goTo({index: 0})` 撞上了
+    //   foliate 的 `#goTo` 分支判断：
+    //   ```js
+    //   if (index === this.#index) await this.#display({ index, anchor, select })
+    //   //                          ↑ 没有 `src`！
+    //   ```
+    //   切主题时 `this.#index` 已经是 0，`goTo({index:0})` 走**第一分支**
+    //   ⇒ `#display` 拿不到 `src` ⇒ **不加载新文档**，但旧 view 已经被
+    //   `open()` 重置了 ⇒ 剩下一个**尺寸错乱的空壳**。
     //
-    // ⇒ 现在：先把 attribute 设好，**等一帧**让样式落定，再重建 + 定位。
-    pag.setAttribute('margin', String(state.theme.margin));
-    if (!state.chapters.length) return true;
-    requestAnimationFrame(function () {
-      setTimeout(function () { reopen(true); }, 0);
-    });
+    // ⇒ 修法：**换颜色不重排**（只改 iframe 里的内联样式，零重排成本）。
+    //   只有**字号/行距**变了才需要重排 —— 那种情况由 Flutter 侧整页 reload
+    //   （干净、彻底，且字号调整不频繁）。
+    if (__doc) {
+      try {
+        __doc.documentElement.style.background = state.theme.bg;
+        __doc.documentElement.style.color = state.theme.fg;
+        __doc.body.style.background = state.theme.bg;
+        __doc.body.style.color = state.theme.fg;
+      } catch (_) {}
+    }
+
+    var needsRelayout = (next.fs !== undefined && next.fs !== oldFs) ||
+                        (next.lh !== undefined && next.lh !== oldLh);
+    if (needsRelayout) {
+      // 让 Flutter 侧知道「这次得整页 reload」（见 reader.html 顶部注释）
+      __post({ type: 'relayoutNeeded' });
+    }
     return true;
   },
   // 🔴 2026-10-22 真机：**刚进来直接滑动会报一串 `JS: Script error.`**
@@ -1406,7 +1458,7 @@ window.__reader = {
   },
 };
 
-pag.addEventListener('relocate', function (e) {
+function onPagRelocate(e) {
   // 第一次 relocate ⇒ 排版已经真正完成（此前 next/prev 不可用）
   state.ready = true;
   var d = e.detail || {};
@@ -1417,7 +1469,7 @@ pag.addEventListener('relocate', function (e) {
   try { state.pageInSec = pag.page || 0; } catch (_) {}
   __post({ type: 'relocate', sec: state.secIndex,
            page: state.pageInSec, fraction: state.fraction });
-});
+}
 
 // 🔴🔴 2026-10-22 真机（白哥第 4 条）：
 //   「拉动两边想选中句子的时候，拉动的是翻页，这样就无论如何都只能选择一个词」
@@ -1430,13 +1482,26 @@ pag.addEventListener('relocate', function (e) {
 //   一旦当前有选中文字，就把三个 touch 事件**全部**吞掉 ——
 //   ⚠️ 必须三个都吞：只吞 start 的话，foliate 的 `#onTouchMove` 会读到
 //   未初始化的 `#touchState` 并抛 TypeError（那正是「Script error.」的来源之一）。
-pag.addEventListener('load', function (e) {
+var __doc = null;
+
+/// 把 `load` / `relocate` 绑到**某个** paginator 元素上。
+///
+/// 🔑 必须抽成函数：`newPaginator()` 每次会**换一个新元素**（原因见那边），
+///    新元素不带旧监听 ⇒ 不重绑就会「翻页没反应 / tap 没反应 / 划词没反应」。
+function bindPaginator(el) {
+  el.addEventListener('load', onPagLoad);
+  el.addEventListener('relocate', onPagRelocate);
+}
+
+function onPagLoad(e) {
   // ⚠️ 整段包 try/catch：这里是**初始化链路上**的监听器，
   //    一旦在真机上抛错就会污染后续步骤（2026-10-22 白屏排查时踩到）。
   try {
     var d = e.detail;
     var doc = d && (d.doc || d);
-    if (!doc || typeof doc.addEventListener !== 'function') return;
+    if (!doc) return;
+    __doc = doc;   // 供 setTheme 直接改颜色用
+    if (typeof doc.addEventListener !== 'function') return;
     if (doc.__coevoSelBound) return;
     doc.__coevoSelBound = true;
     bindTapToDoc(doc);
@@ -1451,7 +1516,10 @@ pag.addEventListener('load', function (e) {
   } catch (err) {
     __post({ type: 'error', detail: 'bind touch guard 失败: ' + err });
   }
-});
+}
+
+// 初次绑定（之后每次 newPaginator 都会重新调 bindPaginator）
+bindPaginator(pag);
 
 // 🔴 2026-10-22 真机：**点击屏幕召唤不出顶栏**。
 //   根因：正文在 **iframe 里**，点击事件**不会跨文档冒泡**到顶层 document

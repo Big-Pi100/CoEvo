@@ -215,7 +215,9 @@ class _SpikePaginatorScreenState
           AnimatedPositioned(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
-            bottom: _bars ? 0 : -(safe.bottom + 150),
+            // 🔴 隐藏时移得**足够远**：原来 -150 不够 —— 底栏有「阶段/页码/选词/按钮/章节」
+            //    多行，露出的那一截正是被裁掉的「第 1 节·节内第 1 页」（白哥截图 1）。
+            bottom: _bars ? 0 : -(safe.bottom + 400),
             left: 0,
             right: 0,
             child: _footer(bg),
@@ -326,6 +328,9 @@ class _SpikePaginatorScreenState
               ),
             ),
             const SizedBox(height: 8),
+            // 🔴 2026-10-23 白哥：**不要上一章/下一章**（那两行又占地方，
+            //    而且点了不翻页 —— 因为 `goTo` 撞了 `#index` 相同的分支）。
+            //    ⇒ 翻页行**中间**放「目录」，点开弹章节列表。
             Row(
               children: [
                 Expanded(
@@ -334,7 +339,18 @@ class _SpikePaginatorScreenState
                     child: const Text('上一页'),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
+                // 目录 —— 真书时才有（演示文本没有章节可跳）
+                if (_bookId != null)
+                  OutlinedButton(
+                    onPressed: _openChapters,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      minimumSize: const Size(0, 40),
+                    ),
+                    child: const Icon(Icons.list, size: 20),
+                  ),
+                if (_bookId != null) const SizedBox(width: 8),
                 Expanded(
                   child: FilledButton(
                     onPressed: _c.nextPage,
@@ -343,34 +359,55 @@ class _SpikePaginatorScreenState
                 ),
               ],
             ),
-            // 真书时才有章节导航（验证「翻到章末」与多章节切换）
-            if (_bookId != null) ...[
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: _chapterIdx > 0
-                          ? () => _loadChapter(_chapterIdx - 1)
-                          : null,
-                      child: const Text('上一章', style: TextStyle(fontSize: 12)),
-                    ),
-                  ),
-                  Expanded(
-                    child: TextButton(
-                      onPressed: _chapterIdx + 1 < _chapterCount
-                          ? () => _loadChapter(_chapterIdx + 1)
-                          : null,
-                      child: const Text('下一章', style: TextStyle(fontSize: 12)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
           ],
         ),
         ),
       );
+
+  /// 章节目录（底部弹层）—— 真书才有。
+  Future<void> _openChapters() async {
+    final id = _bookId;
+    if (id == null) return;
+    final db = await ref.read(bookDbProvider.future);
+    final rows = await db.query('book_chapter',
+        columns: ['idx', 'title'], where: 'book_id = ?', whereArgs: [id], orderBy: 'idx ASC');
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _hex(_themes[_themeIdx].bg),
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView.builder(
+          itemCount: rows.length,
+          itemBuilder: (_, i) {
+            final idx = rows[i]['idx'] as int;
+            final title = (rows[i]['title'] as String?)?.trim();
+            final current = idx == _chapterIdx;
+            return ListTile(
+              dense: true,
+              selected: current,
+              leading: Text('${idx + 1}',
+                  style: const TextStyle(fontSize: 12, fontFeatures: [])),
+              title: Text(
+                (title == null || title.isEmpty) ? '第 ${idx + 1} 章' : title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: current ? FontWeight.w600 : FontWeight.w400,
+                  color: _hex(_themes[_themeIdx].fg),
+                ),
+              ),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _loadChapter(idx);
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
 
   /// 演示文本（真实段落结构；足够撑 6+ 页）。
   static const _demoChapters = <String>[
