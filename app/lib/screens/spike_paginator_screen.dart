@@ -78,16 +78,12 @@ class _SpikePaginatorScreenState
         }
         return;
       }
-      final id = rows.first['id'] as String;
-      final count = (rows.first['chapter_count'] as int?) ?? 0;
       if (!mounted) return;
-      setState(() {
-        _bookId = id;
-        _bookTitle = rows.first['title'] as String?;
-        _chapterCount = count;
-        _loading = false;
-      });
-      await _loadChapter(0);
+      await _openBook(
+        id: rows.first['id'] as String,
+        title: rows.first['title'] as String?,
+        chapterCount: (rows.first['chapter_count'] as int?) ?? 0,
+      );
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -97,6 +93,70 @@ class _SpikePaginatorScreenState
       }
       await _c.setChapters(_demoChapters);
     }
+  }
+
+  /// 打开指定书（换书时把章节索引归零）。
+  Future<void> _openBook({
+    required String id,
+    required String? title,
+    required int chapterCount,
+  }) async {
+    setState(() {
+      _bookId = id;
+      _bookTitle = title;
+      _chapterCount = chapterCount;
+      _chapterIdx = 0;
+      _chapterTitle = null;
+      _loading = false;
+      _error = null;
+    });
+    await _loadChapter(0);
+  }
+
+  /// 选书 —— 🔑 必须能选：书架里可能同时有 **EPUB**（结构规范）和 **TXT**（结构松散），
+  /// 验证翻页器要用 EPUB；否则会误把「TXT 切章不准」当成翻页器的 bug。
+  Future<void> _openBookPicker() async {
+    final db = await ref.read(bookDbProvider.future);
+    final rows = await db.query('book',
+        columns: ['id', 'title', 'chapter_count'],
+        orderBy: 'added_at DESC');
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _hex(_themes[_themeIdx].bg),
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView.builder(
+          itemCount: rows.length,
+          itemBuilder: (_, i) {
+            final id = rows[i]['id'] as String;
+            final title = (rows[i]['title'] as String?) ?? '（无标题）';
+            final n = (rows[i]['chapter_count'] as int?) ?? 0;
+            final current = id == _bookId;
+            return ListTile(
+              dense: true,
+              selected: current,
+              title: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: current ? FontWeight.w600 : FontWeight.w400,
+                  color: _hex(_themes[_themeIdx].fg),
+                ),
+              ),
+              subtitle: Text('$n 章',
+                  style: const TextStyle(fontSize: 11)),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _openBook(id: id, title: rows[i]['title'] as String?, chapterCount: n);
+              },
+            );
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _loadChapter(int idx) async {
@@ -248,14 +308,28 @@ class _SpikePaginatorScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      _bookTitle ?? '翻页 spike（演示文本）',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: _hex(t.fg),
+                    InkWell(
+                      onTap: _loading ? null : _openBookPicker,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _bookTitle ?? '翻页 spike（演示文本）',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: _hex(t.fg),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          // 小三角暗示「可点，能换书」
+                          Icon(Icons.unfold_more,
+                              size: 14, color: _hex(t.fg).withValues(alpha: 0.5)),
+                        ],
                       ),
                     ),
                     if (_bookId != null)
