@@ -51,7 +51,11 @@ const String _kPreviewText = 'Hello. This is a sample sentence.';
 /// 不新增第二份主题状态（否则两处会各说各话）。
 /// 同理「语速 / 音色」读写的也是全局 `ttsServiceProvider`（**同一个值**）。
 class ReadingSettingsPanel extends ConsumerWidget {
-  const ReadingSettingsPanel({super.key, this.showTrace = true});
+  const ReadingSettingsPanel({
+    super.key,
+    this.showTrace = true,
+    this.onOpenChapters,
+  });
 
   /// 是否显示「痕迹」开关。
   ///
@@ -65,6 +69,9 @@ class ReadingSettingsPanel extends ConsumerWidget {
   ///    否则两个页面会被迫要么共用一套不适用的项、要么各写一份面板。
   /// ⚠️ 默认 `true`：既有调用方（阅读器）行为不变。
   final bool showTrace;
+
+  /// 🆕 2026-10-24：点「目录」行要做什么。`null` ⇒ **那一行不渲染**。
+  final VoidCallback? onOpenChapters;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -391,6 +398,42 @@ class ReadingSettingsPanel extends ConsumerWidget {
               }
             },
           ),
+          // 🆕 2026-10-24 白哥定：**目录入口放在这个面板里**（顶栏不加键、页码条不兼作按钮）。
+          //
+          // 🔑 `onOpenChapters == null` ⇒ **整行不渲染** ——
+          //    滚动阅读器（热点页）没有「章」，不该出现一个点了没反应的入口。
+          if (onOpenChapters != null) ...[
+            const SizedBox(height: CoSpacing.sm),
+            const Divider(height: 1),
+            InkWell(
+              onTap: () {
+                // 🔑 先关面板，再执行动作 —— 否则两个 bottom sheet 叠在一起，
+                //    用户关掉目录后看到的还是设置面板（「怎么又回来了」）。
+                Navigator.of(context).pop();
+                onOpenChapters!();
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: CoSpacing.md, vertical: 14),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '目录',
+                        style: TextStyle(
+                          fontFamily: CoFonts.cjk,
+                          fontSize: 14,
+                          color: Color(t.ink.argb32),
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right,
+                        size: 18, color: Color(t.ink3.argb32)),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
         ),
       ),
@@ -526,6 +569,12 @@ class _ThemeChip extends StatelessWidget {
 Future<void> showReadingSettingsPanel(
   BuildContext context, {
   bool showTrace = true,
+  /// 🆕 2026-10-24：面板底部多一行「目录 ›」。
+  ///
+  /// **只有翻页阅读器会传它**（滚动阅读器没有「章」的概念，不需要目录）。
+  /// 不传 ⇒ 那一行**根本不渲染**（而不是渲染成不可点）——
+  /// 拿不到动作就别给入口，这是本项目既有判据。
+  VoidCallback? onOpenChapters,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -543,6 +592,9 @@ Future<void> showReadingSettingsPanel(
     //    而官方把手依赖 sheet 自身背景色 ⇒ 透明时观感不可控。
     enableDrag: true,
     isDismissible: true,
-    builder: (_) => ReadingSettingsPanel(showTrace: showTrace),
+    builder: (_) => ReadingSettingsPanel(
+      showTrace: showTrace,
+      onOpenChapters: onOpenChapters,
+    ),
   );
 }

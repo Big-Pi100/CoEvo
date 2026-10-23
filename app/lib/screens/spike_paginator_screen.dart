@@ -308,13 +308,68 @@ class _SpikePaginatorScreenState
     setState(() => _hideSelectionMenu = false);
   }
 
+  /// 单击正文（由 WebView 的 tap 事件转发过来）。
+  ///
+  /// # 🔴 2026-10-24 白哥定的交互
+  ///
+  /// | 当前状态 | 单击正文后 |
+  /// |---|---|
+  /// | 顶栏隐藏 | **顶栏出现 + 阅读设置面板升起** |
+  /// | 顶栏已显示 | **顶栏收起**（不弹面板） |
+  ///
+  /// ⚠️ 面板本身是模态（`showModalBottomSheet`）⇒ 弹着的时候点不到正文，
+  ///    所以「再点一次收起」只在面板关掉之后才会发生。
+  ///
+  /// ⚠️ **页码条不参与**这个切换（白哥：它是阅读界面的一部分，只展示进度）。
   void _onTap() {
     if (!mounted) return;
-    // 点空白：先收浮层，再切栏（同一手势不重复做两件相反的事）
+    if (_bars) {
+      setState(() {
+        _bars = false;
+        _hideSelectionMenu = true;
+      });
+      return;
+    }
     setState(() {
+      _bars = true;
       _hideSelectionMenu = true;
-      _bars = !_bars;
     });
+    _openSettings();
+  }
+
+  /// 打开阅读设置面板（顶部 `Tt` 与「单击正文」共用同一个入口）。
+  ///
+  /// 🔑 面板里多一行「目录」—— 只在**有章节**时传 `onOpenChapters`
+  ///    （滚动阅读器不传 ⇒ 那一行不渲染）。
+  Future<void> _openSettings() async {
+    await showReadingSettingsPanel(
+      context,
+      showTrace: false,
+      onOpenChapters: _chapters.isEmpty ? null : _openChapters,
+    );
+    if (!mounted) return;
+    // 面板关掉后**同步底色 + 字号**给 WebView（它内部的 CSS 是独立的）
+    final idx = switch (ref.read(themeProvider).theme) {
+      ReadingTheme.ink => 0,
+      ReadingTheme.grid => 1,
+      ReadingTheme.night => 2,
+    };
+    final fs = ref.read(readingSettingsProvider).fontSize.toDouble();
+    final themeChanged = idx != _themeIdx;
+    final sizeChanged = fs != _fontSize;
+    if (!themeChanged && !sizeChanged) return;
+    setState(() {
+      _themeIdx = idx;
+      _fontSize = fs;
+    });
+    final th = _themes[idx];
+    await _c.setTheme(
+      background: th.bg,
+      foreground: th.fg,
+      accent: th.accent,
+      fontSize: fs,
+      margin: 24,
+    );
   }
 
   Timer? _saveTimer;
@@ -422,14 +477,14 @@ class _SpikePaginatorScreenState
             right: 0,
             child: _bar(t),
           ),
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            // 🔴 隐藏时移得**足够远**：原来 -150 不够 —— 底栏有「阶段/页码/选词/按钮/章节」
-            //    多行，露出的那一截正是被裁掉的「第 1 节·节内第 1 页」（白哥截图 1）。
-            bottom: _bars ? 0 : -(safe.bottom + 400),
+          // 🔴 2026-10-24 白哥定：**页码条常驻** —— 它是阅读界面的一部分，
+          //    只用来展示进度，**不跟着单击出现/消失**。
+          //    （之前它和顶栏一起 AnimatedPositioned，单击才露出来 ⇒ 白哥看到的就是
+          //      「单击弹出的是阅读进度」，而不是他想要的阅读设置面板。）
+          Positioned(
             left: 0,
             right: 0,
+            bottom: 0,
             child: _footer(bg),
           ),
         ],
@@ -498,38 +553,7 @@ class _SpikePaginatorScreenState
                 // 🔴 面板关闭后必须**把主题同步给 WebView** ——
                 //    面板改的是全局 `themeProvider`，而 WebView 内的 CSS 是独立的，
                 //    不同步的话「在面板里换底色，正文不变」（静默失效）。
-                onTap: () async {
-                  await showReadingSettingsPanel(context, showTrace: false);
-                  if (!mounted) return;
-                  // 🔴 面板关掉后**必须把两项都同步给 WebView**：
-                  //    · 底色（themeProvider）· 字号（readingSettingsProvider）
-                  //    WebView 里的 CSS 是独立的，不同步 = 「面板里改了，正文不变」。
-                  //
-                  //    ⚠️ 原来只同步了底色，而且写了 `if (idx == _themeIdx) return;`
-                  //    ⇒ **只调字号（不动底色）时直接 return，什么都不做**。
-                  //    白哥截图里的面板第一项就是字号 ⇒ 这个 bug 一眼就会被撞上。
-                  final idx = switch (ref.read(themeProvider).theme) {
-                    ReadingTheme.ink => 0,
-                    ReadingTheme.grid => 1,
-                    ReadingTheme.night => 2,
-                  };
-                  final fs = ref.read(readingSettingsProvider).fontSize.toDouble();
-                  final themeChanged = idx != _themeIdx;
-                  final sizeChanged = fs != _fontSize;
-                  if (!themeChanged && !sizeChanged) return;
-                  setState(() {
-                    _themeIdx = idx;
-                    _fontSize = fs;
-                  });
-                  final th = _themes[idx];
-                  await _c.setTheme(
-                    background: th.bg,
-                    foreground: th.fg,
-                    accent: th.accent,
-                    fontSize: fs,
-                    margin: 24,
-                  );
-                },
+                onTap: _openSettings,
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -611,20 +635,18 @@ class _SpikePaginatorScreenState
                       : (_chapterCount > 0 ? _chapterCount : 1);
                   final pct =
                       (p.fraction * 100).clamp(0, 100).toStringAsFixed(0);
-                  return InkWell(
-                    onTap: _chapters.isEmpty ? null : _openChapters,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      child: Text(
-                        '$sec / $total　·　$pct%',
-                        style: TextStyle(
-                          fontFamily: CoFonts.uiSans,
-                          fontSize: 12,
-                          color: _hex(_themes[_themeIdx].fg)
-                              .withValues(alpha: 0.55),
-                        ),
+                  // 🔴 白哥：页码条**只用来展示进度**，不是按钮
+                  //    ⇒ 目录入口已移到「阅读设置面板」里（那一行「目录 ›」）。
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    child: Text(
+                      '$sec / $total　·　$pct%',
+                      style: TextStyle(
+                        fontFamily: CoFonts.uiSans,
+                        fontSize: 12,
+                        color: _hex(_themes[_themeIdx].fg)
+                            .withValues(alpha: 0.55),
                       ),
                     ),
                   );
