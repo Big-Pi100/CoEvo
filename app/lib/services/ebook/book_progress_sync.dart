@@ -185,6 +185,9 @@ Future<void> mirrorProgress(
   required int chapterIdx,
   required double scrollRatio,
   required String updatedAt,
+  /// 🆕 v6（2026-10-23）：字符偏移。翻页阅读器的原生坐标。
+  /// `null` = 还不知道（老数据 / 滚动阅读器）⇒ 写 NULL，读端回退到 `scroll_ratio`。
+  int? charOffset,
 }) async {
   final hash = await _contentHashOf(db, bookId);
   if (hash == null) return;
@@ -208,6 +211,7 @@ Future<void> mirrorProgress(
       'content_hash': hash,
       'chapter_idx': chapterIdx,
       'scroll_ratio': scrollRatio,
+      'char_offset': charOffset,
       'updated_at': updatedAt,
     },
     conflictAlgorithm: ConflictAlgorithm.replace,

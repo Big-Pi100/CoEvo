@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -39,6 +41,9 @@ class _SpikePaginatorScreenState
   String? _bookId;
   bool _loading = true;
 
+  /// 最近一次写进库的字符偏移（显示在底部，用来肉眼确认链路通了）
+  int? _lastSaved;
+
   /// 顶栏/底栏是否显示 —— **默认隐藏**（白哥：平时看不见，单击正文才弹出）。
   bool _bars = false;
 
@@ -54,6 +59,7 @@ class _SpikePaginatorScreenState
     _c.lastError.addListener(_onErr);
     _c.selectedText.addListener(_onSel);
     _c.tapTick.addListener(_onTap);
+    _c.position.addListener(_onPosition);
     _loadRealBook();
   }
 
@@ -213,11 +219,40 @@ class _SpikePaginatorScreenState
     setState(() => _bars = !_bars);
   }
 
+  Timer? _saveTimer;
+
+  /// 🆕 v6：位置变化 → **节流 1.2 秒**写进度（带 `char_offset`）。
+  ///
+  /// 🔑 为什么节流：翻页很快，每页都写库会白白刷盘（而且 `saveProgress`
+  ///    还要镜像到 `book_progress_pending`，两次写）。
+  void _onPosition() {
+    final id = _bookId;
+    if (id == null) return;
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 1200), () async {
+      final pos = _c.position.value;
+      try {
+        final db = await ref.read(bookDbProvider.future);
+        await saveProgress(
+          db,
+          bookId: id,
+          chapterIdx: _chapterIdx,
+          charOffset: pos.charOffset,   // ← 本次新增的坐标
+        );
+        if (mounted) setState(() => _lastSaved = pos.charOffset);
+      } catch (e) {
+        if (mounted) setState(() => _error = '写进度失败：$e');
+      }
+    });
+  }
+
   @override
   void dispose() {
     _c.lastError.removeListener(_onErr);
     _c.selectedText.removeListener(_onSel);
     _c.tapTick.removeListener(_onTap);
+    _c.position.removeListener(_onPosition);
+    _saveTimer?.cancel();
     super.dispose();
   }
 
@@ -379,6 +414,12 @@ class _SpikePaginatorScreenState
                 style: const TextStyle(fontSize: 10, color: Color(0xFF8A7F70)),
               ),
             ),
+            // 🆕 v6：写库确认（肉眼验证 char_offset 链路通没通）
+            if (_lastSaved != null)
+              Text(
+                '已存 char_offset = $_lastSaved',
+                style: const TextStyle(fontSize: 10, color: Color(0xFF3B6D11)),
+              ),
             // 字体加载结果（`swap` 会静默回退，必须显式看）
             ValueListenableBuilder<String>(
               valueListenable: _c.fontsStatus,

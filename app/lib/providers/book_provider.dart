@@ -217,6 +217,14 @@ Future<void> saveProgress(
   Database db, {
   required String bookId,
   required int chapterIdx,
+  /// 🆕 v6（2026-10-23）：**本章内的字符偏移** —— 翻页阅读器的原生坐标。
+  ///
+  /// 为什么必须有它：`scroll_ratio` 是**像素**关系、分页是**字符**关系，
+  /// 两者不是线性 —— 同一个比例在字号 15/24 下指向不同句子。
+  /// 翻页器每页起点本来就是字符位置 ⇒ 存字符偏移才能准确跳回。
+  ///
+  /// `null` = 还不知道（滚动阅读器 / 老数据）⇒ 存 NULL，读端回退到 `scroll_ratio`。
+  int? charOffset,
 }) async {
   // 🔑 **一个时间戳供两处用** —— `book_progress`（本地权威）与
   //    `book_progress_pending`（跨设备交换区）必须是**同一时刻**，
@@ -233,6 +241,8 @@ Future<void> saveProgress(
       //    要存得存「相对位置」，那需要稳定的定位锚点 ⇒ 留到需要时做。
       //    现在记「读到第几章」已经覆盖绝大多数续读需求。
       'scroll_ratio': 0.0,
+      // 🆕 v6：字符偏移（`null` 时写 NULL —— 见 schema 注释「可空是刻意的」）
+      'char_offset': charOffset,
       'updated_at': now,
     },
     conflictAlgorithm: ConflictAlgorithm.replace,
@@ -251,6 +261,7 @@ Future<void> saveProgress(
       chapterIdx: chapterIdx,
       scrollRatio: 0.0,
       updatedAt: now,
+      charOffset: charOffset,
     );
   } catch (e) {
     debugPrint('[book_progress] 镜像到待上传表失败（不影响阅读）：$e');

@@ -1250,7 +1250,7 @@ __setStage('bridge:start bridge=' + (window.CoEvoBridge ? 'YES' : 'NO'));
 //    （原来 `const pag` 只能指向页面里那个唯一的 `<foliate-paginator>`）
 var pag = document.getElementById('pag');
 const state = {
-  chapters: [], secIndex: 0, pageInSec: 0, fraction: 0, ready: false,
+  chapters: [], secIndex: 0, pageInSec: 0, fraction: 0, ready: false, charOffset: 0,
   theme: { bg: '#F5F0E8', fg: '#3A332C', fs: 17, lh: 1.75, margin: 20 },
 };
 
@@ -1493,9 +1493,40 @@ window.__reader = {
     return JSON.stringify({
       sec: state.secIndex, page: state.pageInSec,
       fraction: state.fraction, pages: pages, chapters: state.chapters.length,
+      offset: state.charOffset,
     });
   },
 };
+
+/// 当前可见范围**起点**在「正文纯文本」里的字符偏移。
+///
+/// # 🔴 口径（必须与 `_textToHtml` 一致，否则偏移系统性错位且**不会报错**）
+/// - 只算正文段落，**不含章节标题**（标题是 `<h2 class="ch-title">`，从这里跳过）
+/// - 段落之间**不含分隔符**（`Range.toString()` 天然不加）
+function charOffsetOf(doc, range) {
+  if (!doc || !range) return 0;
+  try {
+    var pre = doc.createRange();
+    pre.selectNodeContents(doc.body);
+    var title = doc.querySelector('.ch-title');
+    if (title) pre.setStartAfter(title);
+    pre.setEnd(range.startContainer, range.startOffset);
+    var n = pre.toString().length;
+    return n < 0 ? 0 : n;
+  } catch (_) { return 0; }
+}
+
+/// 正文纯文本总长（与 `charOffsetOf` 同口径），供上层算章内百分比。
+function docTextLength(doc) {
+  if (!doc) return 0;
+  try {
+    var r = doc.createRange();
+    r.selectNodeContents(doc.body);
+    var title = doc.querySelector('.ch-title');
+    if (title) r.setStartAfter(title);
+    return r.toString().length;
+  } catch (_) { return 0; }
+}
 
 function onPagRelocate(e) {
   // 第一次 relocate ⇒ 排版已经真正完成（此前 next/prev 不可用）
@@ -1506,8 +1537,12 @@ function onPagRelocate(e) {
   state.fraction = (typeof f === 'number' && isFinite(f))
     ? Math.max(0, Math.min(1, f)) : 0;
   try { state.pageInSec = pag.page || 0; } catch (_) {}
+  // 🆕 v6：字符偏移 —— 翻页阅读器的**原生坐标**（每页起点本来就是字符位置）
+  state.charOffset = charOffsetOf(__doc, d.range);
   __post({ type: 'relocate', sec: state.secIndex,
-           page: state.pageInSec, fraction: state.fraction });
+           page: state.pageInSec, fraction: state.fraction,
+           offset: state.charOffset,
+           total: docTextLength(__doc) });
 }
 
 // 🔴🔴 2026-10-22 真机（白哥第 4 条）：

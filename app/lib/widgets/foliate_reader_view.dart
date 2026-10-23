@@ -118,6 +118,8 @@ class FoliateReaderController {
             sectionIndex: (m['sec'] as num?)?.toInt() ?? 0,
             pageInSection: (m['page'] as num?)?.toInt() ?? 0,
             fraction: (m['fraction'] as num?)?.toDouble() ?? 0,
+            charOffset: (m['offset'] as num?)?.toInt() ?? 0,
+            totalChars: (m['total'] as num?)?.toInt() ?? 0,
           );
         case 'select':
           selectedText.value = (m['text'] as String?)?.trim();
@@ -146,14 +148,27 @@ class FoliatePosition {
     this.sectionIndex = 0,
     this.pageInSection = 0,
     this.fraction = 0,
+    this.charOffset = 0,
+    this.totalChars = 0,
   });
 
   final int sectionIndex;
   final int pageInSection;
   final double fraction;
 
+  /// 🆕 v6（2026-10-23）：**本章内的字符偏移**（正文纯文本，不含章节标题）。
+  ///
+  /// 🔑 这是翻页阅读器的**原生坐标** —— 每页起点本来就是一个字符位置。
+  ///    比 `fraction`（页序号比例）精确：字号一变页数就变，`fraction` 会漂，
+  ///    而字符偏移与字号无关。
+  final int charOffset;
+
+  /// 本章正文纯文本总长（与 [charOffset] 同口径），用来算章内百分比。
+  final int totalChars;
+
   @override
-  String toString() => 'sec=$sectionIndex page=$pageInSection f=$fraction';
+  String toString() =>
+      'sec=$sectionIndex page=$pageInSection f=$fraction off=$charOffset/$totalChars';
 }
 
 /// WebView 外壳 —— 只负责「装控件 + 连桥」，业务在 controller。
