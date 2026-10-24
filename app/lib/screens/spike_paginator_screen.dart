@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 import '../providers/book_provider.dart';
+import '../services/ebook/book_marker.dart';
+import '../services/ebook/book_marker_repository.dart';
 import '../services/highlight_enqueue.dart';
 import '../services/highlight_repository.dart';
 import '../services/highlight_span.dart';
@@ -75,6 +77,13 @@ class _SpikePaginatorScreenState
 
   /// 顶栏/底栏是否显示 —— **默认隐藏**（白哥：平时看不见，单击正文才弹出）。
   bool _bars = false;
+
+  /// 当前位置是否已在书签处。
+  ///
+  /// 🔑 判据只有一处：`BookMarkerRepository.findAt(...)`。
+  ///    **UI 的图标状态**与**写入前的「在不在」询问**共用同一个结果 ——
+  ///    各判一次迟早会漂（正式页 `book_marker_repository` 类文档里记了这条）。
+  BookMarker? _markerHere;
 
   /// 🔴 **三档色值直接取 `coevo_tokens.dart` 的真实值**（2026-10-23 白哥指出
   /// 「跟现在运行中的完全不一样」—— 主因就是我自己猜了色值）：
@@ -336,6 +345,84 @@ class _SpikePaginatorScreenState
       _bars = opening;
       _hideSelectionMenu = true;
     });
+    // 顶栏刚出现 ⇒ 立刻问一次「当前位置在不在书签处」（否则图标永远是空心）
+    if (opening) _refreshMarkerHere();
+  }
+
+  /// 当前页起点在**本章**里的比例（0~1）—— 与 `book_marker.scroll_ratio` 同一口径。
+  ///
+  /// 🔑 书签表用的坐标是「**章内比例**」，而翻页器给的是「章内字符偏移」
+  ///    ⇒ 用 `charOffset / totalChars` 换算。
+  ///    ⚠️ 分母必须是 `totalChars`（本章纯文本长度），不是全书长度。
+  double get _ratioHere {
+    final p = _c.position.value;
+    if (p.totalChars <= 0) return 0;
+    return (p.charOffset / p.totalChars).clamp(0.0, 1.0);
+  }
+
+  /// 翻页后刷新「当前位置是否在书签处」（供顶栏图标的实心/空心）。
+  ///
+  /// ⚠️ 每次 relocate 都会查一次库 —— SQLite 本地查询 ~1ms，可以接受。
+  ///    但它**只在顶栏可见时**才有意义 ⇒ 不可见就跳过，省掉无谓查询。
+  Future<void> _refreshMarkerHere() async {
+    final id = _bookId;
+    if (id == null) return;
+    try {
+      final db = await ref.read(bookDbProvider.future);
+      final m = await BookMarkerRepository(db).findAt(
+        bookId: id,
+        chapterIdx: _chapterIdx,
+        scrollRatio: _ratioHere,
+      );
+      if (!mounted) return;
+      if (m?.id != _markerHere?.id) setState(() => _markerHere = m);
+    } catch (_) {
+      // 查书签失败不该影响阅读 —— 顶栏图标退化为「未标记」
+    }
+  }
+
+  /// 点书签键 = **打 / 取消**。
+  ///
+  /// 判据用 `_markerHere`（与图标状态同一个值）——
+  /// 不重新查一次，避免「图标显示已标记、点下去却当成未标记」的竞态。
+  Future<void> _toggleMarker() async {
+    final id = _bookId;
+    if (id == null) return;
+    final db = await ref.read(bookDbProvider.future);
+    final repo = BookMarkerRepository(db);
+    try {
+      if (_markerHere != null) {
+        await repo.remove(_markerHere!.id);
+        if (mounted) setState(() => _markerHere = null);
+        return;
+      }
+      // 摘录：从当前位置往后取 ~40 字（书签列表里用来认出「这是哪一处」）
+      final plain = _chapterPlainText ?? '';
+      final start = _c.position.value.charOffset.clamp(0, plain.length);
+      final excerpt = plain.substring(
+        start,
+        (start + 40).clamp(0, plain.length),
+      ).replaceAll(RegExp(r'\s+'), ' ').trim();
+      final marker = BookMarker(
+        id: const Uuid().v4(),
+        bookId: id,
+        chapterIdx: _chapterIdx,
+        scrollRatio: _ratioHere,
+        excerpt: excerpt,
+        createdAt: DateTime.now().toUtc(),
+      );
+      await repo.add(
+        id: marker.id,
+        bookId: marker.bookId,
+        chapterIdx: marker.chapterIdx,
+        scrollRatio: marker.scrollRatio,
+        excerpt: marker.excerpt,
+        createdAt: marker.createdAt,
+      );
+      if (mounted) setState(() => _markerHere = marker);
+    } catch (e) {
+      if (mounted) setState(() => _error = '书签操作失败：$e');
+    }
   }
 
   /// 把面板里改过的**底色 + 字号**同步给 WebView。
@@ -392,6 +479,10 @@ class _SpikePaginatorScreenState
 
     final id = _bookId;
     if (id == null) return;
+
+    // 位置变了 ⇒ 顶栏书签图标的实心/空心可能变化（只在顶栏可见时查，省无谓查询）
+    if (_bars) _refreshMarkerHere();
+
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 1200), () async {
       final p2 = _c.position.value;
@@ -612,6 +703,24 @@ class _SpikePaginatorScreenState
                     ),
                   );
                 }),
+              const SizedBox(width: 6),
+              InkWell(
+                onTap: _toggleMarker,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                  child: Icon(
+                    _markerHere == null
+                        ? Icons.bookmark_border
+                        : Icons.bookmark,
+                    size: 22,
+                    color: _markerHere == null
+                        ? _hex(t.fg).withValues(alpha: 0.72)
+                        : _hex(t.accent),
+                  ),
+                ),
+              ),
               const SizedBox(width: 8),
             ],
           ),
