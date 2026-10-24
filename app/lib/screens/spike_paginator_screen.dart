@@ -86,6 +86,9 @@ class _SpikePaginatorScreenState
   ///    各判一次迟早会漂（正式页 `book_marker_repository` 类文档里记了这条）。
   BookMarker? _markerHere;
 
+  /// 划线加载的诊断串（验证期用，接入正式页时删）。
+  String? _hlDiag;
+
   /// 书签图标是否处于「刚被下拉触发」的脉冲态（放大再回弹）。
   bool _markerPulse = false;
 
@@ -366,9 +369,19 @@ class _SpikePaginatorScreenState
         if (h.startOffset < 0 || h.endOffset <= h.startOffset) continue;
         (out[ch] ??= <(int, int)>[]).add((h.startOffset, h.endOffset));
       }
+      // 🔍 诊断：把「读到几条、分到几章」报出来。
+      //    白哥报「划线保存了但看不到痕迹」——而这种失败**没有任何提示**，
+      //    只能靠一个数字区分三种可能：没读到 / 读到了但没分到章 / 分到了但没画上。
+      if (mounted) {
+        setState(() {
+          _hlDiag = '划线 ${rows.length} 条 / 分到 ${out.length} 章';
+        });
+      }
       return out;
-    } catch (_) {
-      // 读划线失败不该影响阅读 —— 退化为「没有线」
+    } catch (e) {
+      // 读划线失败不该影响阅读 —— 退化为「没有线」，但**必须可见**
+      // （静默失败会让「划线不显示」变成一个无法定位的黑洞）
+      if (mounted) setState(() => _hlDiag = '读划线失败：$e');
       return const {};
     }
   }
@@ -846,6 +859,26 @@ class _SpikePaginatorScreenState
           //    「长什么样」不重写），只是锚点从 `SelectableRegion` 换成了 WebView 的选区矩形。
           //    ⚠️ 展开成 List：空态时**一个子节点都不加**（见 `_selectionWidgets` 的长注释）。
           ..._selectionWidgets(safe.top),
+          // 🔍 划线诊断（验证期临时显示；接入正式页时删）
+          if (_hlDiag != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 26,
+              child: IgnorePointer(
+                child: Center(
+                  child: Text(
+                    _hlDiag!,
+                    style: TextStyle(
+                      fontFamily: CoFonts.uiSans,
+                      fontSize: 10,
+                      color: _hex(t.fg).withValues(alpha: 0.45),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
           // 🆕 下拉书签的一句短提示（「已加书签」/「已取消书签」）
           //    位置在页码条上方，2 秒自动消失；不挡正文、不占布局（Stack 浮层）
           if (_markerHint != null)

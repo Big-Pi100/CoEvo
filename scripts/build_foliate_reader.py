@@ -610,6 +610,25 @@ function onPagLoad(e) {
         }, { passive: true, capture: true });
         doc.addEventListener('touchmove', function (e) {
           if (!tracking || e.touches.length !== 1) return;
+
+          // 🔴🔴 2026-10-24 白哥：「长按出现选中手柄后，拉动手柄页面会抖动，
+          //    选中应该和其他动作互斥，不然会触发左右滑动和下拉」。
+          //
+          // 🔑 判据：**有选区在身时，这个手势属于「调整选区」，不是「翻页/下拉」**
+          //    ⇒ 立即让路，一个像素都不接管。
+          //    （拖手柄时手指会斜着走，dy 很容易超过 26 的接管阈值 ⇒ 被当成下拉 ⇒ 页面跟着抖。）
+          var sel = null;
+          try { sel = doc.getSelection(); } catch (_) {}
+          if (sel && !sel.isCollapsed && String(sel).length > 0) {
+            // 🔴 不只是「我们不接管」—— 还要**把 foliate 的横滑也掐掉**。
+            //    它的翻页监听在冒泡阶段，我们在捕获阶段 stopPropagation 即可。
+            //    ⇒ 有选区时：下拉不动作、横滑也不翻页，手势**整块留给选区手柄**。
+            //    （只让路不拦截的话，拖手柄照样会被 foliate 当成翻页 ⇒ 页面还是飘。）
+            e.stopPropagation();
+            tracking = false;
+            return;
+          }
+
           var dy = e.touches[0].clientY - sy;
           var dx = Math.abs(e.touches[0].clientX - sx);
 
