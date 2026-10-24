@@ -97,8 +97,24 @@ class FoliateReaderController {
   /// 光发「触发了一次」不够 —— 没有过程就没有「拉动」的手感。
   final ValueNotifier<double?> pullRatio = ValueNotifier<double?>(null);
 
-  /// 下拉松手（`true` = 已达到阈值，该触发动作）。
-  final ValueNotifier<bool?> pullRelease = ValueNotifier<bool?>(null);
+  /// 下拉松手**次数**（每松手一次 +1）。
+  ///
+  /// 🔴🔴 2026-10-24 白哥：「连续多次下拉，收藏功能就会失效（没有振动、图标不亮）」。
+  ///
+  /// 根因：原来这里是 `ValueNotifier<bool?>` —— **值不变就不通知**。
+  ///   第一次达标设 `true` ⇒ 通知；第二次达标**还是 `true`** ⇒ `ValueNotifier` 认为
+  ///   「没变化」⇒ **不触发 listener** ⇒ 不回弹、不震动、不加书签。
+  ///
+  /// ⇒ 改成**计数器**：每松手一次递增，值永远在变。
+  ///   （同样的坑在 `tapTick` / `pullDownTick` 上已经用对了，这里漏了。）
+  ///
+  /// ⚠️ 教训：**事件型通知一律用计数器，不要用"状态值"**。
+  ///    状态值只在一个方向上变化（false→true）时，第二次同向事件必然丢失。
+  final ValueNotifier<int> pullEndTick = ValueNotifier<int>(0);
+
+  /// 最近一次松手是否**达到阈值**（配 `pullEndTick` 用 —— tick 只负责「通知」，
+  /// 这个字段负责「内容」，两者分开才能既通知到又带上语义）。
+  bool pullEndArmed = false;
 
   /// 用户在正文上**竖直下拉**了一次（🆕 2026-10-24 白哥定：下拉 = 打/取消书签）。
   ///
@@ -245,8 +261,13 @@ class FoliateReaderController {
         case 'pullProgress':
           pullRatio.value = (m['ratio'] as num?)?.toDouble() ?? 0;
         case 'pullEnd':
-          pullRelease.value = ((m['dy'] as num?)?.toDouble() ?? 0) >= 60;
-          pullRatio.value = null;
+          // 🔑 先写「内容」再递增 tick —— 顺序反了 listener 会读到上一次的值
+          pullEndArmed = ((m['dy'] as num?)?.toDouble() ?? 0) >= 60;
+          pullEndTick.value = pullEndTick.value + 1;
+          // ⚠️ **不在这里把 pullRatio 置 null** ——
+          //    归零由页面在「转圈收尾」之后自己做（白哥要看到达标后的那一小段转圈）。
+          //    这里若立即置 null，位移会瞬间归零 ⇒ 转圈收尾一闪而过。
+          //    `pullCancel`（横滑放弃）才需要立即归零。
         case 'pullCancel':
           pullRatio.value = null;
         case 'pullDown':

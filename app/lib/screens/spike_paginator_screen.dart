@@ -129,7 +129,7 @@ class _SpikePaginatorScreenState
     // 🆕 下拉 = 打/取消书签（白哥定：无书签则加、有书签则删）
     _c.pullDownTick.addListener(_onPullDown);
     _c.pullRatio.addListener(_onPullRatio);
-    _c.pullRelease.addListener(_onPullRelease);
+    _c.pullEndTick.addListener(_onPullRelease);
     _c.position.addListener(_onPosition);
     _loadRealBook();
   }
@@ -391,7 +391,7 @@ class _SpikePaginatorScreenState
     //    连续两次下拉都达标时 bool 值都是 true ⇒ **不触发通知** ⇒ 第二次不回弹。
     //    （同样的问题在 `tapTick` 上已经用过一次正确解法，这里沿用它。）
     if (!mounted) return;
-    final ok = _c.pullRelease.value == true;
+    final ok = _c.pullEndArmed;
     if (ok) _onPullDown();
     // 无论达标与否都回弹；达标时多停 260ms 让转圈收个尾
     Future<void>.delayed(Duration(milliseconds: ok ? 260 : 0), () {
@@ -673,7 +673,7 @@ class _SpikePaginatorScreenState
     _c.tapTick.removeListener(_onTap);
     _c.pullDownTick.removeListener(_onPullDown);
     _c.pullRatio.removeListener(_onPullRatio);
-    _c.pullRelease.removeListener(_onPullRelease);
+    _c.pullEndTick.removeListener(_onPullRelease);
     _c.position.removeListener(_onPosition);
     _saveTimer?.cancel();
     super.dispose();
