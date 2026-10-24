@@ -896,9 +896,15 @@ class _SpikePaginatorScreenState
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontFamily: CoFonts.uiSans,
-                      fontSize: 12.5,
+                      // 🔴 2026-10-24 白哥：「上栏的字体远小于下栏，很不协调」。
+                      //    原来 12.5（照热点页 `_ReaderBar` 抄的），而：
+                      //    · 页码条 12 · 设置面板标题 15 · 面板项 14 · 正文 17
+                      //    ⇒ 顶栏是**全页最小的一档**，夹在一排 19~22px 的图标中间
+                      //    显得又小又散。调到 **15**（与面板标题同档），
+                      //    层级变成：正文 17 > 顶栏/面板标题 15 > 面板项 14 > 页码 12。
+                      fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      color: _hex(t.fg).withValues(alpha: 0.72),
+                      color: _hex(t.fg).withValues(alpha: 0.78),
                     ),
                   ),
                 ),
