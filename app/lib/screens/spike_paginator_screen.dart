@@ -336,7 +336,6 @@ class _SpikePaginatorScreenState
       _bars = opening;
       _hideSelectionMenu = true;
     });
-    if (!opening) _syncTypoFromProviders();
   }
 
   /// 把面板里改过的**底色 + 字号**同步给 WebView。
@@ -426,6 +425,18 @@ class _SpikePaginatorScreenState
 
   @override
   Widget build(BuildContext context) {
+    // 🔴🔴 2026-10-24 白哥：「阅读设置里的所有设置都不能直观地反馈到主界面，
+    //    要关闭设置面板后才会应用」
+    //
+    // 根因：之前只在**收起面板时**才 `_syncTypoFromProviders()`。
+    // ⇒ 改成**监听 provider**：面板里一动就同步（不用等关面板）。
+    //
+    // ⚠️ 这里只监听「影响正文渲染」的两项：底色（themeProvider）与字号
+    //    （readingSettingsProvider）。语速/音色只影响朗读，不需要重排正文。
+    // ⚠️ 字号是 `A-` / `A+` 点按（不是连续滑杆）⇒ 每次点击触发一次重排，可接受。
+    ref.listen(themeProvider, (_, __) => _syncTypoFromProviders());
+    ref.listen(readingSettingsProvider, (_, __) => _syncTypoFromProviders());
+
     final t = _themes[_themeIdx];
     final bg = _hex(t.bg);
     final safe = MediaQuery.of(context).padding;
@@ -506,10 +517,7 @@ class _SpikePaginatorScreenState
               child: ReadingSettingsPanel(
                 showTrace: false,
                 onOpenChapters: _chapters.isEmpty ? null : _openChapters,
-                onClose: () {
-                  setState(() => _bars = false);
-                  _syncTypoFromProviders();
-                },
+                onClose: () => setState(() => _bars = false),
               ),
             ),
           ),
