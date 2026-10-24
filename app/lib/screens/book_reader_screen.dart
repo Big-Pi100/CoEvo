@@ -49,7 +49,7 @@ import '../theme/co_spacing.dart';
 import '../theme/coevo_tokens.dart';
 import '../theme/tokens_ext.dart';
 import '../widgets/reading_settings_panel.dart';
-import '../widgets/book_marker_sheet.dart';
+import 'book_marker_list_screen.dart';
 import '../widgets/word_lookup_selection.dart';
 
 class BookReaderScreen extends ConsumerStatefulWidget {
@@ -313,20 +313,15 @@ class _BookReaderScreenState extends ConsumerState<BookReaderScreen> {
   /// 🔑 列表放在**书内**（这本的），不是全局页 —— 与「记忆列表」不同：
   ///    书签是「回这本书的某处」，脱离书没有意义。
   ///    （对照：划线做成全局清单，因为它要「跨来源看自己记过什么」。）
-  void _showMarkers() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => BookMarkerSheet(
-        bookId: widget.bookId,
-        // 点一条 ⇒ 滚到那一处（同章内滚动；跨章要切章 ⇒ 见下方说明）
-        onPick: (m) {
-          Navigator.of(ctx).pop();
-          _jumpToMarker(m);
-        },
-      ),
+  Future<void> _showMarkers() async {
+    // 🔑 独立页面（白哥 2026-10-24：书签多了弹窗装不下）
+    final picked = await BookMarkerListScreen.push(
+      context,
+      bookId: widget.bookId,
+      bookTitle: _chapter?.bookTitle,
     );
+    if (picked == null || !mounted) return;
+    await _jumpToMarker(picked);
   }
 
   /// 跳到某条书签的位置。

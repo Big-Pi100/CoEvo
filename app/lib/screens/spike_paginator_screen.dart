@@ -20,7 +20,7 @@ import '../providers/user_db_provider.dart';
 import '../services/tts_service.dart';
 import '../services/word_lookup.dart';
 import '../widgets/translation_sheet.dart';
-import '../widgets/book_marker_sheet.dart';
+import 'book_marker_list_screen.dart';
 import '../widgets/foliate_reader_view.dart';
 import '../theme/coevo_tokens.dart';
 import '../widgets/reading_settings_panel.dart';
@@ -399,21 +399,17 @@ class _SpikePaginatorScreenState
   /// 🔑 用**模态** bottom sheet 是**有意的**：用户在「看列表」这个模式里，
   ///    不需要顶栏；这和「阅读设置面板必须非模态」不矛盾 ——
   ///    设置面板要**边调边看正文**，书签列表不用。
-  void _showMarkers() {
+  Future<void> _showMarkers() async {
     final id = _bookId;
     if (id == null) return;
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => BookMarkerSheet(
-        bookId: id,
-        onPick: (m) {
-          Navigator.of(ctx).pop();
-          _jumpToMarker(m);
-        },
-      ),
+    // 🔑 独立页面，不是弹窗（白哥：书签多了弹窗装不下）
+    final picked = await BookMarkerListScreen.push(
+      context,
+      bookId: id,
+      bookTitle: _bookTitle,
     );
+    if (picked == null || !mounted) return;
+    await _jumpToMarker(picked);
   }
 
   /// 跳到某条书签的位置。

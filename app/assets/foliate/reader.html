@@ -1413,43 +1413,6 @@ function reopen(keep) {
   pag.goTo({ index: keep ? state.secIndex : 0 });
 }
 
-// 🆕 2026-10-24 白哥定：**竖直下拉 = 打/取消书签**
-//   · 无书签时下拉 ⇒ 加
-//   · 有书签时下拉 ⇒ 删
-//   （判「有没有」由 Dart 侧的 `_toggleMarker` 负责 —— JS 只负责「用户下拉了」）
-//
-// # 🔑 为什么用 capture + passive 监听，不 preventDefault
-//
-// 翻页是**横向**手势（foliate 自己处理），下拉是**竖直**手势。
-// 我们只**观察**，不拦截 —— 否则会抢走 foliate 的横滑判定。
-// 判定条件同时要求：
-//   ① 竖直位移 > 60px（明显下拉，不是轻微抖动）
-//   ② 横向位移 < 30px（排除「斜着横滑」被误判成下拉）
-// 触发后 `fired` 置位，一次手势只发一次（不然 mid-drag 会连发几十条）。
-(function () {
-  var startX = 0, startY = 0, tracking = false, fired = false;
-  var MIN_DY = 60, MAX_DX = 30;
-  document.addEventListener('touchstart', function (e) {
-    if (e.touches.length !== 1) { tracking = false; return; }
-    startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
-    tracking = true;
-    fired = false;
-  }, { passive: true, capture: true });
-  document.addEventListener('touchmove', function (e) {
-    if (!tracking || fired || e.touches.length !== 1) return;
-    var dy = e.touches[0].clientY - startY;
-    var dx = Math.abs(e.touches[0].clientX - startX);
-    if (dy > MIN_DY && dx < MAX_DX) {
-      fired = true;
-      __post({ type: 'pullDown' });
-    }
-  }, { passive: true, capture: true });
-  document.addEventListener('touchend', function () {
-    tracking = false;
-  }, { passive: true, capture: true });
-})();
-
 window.__reader = {
   setContent: function (chaptersJson) {
     // 🔴 2026-10-22 真机「进去白屏」：**分阶段上报**，一轮就能看出卡在哪一步。
@@ -1692,6 +1655,45 @@ function onPagLoad(e) {
     if (doc.__coevoSelBound) return;
     doc.__coevoSelBound = true;
     bindToDoc(doc);
+
+    // 🆕 2026-10-24：**竖直下拉 = 打/取消书签**（白哥定）。
+    //
+    // 🔴🔴 为什么必须绑在这里，不能绑在主 document 上（真机实测踩过）：
+    //    foliate 把每一节渲染成 **`srcdoc` iframe**，触摸事件发生在**那个 iframe 里**，
+    //    **不会冒泡到主 document** ⇒ 主 document 上的 touchstart 永远收不到。
+    //    （注释里早写了 `srcdoc` 能让 contentDocument 可访问 —— 正因为同源，才能在这里绑。）
+    //
+    // 🔑 判定条件：
+    //    ① 竖直位移 > 60px（明显下拉，不是手指抖动）
+    //    ② 横向位移 < 30px（排除「斜着横滑」被误判成下拉）
+    //    `fired` 位保证**一次手势只发一次**（否则 mid-drag 会连发几十条）。
+    //    passive: true ⇒ 只观察不拦截，不抢 foliate 自己的横滑手势。
+    if (!doc.__coevoPullBound && typeof doc.addEventListener === 'function') {
+      doc.__coevoPullBound = true;
+      (function () {
+        var sx = 0, sy = 0, tracking = false, fired = false;
+        var MIN_DY = 60, MAX_DX = 30;
+        doc.addEventListener('touchstart', function (e) {
+          if (e.touches.length !== 1) { tracking = false; return; }
+          sx = e.touches[0].clientX;
+          sy = e.touches[0].clientY;
+          tracking = true;
+          fired = false;
+        }, { passive: true });
+        doc.addEventListener('touchmove', function (e) {
+          if (!tracking || fired || e.touches.length !== 1) return;
+          var dy = e.touches[0].clientY - sy;
+          var dx = Math.abs(e.touches[0].clientX - sx);
+          if (dy > MIN_DY && dx < MAX_DX) {
+            fired = true;
+            __post({ type: 'pullDown' });
+          }
+        }, { passive: true });
+        doc.addEventListener('touchend', function () {
+          tracking = false;
+        }, { passive: true });
+      })();
+    }
 
     // 🔍 字体是否**真的加载成功**（2026-10-23：白哥问「字体还没统一对吧」）。
     //    `font-display: swap` 会在失败时**静默回退**系统衬线 ⇒ 光看字形很难判断，
