@@ -68,13 +68,6 @@ class _SpikePaginatorScreenState
   /// 改它之后必须把内容**重排**（`setTheme` 内部会重建分页器）。
   double _fontSize = 17;
 
-  /// 阅读设置面板是否展开。
-  ///
-  /// 🔴 2026-10-24 白哥：「顶栏当然要能点才行，不然放着当摆设吗？现在的状态是
-  /// **无论如何都点不到**」—— 根因是面板用 `showModalBottomSheet`（模态路由），
-  /// 遮罩盖住整屏 ⇒ 顶栏收不到点击。
-  /// ⇒ 改成**直接嵌在 Stack 里**（和顶栏同一层，谁都不挡谁）。
-  bool _settingsOpen = false;
 
   /// 点过菜单项后临时收起（否则菜单会一直挂在原文上）。
   /// 下次选区变化（`selection` 变新对象）时重置。
@@ -331,45 +324,26 @@ class _SpikePaginatorScreenState
   /// ⚠️ **页码条不参与**这个切换（白哥：它是阅读界面的一部分，只展示进度）。
   void _onTap() {
     if (!mounted) return;
-    // 面板开着 ⇒ 单击正文先把面板收起（它嵌在 Stack 里，不会被遮罩挡住）
-    if (_settingsOpen) {
-      _closeSettings();
-      return;
-    }
-    if (_bars) {
-      setState(() {
-        _bars = false;
-        _hideSelectionMenu = true;
-      });
-      return;
-    }
+    // 🔴🔴 2026-10-24 白哥（第四次强调）：
+    //    「顶部栏和设置面板在**一层**，单击正文的时候**同时从上下弹出**，
+    //     收起的时候**同时收起**」
+    //
+    // ⇒ 它们**不是一个层里的两个东西**，而是**同一个整体的上下两半**：
+    //   `_bars` 一个状态位同时决定「顶栏在不在」和「面板升没升起」。
+    //   ⇒ **没有**「顶栏在、面板不在」的中间态。
+    final opening = !_bars;
     setState(() {
-      _bars = true;
+      _bars = opening;
       _hideSelectionMenu = true;
     });
-    _openSettings();
+    if (!opening) _syncTypoFromProviders();
   }
 
-  /// 打开阅读设置面板（顶部 `Tt` 与「单击正文」共用同一个入口）。
-  ///
-  /// 🔑 面板里多一行「目录」—— 只在**有章节**时传 `onOpenChapters`
-  ///    （滚动阅读器不传 ⇒ 那一行不渲染）。
-  /// 打开阅读设置面板（顶部 `Tt` 与「单击正文」共用）。
-  ///
-  /// 🔑 面板是**嵌入 Stack** 的（不是模态路由）⇒ 顶栏与面板**同层、都能点**。
-  void _openSettings() {
-    setState(() {
-      _settingsOpen = true;
-      _bars = true;
-    });
-  }
-
-  /// 收起面板，并把面板里改过的**底色 + 字号**同步给 WebView。
+  /// 把面板里改过的**底色 + 字号**同步给 WebView。
   ///
   /// 🔑 面板改的是全局 `themeProvider` / `readingSettingsProvider`，
   ///    而 WebView 内部的 CSS 是独立的 ⇒ 不同步就是「改了没反应」。
-  Future<void> _closeSettings() async {
-    setState(() => _settingsOpen = false);
+  Future<void> _syncTypoFromProviders() async {
     if (!mounted) return;
     final idx = switch (ref.read(themeProvider).theme) {
       ReadingTheme.ink => 0,
@@ -491,6 +465,17 @@ class _SpikePaginatorScreenState
           //    「长什么样」不重写），只是锚点从 `SelectableRegion` 换成了 WebView 的选区矩形。
           //    ⚠️ 展开成 List：空态时**一个子节点都不加**（见 `_selectionWidgets` 的长注释）。
           ..._selectionWidgets(safe.top),
+          // 🔴 2026-10-24 白哥定：**页码条常驻** —— 它是阅读界面的一部分，
+          //    只用来展示进度，**不跟着单击出现/消失**。
+          //    （之前它和顶栏一起 AnimatedPositioned，单击才露出来 ⇒ 白哥看到的就是
+          //      「单击弹出的是阅读进度」，而不是他想要的阅读设置面板。）
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _footer(bg),
+          ),
+
           AnimatedPositioned(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
@@ -509,9 +494,8 @@ class _SpikePaginatorScreenState
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOut,
-            bottom: _settingsOpen
-                ? 0
-                : -(MediaQuery.of(context).size.height),
+            // 🔴 与顶栏**同生同死**：同一个 `_bars` 控制两者的进出
+            bottom: _bars ? 0 : -(MediaQuery.of(context).size.height),
             left: 0,
             right: 0,
             child: Material(
@@ -522,21 +506,14 @@ class _SpikePaginatorScreenState
               child: ReadingSettingsPanel(
                 showTrace: false,
                 onOpenChapters: _chapters.isEmpty ? null : _openChapters,
-                onClose: _closeSettings,
+                onClose: () {
+                  setState(() => _bars = false);
+                  _syncTypoFromProviders();
+                },
               ),
             ),
           ),
 
-          // 🔴 2026-10-24 白哥定：**页码条常驻** —— 它是阅读界面的一部分，
-          //    只用来展示进度，**不跟着单击出现/消失**。
-          //    （之前它和顶栏一起 AnimatedPositioned，单击才露出来 ⇒ 白哥看到的就是
-          //      「单击弹出的是阅读进度」，而不是他想要的阅读设置面板。）
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _footer(bg),
-          ),
         ],
       ),
     );
@@ -603,7 +580,12 @@ class _SpikePaginatorScreenState
                 // 🔴 面板关闭后必须**把主题同步给 WebView** ——
                 //    面板改的是全局 `themeProvider`，而 WebView 内的 CSS 是独立的，
                 //    不同步的话「在面板里换底色，正文不变」（静默失效）。
-                onTap: _openSettings,
+                // 🔑 顶栏与面板同生同死 ⇒ 顶栏在时面板一定也开着
+                //    ⇒ 这个键只能「收起」（等价于点正文）
+                onTap: () {
+                  setState(() => _bars = false);
+                  _syncTypoFromProviders();
+                },
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
