@@ -345,29 +345,62 @@ class _SpikePaginatorScreenState
   /// 下拉是否已松手且**达标**（松手后转圈一会儿再回弹，给「已触发」一个收尾）。
   bool _pullArmed = false;
 
+  /// 下拉过程中**临时**显示顶栏（让用户看到书签图标的变化）。
+  ///
+  /// 🔑 为什么和 `_bars` 分开：单击正文是「顶栏 + 设置面板一起出」（同生同死），
+  ///    而**下拉只需要顶栏** —— 面板会挡住正文，用户反而看不到书签状态变了。
+  ///    ⇒ 顶栏的可见条件 = `_bars || _pullTopBar`；面板只看 `_bars`。
+  bool _pullTopBar = false;
+
   void _onPullRatio() {
-    final r = _c.pullRatio.value;
-    if (r == null) return;
     if (!mounted) return;
+    final r = _c.pullRatio.value;
+
+    // 🔴🔴 2026-10-24 白哥：「下拉后不会回弹，一直在转圈」
+    //
+    // 根因就在这一行：原来写的是 `if (r == null) return;` ——
+    //   松手时 JS 会把 `pullRatio` 置 null（表示「这次手势结束了」），
+    //   而我**直接 return**，`_pullDy` 就永远停在 96px、转圈也永远不停。
+    //   ⇒ null 的语义是「回到静止」，必须**归零**，不是「忽略」。
+    if (r == null) {
+      if (_pullDy != 0 || _pullArmed || _pullTopBar) {
+        setState(() {
+          _pullDy = 0;
+          _pullArmed = false;
+          // 回弹时顶栏一起收起（白哥：「回弹时上栏也同时收起」）
+          _pullTopBar = false;
+        });
+      }
+      return;
+    }
     // 位移封顶 96px：再往下拖内容会飞出屏幕，也不再有信息量
     setState(() {
       _pullDy = r * 96;
       _pullArmed = r >= 1;
+      // 白哥：「下拉时应该显示上栏，让用户知道书签状态变化」
+      final wasHidden = !_pullTopBar;
+      _pullTopBar = r > 0;
+      // 顶栏刚被下拉点亮 ⇒ 立刻查一次「当前位置在不在书签处」，
+      // 否则用户下拉看到的是一个还没刷新的空图标（点下去才知道对不对）
+      if (wasHidden && r > 0) _refreshMarkerHere();
     });
   }
 
-  Future<void> _onPullRelease() async {
+  void _onPullRelease() {
+    // ⚠️ 用**计数器**而不是 `ValueNotifier<bool>`：
+    //    连续两次下拉都达标时 bool 值都是 true ⇒ **不触发通知** ⇒ 第二次不回弹。
+    //    （同样的问题在 `tapTick` 上已经用过一次正确解法，这里沿用它。）
+    if (!mounted) return;
     final ok = _c.pullRelease.value == true;
-    if (!mounted) return;
-    if (ok) {
-      // 达标 ⇒ 触发动作（震动 + 图标脉冲 + 加/删），并让转圈停留一下
-      _onPullDown();
-      await Future<void>.delayed(const Duration(milliseconds: 320));
-    }
-    if (!mounted) return;
-    setState(() {
-      _pullDy = 0;
-      _pullArmed = false;
+    if (ok) _onPullDown();
+    // 无论达标与否都回弹；达标时多停 260ms 让转圈收个尾
+    Future<void>.delayed(Duration(milliseconds: ok ? 260 : 0), () {
+      if (!mounted) return;
+      setState(() {
+        _pullDy = 0;
+        _pullArmed = false;
+        _pullTopBar = false;
+      });
     });
   }
 
@@ -775,7 +808,10 @@ class _SpikePaginatorScreenState
           AnimatedPositioned(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
-            top: _bars ? 0 : -(safe.top + 64),
+            // 🔑 顶栏可见 = 单击唤出（_bars）**或** 下拉过程中（_pullTopBar）
+            //    下拉时**只出顶栏、不弹面板** —— 面板会挡住正文，
+            //    用户就看不到「书签图标从空心变实心」这个变化了。
+            top: (_bars || _pullTopBar) ? 0 : -(safe.top + 64),
             left: 0,
             right: 0,
             child: _bar(t),

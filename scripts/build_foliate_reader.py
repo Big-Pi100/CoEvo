@@ -580,33 +580,58 @@ function onPagLoad(e) {
         //
         // ⚠️ 节流：touchmove 是每帧触发（60/s），桥调用扛不住也不必要。
         //    只有「位移变化 ≥ 4px」才发，且最多 ~30fps。
-        var lastSent = 0, lastT = 0;
+        // 🔴 2026-10-24 白哥：「下拉的同时应该禁止左右滑动，不然页面飘忽，
+        //    操作也存在歧义 —— 当触发一种手势时其他手势应该禁止，它们互斥」。
+        //
+        // 🔑 实现：**一旦判定为「下拉」，就在捕获阶段 `stopPropagation()`** ——
+        //    foliate 的横滑监听绑在 `#container` 的**冒泡阶段**，
+        //    我们在捕获阶段先把它掐掉 ⇒ 本次手势里它收不到任何 touchmove ⇒ 不会翻页。
+        // ⚠️ 因此这个监听必须是 `passive: false`（`passive: true` 时无法阻止传播的效果
+        //    虽然 stopPropagation 仍可用，但既然要接管就得能 preventDefault 防页面回弹）。
+        // ⚠️ 判定门槛（dy>26）要**远早于** foliate 的翻页阈值，否则它已经动起来了。
+        var lastSent = 0, lastT = 0, pulling = false;
+        var PULL_START = 26;   // 判定「这是下拉」的最小位移（比 MIN_DY 小，先接管再算进度）
         doc.addEventListener('touchstart', function (e) {
-          if (e.touches.length !== 1) { tracking = false; return; }
+          if (e.touches.length !== 1) { tracking = false; pulling = false; return; }
           sx = e.touches[0].clientX;
           sy = e.touches[0].clientY;
           tracking = true;
+          pulling = false;
           fired = false;
           lastSent = 0;
-        }, { passive: true });
+        }, { passive: true, capture: true });
         doc.addEventListener('touchmove', function (e) {
           if (!tracking || e.touches.length !== 1) return;
           var dy = e.touches[0].clientY - sy;
           var dx = Math.abs(e.touches[0].clientX - sx);
-          // 横向占优 ⇒ 用户想翻页，立刻放弃这次下拉
-          if (dx > MAX_DX) { tracking = false; __post({ type: 'pullCancel' }); return; }
+
+          // 横向已明显占优 ⇒ 用户想翻页，永久放弃本次下拉
+          if (!pulling && dx > MAX_DX) { tracking = false; __post({ type: 'pullCancel' }); return; }
           if (dy <= 0) return;
+
+          // 竖直先到阈值 ⇒ 接管本次手势：掐掉 foliate 的横滑，禁止页面默认滚动
+          if (!pulling && dy > PULL_START && dx < MAX_DX) {
+            pulling = true;
+            e.stopPropagation();
+            if (e.cancelable) e.preventDefault();
+          }
+          if (pulling) {
+            e.stopPropagation();
+            if (e.cancelable) e.preventDefault();
+          }
+
           var now = Date.now();
           if (Math.abs(dy - lastSent) < 4 || now - lastT < 33) return;
           lastSent = dy;
           lastT = now;
           // ratio: 0~1（到 MIN_DY 就算「够数」，再往上是过冲，视觉上封顶）
           __post({ type: 'pullProgress', dy: dy, ratio: Math.min(1, dy / MIN_DY) });
-        }, { passive: true });
+        }, { passive: false, capture: true });
         doc.addEventListener('touchend', function () {
           if (tracking) __post({ type: 'pullEnd', dy: lastSent });
           tracking = false;
-        }, { passive: true });
+          pulling = false;
+        }, { passive: true, capture: true });
       })();
     }
 
