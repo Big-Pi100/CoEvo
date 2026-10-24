@@ -426,48 +426,31 @@ window.__reader = {
   },
   /// 跳到「第 `i` 章的 `ratio` 位置」（ratio 是**章内比例** 0~1）。
   ///
-  /// 🆕 2026-10-24 v2：**改成自己算全书 fraction**。
+  /// # 🔴🔴 三代实现的教训（2026-10-24，白哥让我「去 GitHub 看看别人怎么做」）
   ///
-  /// 🔴 v1 的错：我假设 foliate 有 `pag.getSection(i)` 能给出 `startFraction/endFraction`。
-  ///    **它没有这个 API**（vendor 里连 `startFraction` 这个词都不存在）⇒ `sec` 恒为 null
-  ///    ⇒ 每次都走 `return true` 的兜底 ⇒ **只切章、不定位到页**。
-  ///    白哥真机反馈正是：「无论点哪一页的书签，都跳到该章第一页」。
+  /// **v1**：用 `pag.getSection(i).startFraction` —— **这个 API 不存在**
+  ///         （vendor 里 `startFraction` 只出现在我自己写的代码里）⇒ 走兜底 ⇒ 只切章。
+  /// **v2**：自己用各章字符数算「全书 fraction」，再 `pag.goTo({fraction})` ——
+  ///         **`goTo` 也不接受 `fraction`**！官方签名是：
+  ///         ```js
+  ///         async #goTo({ index, anchor, select })   // ← 只有这三个
+  ///         async goTo(target) { ... if (this.#canGoToIndex(resolved.index)) ... }
+  ///         ```
+  ///         `fraction` 传进去 ⇒ `resolved.index === undefined` ⇒ `#canGoToIndex` 为 false
+  ///         ⇒ **静默什么都不做**。白哥看到的「还是跳到章首」就是这么来的。
+  /// **v3（现在）**：`anchor` **就是**位置 —— 官方 `#scrollToAnchor` 里明确写着
+  ///         `// if anchor is a fraction` 分支 ⇒ **`anchor: 0.5` 就是章内 50%**。
   ///
-  /// 📌 判据（再强化）：**给第三方库写调用代码前，先去它的源码里 grep 那个方法名**。
-  ///    「文档里常见」「按理说应该有」都不能作为依据 —— 这次连报错都没有，
-  ///    因为它正好落在我写的 `if (!sec) return true` 兜底里。
+  /// ⇒ 一行就够：`pag.goTo({ index: i, anchor: ratio })`。
   ///
-  /// # v2 的算法
-  ///
-  /// 用**每章去标签后的字符数**当权重，把「章内比例」换算成「全书比例」：
-  ///   global = (前 i 章字数 + 本章字数 × ratio) / 全书字数
-  /// ⚠️ 这是**近似**：HTML 标签密度各章不同，会有几页误差。
-  ///    但每章结构一致（都是 `<p>` 包裹）⇒ 误差很小。
-  ///    要精确到页需要 foliate 暴露每节 fraction，它没有。
+  /// 📌 判据（**今天第四次**同族教训）：**给第三方库写调用前，去它源码里 grep 那个参数/方法**。
+  ///    「文档说 / 按理说 / 我印象中」全都靠不住；而这类错**往往不报错**（落到自己的兜底里）。
   goToAt: function (i, ratio) {
     if (!state.ready) return false;
     try {
-      var chs = state.chapters || [];
-      if (i < 0 || i >= chs.length) return false;
-
-      // 每章去标签后的字符数（近似「渲染后字数」）
-      var lens = [];
-      var total = 0;
-      for (var k = 0; k < chs.length; k++) {
-        var len = String(chs[k] || '').replace(/<[^>]*>/g, '').length;
-        lens.push(len);
-        total += len;
-      }
-
-      // 先切到该章 —— **保证它的 iframe 被建出来**，否则下面的 fraction 跳转会落在别处
-      pag.goTo({ index: i });
-
-      if (total <= 0) return true;
-      var before = 0;
-      for (var m = 0; m < i; m++) before += lens[m];
       var r = Math.max(0, Math.min(1, ratio || 0));
-      var global = (before + lens[i] * r) / total;
-      pag.goTo({ fraction: global });
+      // 🔑 anchor 支持 fraction（官方 `#scrollToAnchor` 的注释里写了）
+      pag.goTo({ index: i, anchor: r });
       return true;
     } catch (e) {
       __post({ type: 'error', detail: 'goToAt 失败：' + (e && e.message) });
@@ -589,23 +572,39 @@ function onPagLoad(e) {
       (function () {
         var sx = 0, sy = 0, tracking = false, fired = false;
         var MIN_DY = 60, MAX_DX = 30;
+        // 🔴 2026-10-24 白哥：「为什么不学『今日精选』那种下拉动画？
+        //    一个拉动加转圈，这不是很直观也是一般的做法」
+        //
+        // ⇒ 从「超阈值发一次事件」改成**连续上报进度**（让 Flutter 侧能做跟手位移 + 转圈），
+        //    松手时再发 `pullEnd` 决定「触发」还是「弹回」。
+        //
+        // ⚠️ 节流：touchmove 是每帧触发（60/s），桥调用扛不住也不必要。
+        //    只有「位移变化 ≥ 4px」才发，且最多 ~30fps。
+        var lastSent = 0, lastT = 0;
         doc.addEventListener('touchstart', function (e) {
           if (e.touches.length !== 1) { tracking = false; return; }
           sx = e.touches[0].clientX;
           sy = e.touches[0].clientY;
           tracking = true;
           fired = false;
+          lastSent = 0;
         }, { passive: true });
         doc.addEventListener('touchmove', function (e) {
-          if (!tracking || fired || e.touches.length !== 1) return;
+          if (!tracking || e.touches.length !== 1) return;
           var dy = e.touches[0].clientY - sy;
           var dx = Math.abs(e.touches[0].clientX - sx);
-          if (dy > MIN_DY && dx < MAX_DX) {
-            fired = true;
-            __post({ type: 'pullDown' });
-          }
+          // 横向占优 ⇒ 用户想翻页，立刻放弃这次下拉
+          if (dx > MAX_DX) { tracking = false; __post({ type: 'pullCancel' }); return; }
+          if (dy <= 0) return;
+          var now = Date.now();
+          if (Math.abs(dy - lastSent) < 4 || now - lastT < 33) return;
+          lastSent = dy;
+          lastT = now;
+          // ratio: 0~1（到 MIN_DY 就算「够数」，再往上是过冲，视觉上封顶）
+          __post({ type: 'pullProgress', dy: dy, ratio: Math.min(1, dy / MIN_DY) });
         }, { passive: true });
         doc.addEventListener('touchend', function () {
+          if (tracking) __post({ type: 'pullEnd', dy: lastSent });
           tracking = false;
         }, { passive: true });
       })();

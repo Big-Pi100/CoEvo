@@ -91,6 +91,15 @@ class FoliateReaderController {
   /// 🔑 用递增计数而不是 bool：连续单击两次要能各自触发一次 toggle。
   final ValueNotifier<int> tapTick = ValueNotifier<int>(0);
 
+  /// 下拉的**实时进度**（0~1）—— 供页面做「跟手位移 + 转圈」。
+  ///
+  /// 🆕 2026-10-24 白哥：「为什么不学『今日精选』那种下拉动画？一个拉动加转圈」。
+  /// 光发「触发了一次」不够 —— 没有过程就没有「拉动」的手感。
+  final ValueNotifier<double?> pullRatio = ValueNotifier<double?>(null);
+
+  /// 下拉松手（`true` = 已达到阈值，该触发动作）。
+  final ValueNotifier<bool?> pullRelease = ValueNotifier<bool?>(null);
+
   /// 用户在正文上**竖直下拉**了一次（🆕 2026-10-24 白哥定：下拉 = 打/取消书签）。
   ///
   /// 🔑 为什么是「计数」而不是「事件回调」：
@@ -233,6 +242,13 @@ class FoliateReaderController {
           }
         case 'tap':
           tapTick.value = tapTick.value + 1;
+        case 'pullProgress':
+          pullRatio.value = (m['ratio'] as num?)?.toDouble() ?? 0;
+        case 'pullEnd':
+          pullRelease.value = ((m['dy'] as num?)?.toDouble() ?? 0) >= 60;
+          pullRatio.value = null;
+        case 'pullCancel':
+          pullRatio.value = null;
         case 'pullDown':
           pullDownTick.value = pullDownTick.value + 1;
         case 'error':

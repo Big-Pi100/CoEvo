@@ -128,6 +128,8 @@ class _SpikePaginatorScreenState
     _c.tapTick.addListener(_onTap);
     // 🆕 下拉 = 打/取消书签（白哥定：无书签则加、有书签则删）
     _c.pullDownTick.addListener(_onPullDown);
+    _c.pullRatio.addListener(_onPullRatio);
+    _c.pullRelease.addListener(_onPullRelease);
     _c.position.addListener(_onPosition);
     _loadRealBook();
   }
@@ -337,6 +339,38 @@ class _SpikePaginatorScreenState
   /// 白哥定：「无书签的下拉加书签，有书签的下拉删除书签」。
   /// 判据完全交给 `_toggleMarker`（它用 `_markerHere` 决定加还是删），
   /// 这里**不重复判断**。
+  /// 下拉的跟手位移量（px）—— 拖动时正文整体下移，做出「拉动」的手感。
+  double _pullDy = 0;
+
+  /// 下拉是否已松手且**达标**（松手后转圈一会儿再回弹，给「已触发」一个收尾）。
+  bool _pullArmed = false;
+
+  void _onPullRatio() {
+    final r = _c.pullRatio.value;
+    if (r == null) return;
+    if (!mounted) return;
+    // 位移封顶 96px：再往下拖内容会飞出屏幕，也不再有信息量
+    setState(() {
+      _pullDy = r * 96;
+      _pullArmed = r >= 1;
+    });
+  }
+
+  Future<void> _onPullRelease() async {
+    final ok = _c.pullRelease.value == true;
+    if (!mounted) return;
+    if (ok) {
+      // 达标 ⇒ 触发动作（震动 + 图标脉冲 + 加/删），并让转圈停留一下
+      _onPullDown();
+      await Future<void>.delayed(const Duration(milliseconds: 320));
+    }
+    if (!mounted) return;
+    setState(() {
+      _pullDy = 0;
+      _pullArmed = false;
+    });
+  }
+
   void _onPullDown() {
     if (!mounted) return;
     // 🔴 2026-10-24 白哥：「下拉无动画反馈，屏幕不动、不转圈，
@@ -605,6 +639,8 @@ class _SpikePaginatorScreenState
     _c.selectedText.removeListener(_onSel);
     _c.tapTick.removeListener(_onTap);
     _c.pullDownTick.removeListener(_onPullDown);
+    _c.pullRatio.removeListener(_onPullRatio);
+    _c.pullRelease.removeListener(_onPullRelease);
     _c.position.removeListener(_onPosition);
     _saveTimer?.cancel();
     super.dispose();
@@ -643,7 +679,12 @@ class _SpikePaginatorScreenState
           Positioned.fill(
             child: Padding(
               padding: EdgeInsets.only(top: safe.top, bottom: safe.bottom),
-              child: Stack(
+              // 🔑 下拉跟手：把整块正文（含内部 WebView）一起下移。
+              //    用 `Transform.translate` 而不是改 padding —— 后者会触发重排，
+              //    拖拽时每帧重排必然掉帧。
+              child: Transform.translate(
+                offset: Offset(0, _pullDy),
+                child: Stack(
                 children: [
                   FoliateReaderView(
                     controller: _c,
@@ -657,9 +698,36 @@ class _SpikePaginatorScreenState
                       ),
                     ),
                 ],
+                ),
               ),
             ),
           ),
+
+          // 🆕 下拉转圈（学「今日精选」那种）：**跟手出现**，达标后转为不确定动画
+          if (_pullDy > 0)
+            Positioned(
+              top: safe.top + _pullDy - 34,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: _pullArmed
+                      // 达标 ⇒ 转圈（表示「松手就会执行」）
+                      ? CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _hex(t.fg).withValues(alpha: 0.5),
+                        )
+                      // 未达标 ⇒ 进度环（跟手，让用户知道还差多少）
+                      : CircularProgressIndicator(
+                          strokeWidth: 2,
+                          value: (_pullDy / 96).clamp(0.0, 1.0),
+                          color: _hex(t.fg).withValues(alpha: 0.35),
+                        ),
+                ),
+              ),
+            ),
           // 🆕 划词浮层（2026-10-23）—— 复用正式页的 `SelectionMenu`（同一个 UI，
           //    「长什么样」不重写），只是锚点从 `SelectableRegion` 换成了 WebView 的选区矩形。
           //    ⚠️ 展开成 List：空态时**一个子节点都不加**（见 `_selectionWidgets` 的长注释）。
