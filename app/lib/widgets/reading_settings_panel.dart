@@ -55,6 +55,7 @@ class ReadingSettingsPanel extends ConsumerWidget {
     super.key,
     this.showTrace = true,
     this.onOpenChapters,
+    this.onClose,
   });
 
   /// 是否显示「痕迹」开关。
@@ -72,6 +73,14 @@ class ReadingSettingsPanel extends ConsumerWidget {
 
   /// 🆕 2026-10-24：点「目录」行要做什么。`null` ⇒ **那一行不渲染**。
   final VoidCallback? onOpenChapters;
+
+  /// 🆕 2026-10-24：**关闭面板的方式**。
+  ///
+  /// `null` ⇒ 默认 `Navigator.pop()`（面板是以 `showModalBottomSheet` 弹的，
+  /// 弹掉一条路由正好）。
+  /// 传了 ⇒ 用调用方给的方式 —— **翻页阅读器把本面板直接嵌在 `Stack` 里**
+  /// （不是路由），`pop` 会把整个阅读页弹掉，必须换成「改一个状态位」。
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -158,7 +167,7 @@ class ReadingSettingsPanel extends ConsumerWidget {
                 Positioned(
                   right: -6,
                   child: InkWell(
-                    onTap: () => Navigator.of(context).pop(),
+                    onTap: onClose ?? () => Navigator.of(context).pop(),
                     borderRadius: BorderRadius.circular(16),
                     child: Padding(
                       padding: const EdgeInsets.all(6),
@@ -409,7 +418,12 @@ class ReadingSettingsPanel extends ConsumerWidget {
               onTap: () {
                 // 🔑 先关面板，再执行动作 —— 否则两个 bottom sheet 叠在一起，
                 //    用户关掉目录后看到的还是设置面板（「怎么又回来了」）。
-                Navigator.of(context).pop();
+                // 关面板：嵌在 Stack 里时用 onClose，弹在路由里时用 pop
+                if (onClose != null) {
+                  onClose!();
+                } else {
+                  Navigator.of(context).pop();
+                }
                 onOpenChapters!();
               },
               child: Padding(
