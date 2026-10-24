@@ -574,27 +574,6 @@ class _SpikePaginatorScreenState
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
-              // Tt（阅读设置）—— 正式页打开 `showReadingSettingsPanel`
-              InkWell(
-                // 🔴 面板关闭后必须**把主题同步给 WebView** ——
-                //    面板改的是全局 `themeProvider`，而 WebView 内的 CSS 是独立的，
-                //    不同步的话「在面板里换底色，正文不变」（静默失效）。
-                // 🔑 顶栏与面板同生同死 ⇒ 顶栏在时面板一定也开着
-                //    ⇒ 这个键只能「收起」（等价于点正文）
-                onTap: () {
-                  setState(() => _bars = false);
-                  _syncTypoFromProviders();
-                },
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 6),
-                  child: Icon(Icons.format_size,
-                      size: 20, color: _hex(t.fg).withValues(alpha: 0.72)),
-                ),
-              ),
-              const SizedBox(width: 6),
               // 朗读（右上角）—— 行为照抄正式页：isSpeaking(整章) 判状态、stop() 停止
               if (_chapterPlainText != null)
                 Builder(builder: (_) {
