@@ -91,6 +91,13 @@ class FoliateReaderController {
   /// 🔑 用递增计数而不是 bool：连续单击两次要能各自触发一次 toggle。
   final ValueNotifier<int> tapTick = ValueNotifier<int>(0);
 
+  /// 用户在正文上**竖直下拉**了一次（🆕 2026-10-24 白哥定：下拉 = 打/取消书签）。
+  ///
+  /// 🔑 为什么是「计数」而不是「事件回调」：
+  ///    和 `tapTick` 同一个模式 —— 控制器不持有业务逻辑，
+  ///    由页面 `addListener` 决定「下拉了要做什么」。这样换页面不用改这里。
+  final ValueNotifier<int> pullDownTick = ValueNotifier<int>(0);
+
   /// JS 侧「进行到哪一步」—— 白屏时看它就知道卡在哪（真机没有控制台）。
   final ValueNotifier<String> lastStage = ValueNotifier<String>('');
 
@@ -143,6 +150,16 @@ class FoliateReaderController {
   Future<void> goToChapter(int index) async {
     if (_web == null || !_ready) return;
     await _web!.runJavaScript('window.__reader.goTo($index);');
+  }
+
+  /// 跳到「第 `index` 章的 `ratio` 位置」（ratio = **章内**比例 0~1）。
+  ///
+  /// 🆕 书签跳转用：`book_marker.scroll_ratio` 是章内比例，
+  /// 而 `goToChapter` 只能到章首 ⇒ 要这个才能落到具体位置。
+  Future<void> goToChapterRatio(int index, double ratio) async {
+    if (_web == null || !_ready) return;
+    final r = ratio.clamp(0.0, 1.0);
+    await _web!.runJavaScript('window.__reader.goToAt($index, $r);');
   }
 
   /// 换主题 + 字号 + 行距 + 边距（三档主题由调用方换算成具体颜色）。
@@ -216,6 +233,8 @@ class FoliateReaderController {
           }
         case 'tap':
           tapTick.value = tapTick.value + 1;
+        case 'pullDown':
+          pullDownTick.value = pullDownTick.value + 1;
         case 'error':
           // JS 侧自己 catch 到的错误（含阶段名）—— 直接显示出来，
           // 因为真机上没有控制台，`Script error.` 又是脱敏的。

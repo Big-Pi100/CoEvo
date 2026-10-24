@@ -20,6 +20,7 @@ import '../providers/user_db_provider.dart';
 import '../services/tts_service.dart';
 import '../services/word_lookup.dart';
 import '../widgets/translation_sheet.dart';
+import '../widgets/book_marker_sheet.dart';
 import '../widgets/foliate_reader_view.dart';
 import '../theme/coevo_tokens.dart';
 import '../widgets/reading_settings_panel.dart';
@@ -108,6 +109,8 @@ class _SpikePaginatorScreenState
     _c.lastError.addListener(_onErr);
     _c.selectedText.addListener(_onSel);
     _c.tapTick.addListener(_onTap);
+    // 🆕 下拉 = 打/取消书签（白哥定：无书签则加、有书签则删）
+    _c.pullDownTick.addListener(_onPullDown);
     _c.position.addListener(_onPosition);
     _loadRealBook();
   }
@@ -312,6 +315,16 @@ class _SpikePaginatorScreenState
     if (e != null && mounted) setState(() => _error = e);
   }
 
+  /// 正文竖直下拉 —— 打/取消书签。
+  ///
+  /// 白哥定：「无书签的下拉加书签，有书签的下拉删除书签」。
+  /// 判据完全交给 `_toggleMarker`（它用 `_markerHere` 决定加还是删），
+  /// 这里**不重复判断**。
+  void _onPullDown() {
+    if (!mounted) return;
+    _toggleMarker();
+  }
+
   void _onSel() {
     if (!mounted) return;
     // 选区一变（新对象）⇒ 菜单重新出现
@@ -379,6 +392,43 @@ class _SpikePaginatorScreenState
     } catch (_) {
       // 查书签失败不该影响阅读 —— 顶栏图标退化为「未标记」
     }
+  }
+
+  /// 打开本书的书签列表（底部弹层）。
+  ///
+  /// 🔑 用**模态** bottom sheet 是**有意的**：用户在「看列表」这个模式里，
+  ///    不需要顶栏；这和「阅读设置面板必须非模态」不矛盾 ——
+  ///    设置面板要**边调边看正文**，书签列表不用。
+  void _showMarkers() {
+    final id = _bookId;
+    if (id == null) return;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => BookMarkerSheet(
+        bookId: id,
+        onPick: (m) {
+          Navigator.of(ctx).pop();
+          _jumpToMarker(m);
+        },
+      ),
+    );
+  }
+
+  /// 跳到某条书签的位置。
+  ///
+  /// 🔑 **先切章、再按章内比例定位**（两步，不能一次做）：
+  ///    `goTo({index, fraction})` 里的 fraction 是**全书**比例，
+  ///    直接塞章内比例会跳到别的章。
+  Future<void> _jumpToMarker(BookMarker m) async {
+    if (m.chapterIdx != _chapterIdx) {
+      await _goToChapter(m.chapterIdx);
+    }
+    await _c.goToChapterRatio(m.chapterIdx, m.scrollRatio);
+    if (!mounted) return;
+    // 跳完刷新图标状态（新位置可能就是这条书签）
+    setState(() => _markerHere = m);
   }
 
   /// 点书签键 = **打 / 取消**。
@@ -508,6 +558,7 @@ class _SpikePaginatorScreenState
     _c.lastError.removeListener(_onErr);
     _c.selectedText.removeListener(_onSel);
     _c.tapTick.removeListener(_onTap);
+    _c.pullDownTick.removeListener(_onPullDown);
     _c.position.removeListener(_onPosition);
     _saveTimer?.cancel();
     super.dispose();
@@ -705,7 +756,9 @@ class _SpikePaginatorScreenState
                 }),
               const SizedBox(width: 6),
               InkWell(
-                onTap: _toggleMarker,
+                // 🔑 白哥定：**下拉 = 打/取消**，这个键 = **打开已存书签列表**
+                //    （2026-10-24：「加了书签在哪里找回」）
+                onTap: _showMarkers,
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
                   padding:
