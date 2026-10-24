@@ -1324,6 +1324,14 @@ function buildDocUrl(bodyHtml) {
     'h1{font-size:' + (t.fs + 8) + 'px;line-height:1.35;font-weight:700;margin:0 0 ' + (t.fs * t.lh).toFixed(1) + 'px;}' +
     'h2{font-size:' + (t.fs + 2) + 'px;line-height:1.4;font-weight:600;margin:0 0 ' + (t.fs * t.lh).toFixed(1) + 'px;}' +
     'h3{font-size:' + (t.fs + 1) + 'px;line-height:1.4;font-weight:600;margin:0 0 ' + (t.fs * t.lh).toFixed(1) + 'px;}' +
+    // 🆕 2026-10-24：**已有划线**的下划线样式。
+    // 与正式页 `_bodySpans` 同一套视觉：下划线 + `accentBright`（**亮调**）+ 1.2px。
+    // 🔑 为什么用下划线而不是底色：项目判据「形状区分优于参数」——
+    //    痕迹（查过的词）是**面状底色**，划线是**线状下划线**，两者不能同形。
+    '.hl{text-decoration:underline;' +
+    'text-decoration-color:' + (t.hl || '#C4533A') + ';' +
+    'text-decoration-thickness:1.2px;' +
+    'text-underline-offset:3px;}' +
     'strong,b{font-weight:700;}' +
     'em,i{font-style:italic;}' +
     'blockquote{margin:0 0 ' + (t.fs * 0.9).toFixed(1) + 'px;padding-left:14px;' +

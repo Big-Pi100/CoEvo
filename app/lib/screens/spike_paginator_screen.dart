@@ -273,8 +273,13 @@ class _SpikePaginatorScreenState
       _themeIdx = idx;
       _fontSize = ref.read(readingSettingsProvider).fontSize.toDouble();
     });
+    final hl = await _loadHighlights();
+    if (!mounted) return;
     await _c.setChapters(
-      [for (final ch in all) _textToHtml(ch.text, ch.chapterTitle)],
+      [
+        for (final ch in all)
+          _textToHtml(ch.text, ch.chapterTitle, hl[ch.idx] ?? const []),
+      ],
       startAt: _chapterIdx,
     );
     // 内容设好之后再套主题/字号（`setTheme` 内部会重建分页器，但 `state.chapters` 已存住）
@@ -307,27 +312,103 @@ class _SpikePaginatorScreenState
   /// 🔴 **这是 `char_offset` 口径的唯一来源**：偏移按这里生成的文本算
   /// （段落之间**不含分隔符**）。将来换成 `char_offset` 精确计算时，
   /// 反查必须用**同一份 HTML** —— 否则偏移会系统性错位**且不会报错**。
-  static String _textToHtml(String text, String? chapterTitle) {
+  /// 把一章纯文本转成 HTML（**含划线下划线**）。
+  ///
+  /// 🆕 2026-10-24：原来完全不读划线 ⇒ 用户在正式页划过的线，到翻页页**看不见**
+  /// （白哥接入前检查时点出来的缺口）。
+  ///
+  /// [hl] 是本章的划线区间（**全章原文偏移**，来自 `highlight.start_offset/end_offset`）。
+  ///
+  /// ⚠️ 段落必须**按原文顺序**切，且记下每段第一个字在原文里的偏移 ——
+  ///    直接用 `split().map(trim)` 拿不到偏移，划线就会画到别的段上。
+  static String _textToHtml(
+    String text,
+    String? chapterTitle,
+    List<(int, int)> hl,
+  ) {
     final buf = StringBuffer();
     // ⚠️ 标题不进正文（`char_offset` 只算正文段落）——
     //    所以标题单独用 `<h2 class="ch-title">`，偏移计算时按 class 跳过。
     if (chapterTitle != null && chapterTitle.trim().isNotEmpty) {
       buf.write('<h2 class="ch-title">${_escape(chapterTitle.trim())}</h2>');
     }
-    final paras = text
-        .split(RegExp(r'\n\s*\n'))
-        .map((p) => p.trim())
-        .where((p) => p.isNotEmpty);
-    for (final p in paras) {
-      buf.write('<p>${_escape(p)}</p>');
+    final re = RegExp(r'\n\s*\n');
+    var cursor = 0;
+    for (final raw in text.split(re)) {
+      final idx = text.indexOf(raw, cursor);
+      if (idx < 0) continue;
+      cursor = idx + raw.length;
+      final p = raw.trim();
+      if (p.isEmpty) continue;
+      // 段首在**原文**里的偏移（trim 掉前导空白也要算进去）
+      final base = idx + raw.indexOf(p);
+      buf.write('<p>${_paraHtml(p, base, hl)}</p>');
     }
     return buf.toString();
+  }
+
+  /// 读整本书的划线，按章分组（`chapter_idx` → 区间列表）。
+  Future<Map<int, List<(int, int)>>> _loadHighlights() async {
+    final id = _bookId;
+    if (id == null) return const {};
+    try {
+      final db = await ref.read(userDbProvider.future);
+      final rows = await HighlightRepository(db).listForSource(
+        sourceType: HighlightSourceType.book,
+        sourceId: id,
+        // 🔑 不传 chapterIdx ⇒ 一次拿全书的划线（N 章查 N 次没必要）
+      );
+      final out = <int, List<(int, int)>>{};
+      for (final h in rows) {
+        final ch = h.chapterIdx;
+        if (ch == null) continue;
+        // 定位失败存的是 -1（「位置未知」）⇒ 不画线，免得画到开头
+        if (h.startOffset < 0 || h.endOffset <= h.startOffset) continue;
+        (out[ch] ??= <(int, int)>[]).add((h.startOffset, h.endOffset));
+      }
+      return out;
+    } catch (_) {
+      // 读划线失败不该影响阅读 —— 退化为「没有线」
+      return const {};
+    }
   }
 
   static String _escape(String s) => s
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;');
+
+  /// 段内按划线区间插入 `<span class="hl">`。
+  ///
+  /// [base] 是本段第一个字在**全章原文**里的偏移 —— 划线存的是全章偏移，
+  /// 段落切分后必须换算成段内偏移，否则会错位到别的段。
+  ///
+  /// ⚠️ 区间可能**跨段**（用户从一段划到下一段）⇒ 每段只取它与本段的**交集**。
+  ///    区间也可能**互相重叠** ⇒ 先排序再用 `cur` 推进，避免嵌套 span。
+  static String _paraHtml(String p, int base, List<(int, int)> hl) {
+    final segEnd = base + p.length;
+    final marks = <(int, int)>[];
+    for (final (s, e) in hl) {
+      final a = s > base ? s : base;
+      final b = e < segEnd ? e : segEnd;
+      if (a < b) marks.add((a - base, b - base));
+    }
+    if (marks.isEmpty) return _escape(p);
+    marks.sort((x, y) => x.$1.compareTo(y.$1));
+    final buf = StringBuffer();
+    var cur = 0;
+    for (final (a, b) in marks) {
+      if (a > cur) buf.write(_escape(p.substring(cur, a)));
+      // 重叠部分已被前一段覆盖 ⇒ 只补剩下的
+      final from = a > cur ? a : cur;
+      if (b > from) {
+        buf.write('<span class="hl">${_escape(p.substring(from, b))}</span>');
+      }
+      if (b > cur) cur = b;
+    }
+    if (cur < p.length) buf.write(_escape(p.substring(cur)));
+    return buf.toString();
+  }
 
   void _onErr() {
     final e = _c.lastError.value;
