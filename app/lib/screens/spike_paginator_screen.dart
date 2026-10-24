@@ -86,6 +86,23 @@ class _SpikePaginatorScreenState
   ///    各判一次迟早会漂（正式页 `book_marker_repository` 类文档里记了这条）。
   BookMarker? _markerHere;
 
+  /// 书签图标是否处于「刚被下拉触发」的脉冲态（放大再回弹）。
+  bool _markerPulse = false;
+
+  /// 一句短提示（「已加书签 / 已取消书签」）—— 2 秒后自动消失。
+  ///
+  /// 🔑 用**页面内的一行字**而不是 SnackBar：SnackBar 会从底部升起、
+  ///    盖住页码条，而且下拉是「每页都可能触发」的动作，高频浮层比没反馈更烦。
+  String? _markerHint;
+  Timer? _markerHintTimer;
+
+  void _clearMarkerHintSoon() {
+    _markerHintTimer?.cancel();
+    _markerHintTimer = Timer(const Duration(milliseconds: 1800), () {
+      if (mounted) setState(() => _markerHint = null);
+    });
+  }
+
   /// 🔴 **三档色值直接取 `coevo_tokens.dart` 的真实值**（2026-10-23 白哥指出
   /// 「跟现在运行中的完全不一样」—— 主因就是我自己猜了色值）：
   ///
@@ -322,7 +339,27 @@ class _SpikePaginatorScreenState
   /// 这里**不重复判断**。
   void _onPullDown() {
     if (!mounted) return;
+    // 🔴 2026-10-24 白哥：「下拉无动画反馈，屏幕不动、不转圈，
+    //    用户根本不知道动作是否有效」
+    //
+    // ⇒ 三重反馈，越轻越好（这是**每页都可能触发**的高频动作）：
+    //   ① **震动**：立刻可感，不占屏幕
+    //   ② **书签图标脉冲**（放大 1.25× 再回弹 220ms）：给眼睛一个落点
+    //   ③ **加/删的文案提示**（在 `_toggleMarker` 里，短暂显示）
+    HapticFeedback.mediumImpact();
+    _pulseMarker();
     _toggleMarker();
+  }
+
+  /// 书签图标脉冲：让用户「看到」这次下拉被接收了。
+  ///
+  /// ⚠️ 不弹 SnackBar：它会从底部升起、盖住页码条，而且每翻几页就可能触发一次，
+  ///    高频出现的浮层比「没反馈」更烦。
+  Future<void> _pulseMarker() async {
+    if (!mounted) return;
+    setState(() => _markerPulse = true);
+    await Future<void>.delayed(const Duration(milliseconds: 220));
+    if (mounted) setState(() => _markerPulse = false);
   }
 
   void _onSel() {
@@ -439,7 +476,13 @@ class _SpikePaginatorScreenState
     try {
       if (_markerHere != null) {
         await repo.remove(_markerHere!.id);
-        if (mounted) setState(() => _markerHere = null);
+        if (mounted) {
+          setState(() {
+            _markerHere = null;
+            _markerHint = '已取消书签';
+          });
+          _clearMarkerHintSoon();
+        }
         return;
       }
       // 摘录：从当前位置往后取 ~40 字（书签列表里用来认出「这是哪一处」）
@@ -465,7 +508,13 @@ class _SpikePaginatorScreenState
         excerpt: marker.excerpt,
         createdAt: marker.createdAt,
       );
-      if (mounted) setState(() => _markerHere = marker);
+      if (mounted) {
+        setState(() {
+          _markerHere = marker;
+          _markerHint = '已加书签 · 第 ${marker.chapterIdx + 1} 章';
+        });
+        _clearMarkerHintSoon();
+      }
     } catch (e) {
       if (mounted) setState(() => _error = '书签操作失败：$e');
     }
@@ -530,6 +579,7 @@ class _SpikePaginatorScreenState
     if (_bars) _refreshMarkerHere();
 
     _saveTimer?.cancel();
+    _markerHintTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 1200), () async {
       final p2 = _c.position.value;
       try {
@@ -614,6 +664,35 @@ class _SpikePaginatorScreenState
           //    「长什么样」不重写），只是锚点从 `SelectableRegion` 换成了 WebView 的选区矩形。
           //    ⚠️ 展开成 List：空态时**一个子节点都不加**（见 `_selectionWidgets` 的长注释）。
           ..._selectionWidgets(safe.top),
+          // 🆕 下拉书签的一句短提示（「已加书签」/「已取消书签」）
+          //    位置在页码条上方，2 秒自动消失；不挡正文、不占布局（Stack 浮层）
+          if (_markerHint != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 44,
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: _hex(t.fg).withValues(alpha: 0.82),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      _markerHint!,
+                      style: TextStyle(
+                        fontFamily: CoFonts.uiSans,
+                        fontSize: 12,
+                        color: _hex(t.bg),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
           // 🔴 2026-10-24 白哥定：**页码条常驻** —— 它是阅读界面的一部分，
           //    只用来展示进度，**不跟着单击出现/消失**。
           //    （之前它和顶栏一起 AnimatedPositioned，单击才露出来 ⇒ 白哥看到的就是
@@ -759,14 +838,20 @@ class _SpikePaginatorScreenState
                 child: Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                  child: Icon(
-                    _markerHere == null
-                        ? Icons.bookmark_border
-                        : Icons.bookmark,
-                    size: 22,
-                    color: _markerHere == null
-                        ? _hex(t.fg).withValues(alpha: 0.72)
-                        : _hex(t.accent),
+                  child: AnimatedScale(
+                    // 下拉时放大一下再回弹 —— 让用户「看到」动作被接收
+                    scale: _markerPulse ? 1.25 : 1.0,
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOut,
+                    child: Icon(
+                      _markerHere == null
+                          ? Icons.bookmark_border
+                          : Icons.bookmark,
+                      size: 22,
+                      color: _markerHere == null
+                          ? _hex(t.fg).withValues(alpha: 0.72)
+                          : _hex(t.accent),
+                    ),
                   ),
                 ),
               ),

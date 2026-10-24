@@ -426,27 +426,51 @@ window.__reader = {
   },
   /// 跳到「第 `i` 章的 `ratio` 位置」（ratio 是**章内比例** 0~1）。
   ///
-  /// 🆕 2026-10-24：书签跳转用。`book_marker` 存的是 `scroll_ratio`（章内比例），
-  /// 而 `goTo` 只认 `{index}` / `{fraction}`（**全书**比例）。
-  /// ⇒ 章内比例必须**先换到该章的起点**，再在该章内按 fraction 定位。
+  /// 🆕 2026-10-24 v2：**改成自己算全书 fraction**。
   ///
-  /// ⚠️ 分两步（先切章、再定位）：`goTo({index, fraction})` 里 fraction 是全书比例，
-  ///    直接塞章内比例会跳到**别的章**。这是 foliate 的既有语义，不是 bug。
+  /// 🔴 v1 的错：我假设 foliate 有 `pag.getSection(i)` 能给出 `startFraction/endFraction`。
+  ///    **它没有这个 API**（vendor 里连 `startFraction` 这个词都不存在）⇒ `sec` 恒为 null
+  ///    ⇒ 每次都走 `return true` 的兜底 ⇒ **只切章、不定位到页**。
+  ///    白哥真机反馈正是：「无论点哪一页的书签，都跳到该章第一页」。
+  ///
+  /// 📌 判据（再强化）：**给第三方库写调用代码前，先去它的源码里 grep 那个方法名**。
+  ///    「文档里常见」「按理说应该有」都不能作为依据 —— 这次连报错都没有，
+  ///    因为它正好落在我写的 `if (!sec) return true` 兜底里。
+  ///
+  /// # v2 的算法
+  ///
+  /// 用**每章去标签后的字符数**当权重，把「章内比例」换算成「全书比例」：
+  ///   global = (前 i 章字数 + 本章字数 × ratio) / 全书字数
+  /// ⚠️ 这是**近似**：HTML 标签密度各章不同，会有几页误差。
+  ///    但每章结构一致（都是 `<p>` 包裹）⇒ 误差很小。
+  ///    要精确到页需要 foliate 暴露每节 fraction，它没有。
   goToAt: function (i, ratio) {
     if (!state.ready) return false;
     try {
+      var chs = state.chapters || [];
+      if (i < 0 || i >= chs.length) return false;
+
+      // 每章去标签后的字符数（近似「渲染后字数」）
+      var lens = [];
+      var total = 0;
+      for (var k = 0; k < chs.length; k++) {
+        var len = String(chs[k] || '').replace(/<[^>]*>/g, '').length;
+        lens.push(len);
+        total += len;
+      }
+
+      // 先切到该章 —— **保证它的 iframe 被建出来**，否则下面的 fraction 跳转会落在别处
       pag.goTo({ index: i });
-      // 该章在全书里的起止 fraction（foliate 的 pages 数组里每节有 startFraction）
-      var sec = null;
-      try { sec = pag.getSection ? pag.getSection(i) : null; } catch (_) {}
-      if (!sec) return true;
-      var start = sec.startFraction || 0;
-      var end = sec.endFraction || 1;
-      var target = start + (end - start) * Math.max(0, Math.min(1, ratio));
-      pag.goTo({ fraction: target });
+
+      if (total <= 0) return true;
+      var before = 0;
+      for (var m = 0; m < i; m++) before += lens[m];
+      var r = Math.max(0, Math.min(1, ratio || 0));
+      var global = (before + lens[i] * r) / total;
+      pag.goTo({ fraction: global });
       return true;
     } catch (e) {
-      __post({ type: 'error', detail: 'goToAt 失败：' + e.message });
+      __post({ type: 'error', detail: 'goToAt 失败：' + (e && e.message) });
       return false;
     }
   },
